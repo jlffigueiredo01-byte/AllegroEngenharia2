@@ -1,0 +1,1443 @@
+<script>
+// ============================================================
+// ProposalBuilderUI.html — ALLEGRO Business System
+// Proposal Builder Wizard + Proposal List (Technical Proposals)
+// ES5 only — Google Apps Script HtmlService
+// ============================================================
+
+// ------------------------------------------------------------
+// Step indicator CSS (injected once on first use)
+// ------------------------------------------------------------
+var _pbStylesInjected = false;
+function _pbInjectStyles() {
+  if (_pbStylesInjected) return;
+  _pbStylesInjected = true;
+  var style = document.createElement('style');
+  style.textContent = [
+    '.pb-steps{display:flex;gap:0;margin-bottom:24px;}',
+    '.pb-step{flex:1;text-align:center;padding:10px;background:#f1f5f9;border-bottom:3px solid #e2e8f0;font-size:13px;color:#64748b;}',
+    '.pb-step.active{background:#eff6ff;border-bottom:3px solid #1a56db;color:#1a56db;font-weight:600;}',
+    '.pb-step.done{background:#f0fdf4;border-bottom:3px solid #16a34a;color:#16a34a;}',
+    '.pb-back-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;cursor:pointer;margin-bottom:16px;padding:4px 0;}',
+    '.pb-back-link:hover{color:#1a56db;}',
+    '.pb-type-radios{display:flex;gap:12px;margin-top:8px;}',
+    '.pb-type-label{flex:1;display:flex;align-items:center;gap:10px;padding:14px 16px;border:2px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:all 0.15s;}',
+    '.pb-type-label:hover{border-color:#93c5fd;background:#f0f9ff;}',
+    '.pb-type-label.selected{border-color:#1a56db;background:#eff6ff;color:#1a56db;}',
+    '.pb-type-label input{display:none;}',
+    '.pb-items-table{width:100%;border-collapse:collapse;font-size:13px;}',
+    '.pb-items-table th{background:#f8fafc;padding:8px 10px;text-align:left;font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb;font-weight:600;}',
+    '.pb-items-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}',
+    '.pb-items-table .qty-input{width:60px;text-align:center;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;}',
+    '.pb-items-table .price-input{width:110px;text-align:right;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;}',
+    '.pb-total-row{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:12px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e5e7eb;}',
+    '.pb-total-label{font-size:13px;color:#6b7280;}',
+    '.pb-total-value{font-size:18px;font-weight:700;color:#111827;}',
+    '.pb-ai-panel{margin-top:16px;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;}',
+    '.pb-ai-section{padding:12px 16px;}',
+    '.pb-ai-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}',
+    '.pb-ai-strengths{background:#f0fdf4;border-bottom:1px solid #e5e7eb;}',
+    '.pb-ai-strengths .pb-ai-section-title{color:#16a34a;}',
+    '.pb-ai-suggestions{background:#fffbeb;border-bottom:1px solid #e5e7eb;}',
+    '.pb-ai-suggestions .pb-ai-section-title{color:#d97706;}',
+    '.pb-ai-improved{background:#f8fafc;}',
+    '.pb-ai-improved .pb-ai-section-title{color:#1a56db;}',
+    '.pb-ai-text{font-size:13px;color:#374151;line-height:1.6;white-space:pre-wrap;}',
+    '.pb-summary-section{margin-bottom:20px;}',
+    '.pb-summary-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin-bottom:8px;}',
+    '.pb-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}',
+    '.pb-summary-field{padding:8px;background:#f8fafc;border-radius:6px;}',
+    '.pb-summary-field-label{font-size:11px;color:#9ca3af;margin-bottom:2px;}',
+    '.pb-summary-field-value{font-size:13px;color:#111827;font-weight:500;}',
+    '.pb-scope-preview{font-size:13px;color:#374151;line-height:1.6;padding:10px;background:#f8fafc;border-radius:6px;white-space:pre-wrap;}',
+    '.pb-nav-actions{display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:16px;border-top:1px solid #f1f5f9;}',
+    '.pb-proposal-stats{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;}',
+    '.pb-stat-card{flex:1;min-width:140px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;}',
+    '.pb-stat-card-label{font-size:12px;color:#6b7280;margin-bottom:4px;}',
+    '.pb-stat-card-value{font-size:22px;font-weight:700;color:#111827;}',
+    '.pb-stat-card-value.green{color:#16a34a;}',
+    '.pb-stat-card-value.blue{color:#1a56db;}',
+    '.pb-stat-card-value.yellow{color:#d97706;}'
+  ].join('');
+  document.head.appendChild(style);
+}
+
+// ------------------------------------------------------------
+// Module-scope state for the proposal builder wizard
+// ------------------------------------------------------------
+var _pb = {
+  step: 1,
+  type: 'ORGANICO',
+  clientId: '',
+  clientName: '',
+  location: '',
+  responsible: '',
+  items: [],
+  scopeText: '',
+  startupValue: 0,
+  paymentTerms: '50% na entrega; 50% 15 dias após a entrega.',
+  deliveryDays: 45,
+  validityDays: 10,
+  observations: 'Estamos considerando frete CIF;\nNão estamos considerando mão de obra para automação dos equipamentos existentes.',
+  aiReview: null,
+  products: [],
+  companies: []
+};
+
+// State for the proposals list view
+var _proposals = [];
+var _proposalsFilter = { status: '', q: '' };
+
+// ============================================================
+// renderQuotes(area)  — overrides the placeholder in Scripts.html
+// Shows the Technical Proposals list with "Gerar Nova Proposta"
+// ============================================================
+function renderQuotes(area) {
+  _pbInjectStyles();
+  _proposalsFilter = { status: '', q: '' };
+  area.innerHTML = _buildProposalsListShell();
+  _bindProposalsListEvents(area);
+  _loadProposalStats(area);
+  _loadProposals(area);
+}
+
+// ------------------------------------------------------------
+// Shell HTML for proposals list
+// ------------------------------------------------------------
+function _buildProposalsListShell() {
+  return [
+    '<div class="page-header">',
+    '  <div class="page-header-left">',
+    '    <div class="page-title">📄 Propostas Técnicas</div>',
+    '    <div class="page-subtitle">Geração e gestão de propostas técnicas com IA</div>',
+    '  </div>',
+    '  <button class="btn btn-primary" id="btn-gerar-proposta">+ Gerar Nova Proposta</button>',
+    '</div>',
+
+    '<div class="pb-proposal-stats" id="pb-stats-row">',
+    '  <div class="pb-stat-card">',
+    '    <div class="pb-stat-card-label">Total de Propostas</div>',
+    '    <div class="pb-stat-card-value" id="pbs-total">—</div>',
+    '  </div>',
+    '  <div class="pb-stat-card">',
+    '    <div class="pb-stat-card-label">Valor Total</div>',
+    '    <div class="pb-stat-card-value blue" id="pbs-value">—</div>',
+    '  </div>',
+    '  <div class="pb-stat-card">',
+    '    <div class="pb-stat-card-label">Rascunhos</div>',
+    '    <div class="pb-stat-card-value yellow" id="pbs-draft">—</div>',
+    '  </div>',
+    '  <div class="pb-stat-card">',
+    '    <div class="pb-stat-card-label">Enviadas</div>',
+    '    <div class="pb-stat-card-value green" id="pbs-sent">—</div>',
+    '  </div>',
+    '</div>',
+
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-body" style="padding:12px 16px;">',
+    '    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">',
+    '      <select id="pb-filter-status" class="form-input" style="min-width:200px;">',
+    '        <option value="">Todos os status</option>',
+    '        <option value="RASCUNHO">Rascunho</option>',
+    '        <option value="REVISADO">Revisado</option>',
+    '        <option value="ENVIADO">Enviado</option>',
+    '        <option value="APROVADO">Aprovado</option>',
+    '        <option value="REPROVADO">Reprovado</option>',
+    '        <option value="CANCELADO">Cancelado</option>',
+    '      </select>',
+    '      <select id="pb-filter-type" class="form-input" style="min-width:160px;">',
+    '        <option value="">Todos os tipos</option>',
+    '        <option value="ORGANICO">Orgânico</option>',
+    '        <option value="CONCRETO">Concreto</option>',
+    '      </select>',
+    '      <input id="pb-filter-q" class="form-input" type="text" placeholder="Buscar por cliente ou nº proposta..." style="flex:1;min-width:220px;">',
+    '      <button class="btn btn-ghost btn-sm" id="btn-pb-clear-filter">Limpar</button>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    '<div class="card">',
+    '  <div class="card-header">',
+    '    <div class="card-title">Propostas Técnicas</div>',
+    '  </div>',
+    '  <div class="card-body" style="padding:0;">',
+    '    <div id="pb-table-wrap" class="table-wrap">',
+    '      <div style="text-align:center;padding:32px;"><div class="spinner-ring"></div></div>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    // Detail modal
+    '<div id="pb-detail-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">',
+    '  <div class="card" style="width:100%;max-width:680px;max-height:92vh;overflow-y:auto;margin:16px;">',
+    '    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">',
+    '      <div class="card-title" id="pb-detail-title">Detalhes da Proposta</div>',
+    '      <button class="btn btn-ghost btn-sm" id="btn-pb-detail-close">Fechar</button>',
+    '    </div>',
+    '    <div class="card-body" id="pb-detail-body"></div>',
+    '    <div style="padding:16px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">',
+    '      <button class="btn btn-ghost btn-sm" id="btn-pb-detail-print">🖨️ Imprimir</button>',
+    '      <button class="btn btn-ghost" id="btn-pb-detail-cancel">Fechar</button>',
+    '    </div>',
+    '  </div>',
+    '</div>'
+  ].join('\n');
+}
+
+// ------------------------------------------------------------
+// Bind events for proposals list
+// ------------------------------------------------------------
+function _bindProposalsListEvents(area) {
+  var btnGerar = document.getElementById('btn-gerar-proposta');
+  if (btnGerar) btnGerar.addEventListener('click', function() {
+    renderProposalBuilder(document.getElementById('section-content'));
+  });
+
+  var filterStatus = document.getElementById('pb-filter-status');
+  var filterType   = document.getElementById('pb-filter-type');
+  var filterQ      = document.getElementById('pb-filter-q');
+
+  if (filterStatus) filterStatus.addEventListener('change', function() {
+    _proposalsFilter.status = this.value;
+    _renderProposalsTable();
+  });
+  if (filterType) filterType.addEventListener('change', function() {
+    _proposalsFilter.type = this.value;
+    _renderProposalsTable();
+  });
+  if (filterQ) filterQ.addEventListener('input', function() {
+    _proposalsFilter.q = this.value.toLowerCase();
+    _renderProposalsTable();
+  });
+
+  var btnClear = document.getElementById('btn-pb-clear-filter');
+  if (btnClear) btnClear.addEventListener('click', function() {
+    _proposalsFilter = { status: '', q: '', type: '' };
+    if (filterStatus) filterStatus.value = '';
+    if (filterType)   filterType.value   = '';
+    if (filterQ)      filterQ.value      = '';
+    _renderProposalsTable();
+  });
+
+  var btnDetailClose  = document.getElementById('btn-pb-detail-close');
+  var btnDetailCancel = document.getElementById('btn-pb-detail-cancel');
+  if (btnDetailClose)  btnDetailClose.addEventListener('click',  _closeProposalDetailModal);
+  if (btnDetailCancel) btnDetailCancel.addEventListener('click', _closeProposalDetailModal);
+
+  var btnDetailPrint = document.getElementById('btn-pb-detail-print');
+  if (btnDetailPrint) btnDetailPrint.addEventListener('click', function() {
+    var id = btnDetailPrint.getAttribute('data-proposal-id');
+    if (id) _printProposal(id);
+  });
+
+  var detailModal = document.getElementById('pb-detail-modal');
+  if (detailModal) detailModal.addEventListener('click', function(e) {
+    if (e.target === detailModal) _closeProposalDetailModal();
+  });
+}
+
+// ------------------------------------------------------------
+// Load proposal stats
+// ------------------------------------------------------------
+function _loadProposalStats() {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) return;
+      var d = res.data || {};
+      var elTotal = document.getElementById('pbs-total');
+      var elValue = document.getElementById('pbs-value');
+      var elDraft = document.getElementById('pbs-draft');
+      var elSent  = document.getElementById('pbs-sent');
+      if (elTotal) elTotal.textContent = d.total || 0;
+      if (elValue) elValue.textContent = formatBRL(d.totalValue || 0);
+      var byStatus = d.byStatus || {};
+      if (elDraft) elDraft.textContent = byStatus['RASCUNHO'] || 0;
+      if (elSent)  elSent.textContent  = (byStatus['ENVIADO'] || 0) + (byStatus['REVISADO'] || 0);
+    })
+    .withFailureHandler(function() {})
+    .Api_getProposalStats();
+}
+
+// ------------------------------------------------------------
+// Load proposals list
+// ------------------------------------------------------------
+function _loadProposals() {
+  var wrap = document.getElementById('pb-table-wrap');
+  if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:32px;"><div class="spinner-ring"></div></div>';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        var w = document.getElementById('pb-table-wrap');
+        if (w) w.innerHTML = '<div class="empty-state">Erro ao carregar propostas.</div>';
+        return;
+      }
+      _proposals = res.data || [];
+      _renderProposalsTable();
+    })
+    .withFailureHandler(function() {
+      var w = document.getElementById('pb-table-wrap');
+      if (w) w.innerHTML = '<div class="empty-state">Falha ao carregar propostas.</div>';
+    })
+    .Api_getProposals();
+}
+
+// ------------------------------------------------------------
+// Render proposals table
+// ------------------------------------------------------------
+function _renderProposalsTable() {
+  var wrap = document.getElementById('pb-table-wrap');
+  if (!wrap) return;
+
+  var filter = _proposalsFilter || {};
+  var filtered = _proposals.filter(function(p) {
+    var matchStatus = !filter.status || p.status === filter.status;
+    var matchType   = !filter.type   || p.type === filter.type;
+    var matchQ = !filter.q || (
+      (p.client_name || '').toLowerCase().indexOf(filter.q) !== -1 ||
+      (p.id          || '').toLowerCase().indexOf(filter.q) !== -1
+    );
+    return matchStatus && matchType && matchQ;
+  });
+
+  if (filtered.length === 0) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:48px 0;">Nenhuma proposta encontrada. <br><span style="font-size:13px;color:#9ca3af">Clique em "Gerar Nova Proposta" para criar a primeira.</span></div>';
+    return;
+  }
+
+  var rows = filtered.map(function(p) {
+    var typeBadge = p.type === 'CONCRETO'
+      ? '<span class="badge badge-gray">🏗️ Concreto</span>'
+      : '<span class="badge badge-blue">🌾 Orgânico</span>';
+    return [
+      '<tr>',
+      '  <td style="font-size:13px;font-weight:600;white-space:nowrap;">' + escapeHtml(p.id || '') + '</td>',
+      '  <td>' + escapeHtml(p.client_name || '') + '</td>',
+      '  <td>' + typeBadge + '</td>',
+      '  <td style="white-space:nowrap;">' + formatBRL(p.total_value || 0) + '</td>',
+      '  <td>' + _proposalStatusBadge(p.status) + '</td>',
+      '  <td style="white-space:nowrap;">' + formatDate(p.created_at ? p.created_at.substring(0, 10) : '') + '</td>',
+      '  <td style="white-space:nowrap;">',
+      '    <button class="btn btn-ghost btn-sm" style="margin-right:4px;" data-pb-view="' + escapeHtml(p.id) + '">Ver</button>',
+      '    <button class="btn btn-ghost btn-sm" data-pb-print="' + escapeHtml(p.id) + '">🖨️</button>',
+      '  </td>',
+      '</tr>'
+    ].join('');
+  }).join('');
+
+  wrap.innerHTML = [
+    '<table class="data-table">',
+    '  <thead>',
+    '    <tr>',
+    '      <th>Nº Proposta</th>',
+    '      <th>Cliente</th>',
+    '      <th>Tipo</th>',
+    '      <th>Valor Total</th>',
+    '      <th>Status</th>',
+    '      <th>Data</th>',
+    '      <th></th>',
+    '    </tr>',
+    '  </thead>',
+    '  <tbody>' + rows + '</tbody>',
+    '</table>'
+  ].join('');
+
+  // Bind "Ver" and print buttons
+  var viewBtns  = wrap.querySelectorAll('[data-pb-view]');
+  var printBtns = wrap.querySelectorAll('[data-pb-print]');
+  var i;
+  for (i = 0; i < viewBtns.length; i++) {
+    (function(btn) {
+      btn.addEventListener('click', function() {
+        _openProposalDetailModal(btn.getAttribute('data-pb-view'));
+      });
+    })(viewBtns[i]);
+  }
+  for (i = 0; i < printBtns.length; i++) {
+    (function(btn) {
+      btn.addEventListener('click', function() {
+        _printProposal(btn.getAttribute('data-pb-print'));
+      });
+    })(printBtns[i]);
+  }
+}
+
+// ------------------------------------------------------------
+// Status badge helper
+// ------------------------------------------------------------
+function _proposalStatusBadge(status) {
+  var cls = 'badge-gray';
+  var s = status || '';
+  if (s === 'RASCUNHO')  cls = 'badge-yellow';
+  if (s === 'REVISADO')  cls = 'badge-blue';
+  if (s === 'ENVIADO')   cls = 'badge-blue';
+  if (s === 'APROVADO')  cls = 'badge-green';
+  if (s === 'REPROVADO') cls = 'badge-red';
+  if (s === 'CANCELADO') cls = 'badge-gray';
+  var labels = { RASCUNHO: 'Rascunho', REVISADO: 'Revisado', ENVIADO: 'Enviado', APROVADO: 'Aprovado', REPROVADO: 'Reprovado', CANCELADO: 'Cancelado' };
+  return '<span class="badge ' + cls + '">' + escapeHtml(labels[s] || s || 'Sem status') + '</span>';
+}
+
+// ------------------------------------------------------------
+// Detail modal for a proposal
+// ------------------------------------------------------------
+var _pbDetailId = null;
+
+function _openProposalDetailModal(proposalId) {
+  _pbDetailId = proposalId;
+  var modal = document.getElementById('pb-detail-modal');
+  var body  = document.getElementById('pb-detail-body');
+  var title = document.getElementById('pb-detail-title');
+  var btnPrint = document.getElementById('btn-pb-detail-print');
+  if (!modal || !body) return;
+
+  // Find in local cache first
+  var p = null;
+  for (var i = 0; i < _proposals.length; i++) {
+    if (_proposals[i].id === proposalId) { p = _proposals[i]; break; }
+  }
+
+  if (title) title.textContent = 'Proposta: ' + proposalId;
+  if (btnPrint) btnPrint.setAttribute('data-proposal-id', proposalId);
+
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  if (p) {
+    _renderProposalDetailBody(body, p);
+  } else {
+    body.innerHTML = '<div style="text-align:center;padding:32px;"><div class="spinner-ring"></div></div>';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.ok) {
+          body.innerHTML = '<div class="empty-state">Erro ao carregar proposta.</div>';
+          return;
+        }
+        _renderProposalDetailBody(body, res.data);
+      })
+      .withFailureHandler(function() {
+        body.innerHTML = '<div class="empty-state">Falha ao carregar.</div>';
+      })
+      .Api_getProposal(proposalId);
+  }
+}
+
+function _renderProposalDetailBody(body, p) {
+  var typeLabel = p.type === 'CONCRETO' ? '🏗️ Concreto' : '🌾 Orgânico';
+  var itemsHtml = '';
+  if (p.items && p.items.length) {
+    var itemRows = p.items.map(function(it) {
+      return '<tr>' +
+        '<td style="font-size:12px;">' + escapeHtml(it.code || '') + '</td>' +
+        '<td>' + escapeHtml(it.description || '') + '</td>' +
+        '<td style="text-align:center;">' + escapeHtml(String(it.qty || 1)) + '</td>' +
+        '<td style="text-align:right;">' + formatBRL(it.unit_price || 0) + '</td>' +
+        '<td style="text-align:right;font-weight:600;">' + formatBRL(it.total || 0) + '</td>' +
+        '</tr>';
+    }).join('');
+    itemsHtml = [
+      '<table class="data-table" style="font-size:13px;">',
+      '  <thead><tr><th>Código</th><th>Descrição</th><th>Qtd</th><th>V. Unit.</th><th>Total</th></tr></thead>',
+      '  <tbody>' + itemRows + '</tbody>',
+      '</table>'
+    ].join('');
+  }
+
+  var scopePreview = p.scope_text ? escapeHtml(p.scope_text) : '<em style="color:#9ca3af">Sem escopo técnico</em>';
+
+  body.innerHTML = [
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">',
+    _pbDetailField('Nº Proposta', p.id),
+    _pbDetailField('Tipo', typeLabel),
+    _pbDetailField('Cliente', p.client_name),
+    _pbDetailField('Local', p.location),
+    _pbDetailField('Responsável', p.responsible),
+    _pbDetailField('Status', p.status),
+    _pbDetailField('Valor Total', formatBRL(p.total_value || 0)),
+    _pbDetailField('Criado em', formatDate(p.created_at ? p.created_at.substring(0, 10) : '')),
+    '</div>',
+
+    '<div style="margin-bottom:16px;">',
+    '  <div style="font-size:12px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Itens</div>',
+    itemsHtml || '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">Nenhum item</div>',
+    '</div>',
+
+    p.startup_value ? '<div style="margin-bottom:16px;">' + _pbDetailField('Start-Up / Comissionamento', formatBRL(p.startup_value)) + '</div>' : '',
+
+    '<div style="margin-bottom:12px;">',
+    '  <div style="font-size:12px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Escopo Técnico</div>',
+    '  <div style="font-size:13px;color:#374151;line-height:1.6;padding:10px;background:#f8fafc;border-radius:6px;white-space:pre-wrap;max-height:160px;overflow-y:auto;">' + scopePreview + '</div>',
+    '</div>',
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">',
+    _pbDetailField('Condições de Pagamento', p.payment_terms),
+    _pbDetailField('Prazo de Entrega', p.delivery_days ? p.delivery_days + ' dias' : '—'),
+    _pbDetailField('Validade', p.validity_days ? p.validity_days + ' dias' : '—'),
+    '</div>',
+
+    p.observations ? [
+      '<div>',
+      '  <div style="font-size:12px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Observações</div>',
+      '  <div style="font-size:13px;color:#374151;line-height:1.6;padding:10px;background:#f8fafc;border-radius:6px;white-space:pre-wrap;">' + escapeHtml(p.observations) + '</div>',
+      '</div>'
+    ].join('') : ''
+  ].join('');
+}
+
+function _pbDetailField(label, value) {
+  return '<div><div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">' +
+    escapeHtml(label) + '</div><div style="font-size:13px;color:#111827;">' +
+    (value || '—') + '</div></div>';
+}
+
+function _closeProposalDetailModal() {
+  var modal = document.getElementById('pb-detail-modal');
+  if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+  _pbDetailId = null;
+}
+
+// ============================================================
+// _printProposal(proposalId)
+// ============================================================
+function _printProposal(proposalId) {
+  setLoading(true);
+  google.script.run
+    .withSuccessHandler(function(r) {
+      setLoading(false);
+      if (!r || !r.ok) {
+        showAlert('Erro ao gerar proposta: ' + (r ? r.error : '?'), 'error');
+        return;
+      }
+      var win = window.open('', '_blank');
+      win.document.write(r.html);
+      win.document.close();
+      setTimeout(function() { win.print(); }, 500);
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      showAlert('Falha: ' + (err.message || 'erro'), 'error');
+    })
+    .Api_generateProposalHTML(proposalId);
+}
+
+// ============================================================
+// renderProposalBuilder(area, proposalId)
+// 4-step wizard
+// ============================================================
+function renderProposalBuilder(area, proposalId) {
+  _pbInjectStyles();
+
+  // Reset state for a new proposal
+  _pb.step = 1;
+  _pb.type = 'ORGANICO';
+  _pb.clientId = '';
+  _pb.clientName = '';
+  _pb.location = '';
+  _pb.responsible = '';
+  _pb.items = [];
+  _pb.scopeText = '';
+  _pb.startupValue = 0;
+  _pb.paymentTerms = '50% na entrega; 50% 15 dias após a entrega.';
+  _pb.deliveryDays = 45;
+  _pb.validityDays = 10;
+  _pb.observations = 'Estamos considerando frete CIF;\nNão estamos considerando mão de obra para automação dos equipamentos existentes.';
+  _pb.aiReview = null;
+  _pb.products = [];
+  _pb.companies = [];
+
+  _pb._area = area;
+
+  _pbRenderStep(area, 1);
+
+  // Load companies and products in parallel
+  var pending = 2;
+  function checkDone() {
+    pending--;
+    if (pending <= 0) {
+      // If we're still on step 1, refresh the company dropdown
+      if (_pb.step === 1) _pbPopulateCompanySelect();
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      _pb.companies = (res && res.ok && res.data) ? res.data : [];
+      checkDone();
+    })
+    .withFailureHandler(function() {
+      _pb.companies = [];
+      checkDone();
+    })
+    .Api_getCompanies();
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      _pb.products = (res && res.ok && res.data) ? res.data : [];
+      checkDone();
+    })
+    .withFailureHandler(function() {
+      _pb.products = [];
+      checkDone();
+    })
+    .Api_getProducts();
+}
+
+// ------------------------------------------------------------
+// Render the wizard shell and the current step
+// ------------------------------------------------------------
+function _pbRenderStep(area, step) {
+  _pb.step = step;
+  _pb._area = area || _pb._area;
+
+  area.innerHTML = [
+    '<span class="pb-back-link" id="pb-back-to-list">← Voltar à lista</span>',
+
+    // Step indicator
+    '<div class="pb-steps">',
+    '  <div class="pb-step ' + (step > 1 ? 'done' : step === 1 ? 'active' : '') + '">',
+    '    ' + (step > 1 ? '✓' : '1') + ' Dados',
+    '  </div>',
+    '  <div class="pb-step ' + (step > 2 ? 'done' : step === 2 ? 'active' : '') + '">',
+    '    ' + (step > 2 ? '✓' : '2') + ' Produtos',
+    '  </div>',
+    '  <div class="pb-step ' + (step > 3 ? 'done' : step === 3 ? 'active' : '') + '">',
+    '    ' + (step > 3 ? '✓' : '3') + ' Escopo',
+    '  </div>',
+    '  <div class="pb-step ' + (step === 4 ? 'active' : '') + '">',
+    '    4 Revisar',
+    '  </div>',
+    '</div>',
+
+    '<div id="pb-step-content"></div>'
+  ].join('\n');
+
+  document.getElementById('pb-back-to-list').addEventListener('click', function() {
+    showSection('quotes');
+  });
+
+  var contentDiv = document.getElementById('pb-step-content');
+  if (step === 1) _pbRenderStep1(contentDiv);
+  if (step === 2) _pbRenderStep2(contentDiv);
+  if (step === 3) _pbRenderStep3(contentDiv);
+  if (step === 4) _pbRenderStep4(contentDiv);
+}
+
+// ============================================================
+// STEP 1: Dados da Proposta
+// ============================================================
+function _pbRenderStep1(container) {
+  container.innerHTML = [
+    '<div class="card">',
+    '  <div class="card-header">',
+    '    <div class="card-title">Dados da Proposta</div>',
+    '  </div>',
+    '  <div class="card-body">',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">Tipo de Sensor *</label>',
+    '      <div class="pb-type-radios">',
+    '        <label class="pb-type-label' + (_pb.type === 'ORGANICO' ? ' selected' : '') + '" id="pb-type-label-organico">',
+    '          <input type="radio" name="pb-type" value="ORGANICO"' + (_pb.type === 'ORGANICO' ? ' checked' : '') + '>',
+    '          <span>🌾</span>',
+    '          <span>Orgânico</span>',
+    '        </label>',
+    '        <label class="pb-type-label' + (_pb.type === 'CONCRETO' ? ' selected' : '') + '" id="pb-type-label-concreto">',
+    '          <input type="radio" name="pb-type" value="CONCRETO"' + (_pb.type === 'CONCRETO' ? ' checked' : '') + '>',
+    '          <span>🏗️</span>',
+    '          <span>Concreto</span>',
+    '        </label>',
+    '      </div>',
+    '    </div>',
+
+    '    <div class="form-group">',
+    '      <label class="form-label" for="pb-client-select">Cliente *</label>',
+    '      <select id="pb-client-select" class="form-input">',
+    '        <option value="">Carregando clientes...</option>',
+    '      </select>',
+    '    </div>',
+
+    '    <div class="form-row-2">',
+    '      <div class="form-group">',
+    '        <label class="form-label" for="pb-location">Local *</label>',
+    '        <input type="text" id="pb-location" class="form-input" placeholder="Ex: Medianeira/PR" value="' + escapeHtml(_pb.location) + '">',
+    '      </div>',
+    '      <div class="form-group">',
+    '        <label class="form-label" for="pb-responsible">Responsável *</label>',
+    '        <input type="text" id="pb-responsible" class="form-input" placeholder="Nome do responsável" value="' + escapeHtml(_pb.responsible) + '">',
+    '      </div>',
+    '    </div>',
+
+    '    <div class="pb-nav-actions">',
+    '      <span></span>',
+    '      <button class="btn btn-primary" id="pb-step1-next">Próximo: Produtos →</button>',
+    '    </div>',
+
+    '  </div>',
+    '</div>'
+  ].join('\n');
+
+  // Populate company dropdown if already loaded
+  _pbPopulateCompanySelect();
+
+  // Bind type radio buttons
+  var typeLabels = container.querySelectorAll('.pb-type-label');
+  var i;
+  for (i = 0; i < typeLabels.length; i++) {
+    (function(label) {
+      var radio = label.querySelector('input[type=radio]');
+      if (radio) radio.addEventListener('change', function() {
+        _pb.type = this.value;
+        var allLabels = document.querySelectorAll('.pb-type-label');
+        var j;
+        for (j = 0; j < allLabels.length; j++) allLabels[j].classList.remove('selected');
+        label.classList.add('selected');
+      });
+    })(typeLabels[i]);
+  }
+
+  // Bind client select
+  var clientSel = document.getElementById('pb-client-select');
+  if (clientSel) clientSel.addEventListener('change', function() {
+    _pb.clientId = this.value;
+    var opt = this.options[this.selectedIndex];
+    _pb.clientName = opt ? (opt.getAttribute('data-name') || opt.textContent || '') : '';
+  });
+
+  // Bind next button
+  var btnNext = document.getElementById('pb-step1-next');
+  if (btnNext) btnNext.addEventListener('click', function() {
+    var loc = (document.getElementById('pb-location') || {}).value || '';
+    var resp = (document.getElementById('pb-responsible') || {}).value || '';
+
+    if (!_pb.clientId) { showAlert('Selecione um cliente.', 'error'); return; }
+    if (!loc.trim())   { showAlert('Informe o local.', 'error'); return; }
+    if (!resp.trim())  { showAlert('Informe o responsável.', 'error'); return; }
+
+    _pb.location    = loc.trim();
+    _pb.responsible = resp.trim();
+
+    _pbRenderStep(_pb._area, 2);
+  });
+}
+
+// Populate the company dropdown from _pb.companies cache
+function _pbPopulateCompanySelect() {
+  var sel = document.getElementById('pb-client-select');
+  if (!sel) return;
+
+  if (!_pb.companies || !_pb.companies.length) {
+    sel.innerHTML = '<option value="">Carregando clientes...</option>';
+    return;
+  }
+
+  var opts = ['<option value="">Selecione um cliente</option>'];
+  for (var i = 0; i < _pb.companies.length; i++) {
+    var c = _pb.companies[i];
+    var name = c.name || c.company_name || c.id || '';
+    var selected = (_pb.clientId && c.id === _pb.clientId) ? ' selected' : '';
+    opts.push('<option value="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(name) + '"' + selected + '>' + escapeHtml(name) + '</option>');
+  }
+  sel.innerHTML = opts.join('');
+
+  // If a client was previously selected, ensure it's still selected
+  if (_pb.clientId) sel.value = _pb.clientId;
+}
+
+// ============================================================
+// STEP 2: Produtos
+// ============================================================
+function _pbRenderStep2(container) {
+  var relevantCategories = ['DUCTING', 'DISPLAY_HUB', 'INTERFACE', 'SERVICO', _pb.type];
+  var filteredProducts = (_pb.products || []).filter(function(p) {
+    return relevantCategories.indexOf((p.category || '').toUpperCase()) !== -1;
+  });
+
+  // Group products by category
+  var grouped = {};
+  var categoryOrder = [_pb.type, 'DUCTING', 'DISPLAY_HUB', 'INTERFACE', 'SERVICO'];
+  for (var i = 0; i < filteredProducts.length; i++) {
+    var cat = (filteredProducts[i].category || 'OUTROS').toUpperCase();
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(filteredProducts[i]);
+  }
+
+  // Build product option groups
+  var productOpts = ['<option value="">Selecione um produto...</option>'];
+  for (var ci = 0; ci < categoryOrder.length; ci++) {
+    var cat = categoryOrder[ci];
+    if (!grouped[cat] || !grouped[cat].length) continue;
+    var catLabel = cat === 'ORGANICO' ? 'Orgânico' :
+                   cat === 'CONCRETO' ? 'Concreto' :
+                   cat === 'DUCTING'  ? 'Ducting' :
+                   cat === 'DISPLAY_HUB' ? 'Display / Hub' :
+                   cat === 'INTERFACE'   ? 'Interface / Acessórios' :
+                   cat === 'SERVICO'     ? 'Serviços' : cat;
+    productOpts.push('<optgroup label="' + escapeHtml(catLabel) + '">');
+    for (var pi = 0; pi < grouped[cat].length; pi++) {
+      var prod = grouped[cat][pi];
+      productOpts.push(
+        '<option value="' + escapeHtml(prod.code) + '"' +
+        ' data-price="' + (prod.selling_price_brl || 0) + '"' +
+        ' data-desc="' + escapeHtml(prod.description || '') + '"' +
+        ' data-ncm="' + escapeHtml(prod.ncm || '') + '">' +
+        escapeHtml(prod.code + ' — ' + prod.description) +
+        '</option>'
+      );
+    }
+    productOpts.push('</optgroup>');
+  }
+
+  container.innerHTML = [
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-header"><div class="card-title">Adicionar Produto</div></div>',
+    '  <div class="card-body">',
+    '    <div class="form-row-2" style="align-items:flex-end;gap:12px;">',
+    '      <div class="form-group" style="flex:3;margin-bottom:0;">',
+    '        <label class="form-label">Produto</label>',
+    '        <select id="pb-prod-select" class="form-input">' + productOpts.join('') + '</select>',
+    '      </div>',
+    '      <div class="form-group" style="flex:1;margin-bottom:0;">',
+    '        <label class="form-label">Qtd</label>',
+    '        <input type="number" id="pb-prod-qty" class="form-input" value="1" min="1" style="width:80px;">',
+    '      </div>',
+    '      <div class="form-group" style="flex:1;margin-bottom:0;">',
+    '        <label class="form-label">Valor Unit. (R$)</label>',
+    '        <input type="number" id="pb-prod-price" class="form-input" value="" min="0" step="0.01" placeholder="0,00">',
+    '      </div>',
+    '      <div style="padding-bottom:1px;">',
+    '        <button class="btn btn-primary" id="pb-add-product-btn">+ Adicionar</button>',
+    '      </div>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-header"><div class="card-title">Itens da Proposta</div></div>',
+    '  <div class="card-body" style="padding:0;">',
+    '    <div id="pb-items-wrap">',
+    '      <div class="empty-state" style="padding:32px 0;" id="pb-items-empty">',
+    '        Nenhum produto adicionado ainda.',
+    '      </div>',
+    '    </div>',
+    '  </div>',
+    '  <div style="padding:16px;border-top:1px solid #f1f5f9;">',
+    '    <div class="form-row-2" style="align-items:center;">',
+    '      <div class="form-group" style="margin-bottom:0;">',
+    '        <label class="form-label">Start-Up / Comissionamento (R$)</label>',
+    '        <input type="number" id="pb-startup-value" class="form-input" value="' + (_pb.startupValue || '') + '" min="0" step="0.01" placeholder="0,00">',
+    '      </div>',
+    '      <div></div>',
+    '    </div>',
+    '  </div>',
+    '  <div style="padding:0 16px 16px;">',
+    '    <div class="pb-total-row" id="pb-grand-total-row">',
+    '      <span class="pb-total-label">Total Geral:</span>',
+    '      <span class="pb-total-value" id="pb-grand-total">R$ 0,00</span>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    '<div class="pb-nav-actions">',
+    '  <button class="btn btn-ghost" id="pb-step2-prev">← Dados</button>',
+    '  <button class="btn btn-primary" id="pb-step2-next">Próximo: Escopo →</button>',
+    '</div>'
+  ].join('\n');
+
+  // Render existing items
+  _pbRenderItemsTable();
+
+  // Pre-fill price when product is selected
+  var prodSel   = document.getElementById('pb-prod-select');
+  var priceInp  = document.getElementById('pb-prod-price');
+  if (prodSel) prodSel.addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    if (opt && priceInp) {
+      priceInp.value = opt.getAttribute('data-price') || '';
+    }
+  });
+
+  // Add product button
+  var btnAdd = document.getElementById('pb-add-product-btn');
+  if (btnAdd) btnAdd.addEventListener('click', _pbAddProduct);
+
+  // Startup value real-time update
+  var startupInp = document.getElementById('pb-startup-value');
+  if (startupInp) startupInp.addEventListener('input', function() {
+    _pb.startupValue = parseFloat(this.value) || 0;
+    _pbUpdateGrandTotal();
+  });
+
+  // Nav
+  var btnPrev = document.getElementById('pb-step2-prev');
+  var btnNext = document.getElementById('pb-step2-next');
+  if (btnPrev) btnPrev.addEventListener('click', function() {
+    _pbSaveStep2Fields();
+    _pbRenderStep(_pb._area, 1);
+  });
+  if (btnNext) btnNext.addEventListener('click', function() {
+    _pbSaveStep2Fields();
+    if (_pb.items.length === 0) {
+      showAlert('Adicione pelo menos um produto.', 'error');
+      return;
+    }
+    _pbRenderStep(_pb._area, 3);
+  });
+
+  _pbUpdateGrandTotal();
+}
+
+function _pbSaveStep2Fields() {
+  var startupInp = document.getElementById('pb-startup-value');
+  if (startupInp) _pb.startupValue = parseFloat(startupInp.value) || 0;
+}
+
+function _pbAddProduct() {
+  var sel      = document.getElementById('pb-prod-select');
+  var qtyInp   = document.getElementById('pb-prod-qty');
+  var priceInp = document.getElementById('pb-prod-price');
+
+  if (!sel || !sel.value) { showAlert('Selecione um produto.', 'error'); return; }
+
+  var opt   = sel.options[sel.selectedIndex];
+  var code  = sel.value;
+  var desc  = opt.getAttribute('data-desc') || '';
+  var ncm   = opt.getAttribute('data-ncm') || '';
+  var qty   = parseInt(qtyInp ? qtyInp.value : '1', 10) || 1;
+  var price = parseFloat(priceInp ? priceInp.value : '0') || 0;
+
+  if (qty <= 0)   { showAlert('Quantidade inválida.', 'error'); return; }
+  if (price <= 0) { showAlert('Informe o valor unitário.', 'error'); return; }
+
+  _pb.items.push({
+    code: code,
+    description: desc,
+    ncm: ncm,
+    qty: qty,
+    unit_price: price,
+    total: qty * price
+  });
+
+  // Reset add form
+  sel.value = '';
+  if (qtyInp)   qtyInp.value   = '1';
+  if (priceInp) priceInp.value = '';
+
+  _pbRenderItemsTable();
+  _pbUpdateGrandTotal();
+}
+
+function _pbRenderItemsTable() {
+  var wrap = document.getElementById('pb-items-wrap');
+  if (!wrap) return;
+
+  if (!_pb.items || !_pb.items.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:32px 0;">Nenhum produto adicionado ainda.</div>';
+    return;
+  }
+
+  var rows = _pb.items.map(function(item, idx) {
+    var shortDesc = item.description.length > 40 ? item.description.substring(0, 40) + '…' : item.description;
+    return [
+      '<tr>',
+      '  <td style="font-size:12px;font-weight:600;white-space:nowrap;">' + escapeHtml(item.code) + '</td>',
+      '  <td title="' + escapeHtml(item.description) + '">' + escapeHtml(shortDesc) + '</td>',
+      '  <td style="width:80px;text-align:center;">',
+      '    <input type="number" class="qty-input" data-idx="' + idx + '" value="' + item.qty + '" min="1" style="width:60px;text-align:center;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;">',
+      '  </td>',
+      '  <td style="text-align:right;">',
+      '    <input type="number" class="price-input" data-idx="' + idx + '" value="' + item.unit_price + '" min="0" step="0.01" style="width:110px;text-align:right;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;">',
+      '  </td>',
+      '  <td style="text-align:right;font-weight:600;white-space:nowrap;" id="pb-item-total-' + idx + '">' + formatBRL(item.total) + '</td>',
+      '  <td style="text-align:center;"><button class="btn btn-ghost btn-sm" data-remove-idx="' + idx + '" style="color:#ef4444;padding:2px 8px;">×</button></td>',
+      '</tr>'
+    ].join('');
+  }).join('');
+
+  wrap.innerHTML = [
+    '<table class="pb-items-table">',
+    '  <thead>',
+    '    <tr>',
+    '      <th>Código</th>',
+    '      <th>Descrição</th>',
+    '      <th style="text-align:center;">Qtd</th>',
+    '      <th style="text-align:right;">Valor Unit.</th>',
+    '      <th style="text-align:right;">Total</th>',
+    '      <th></th>',
+    '    </tr>',
+    '  </thead>',
+    '  <tbody>' + rows + '</tbody>',
+    '</table>'
+  ].join('\n');
+
+  // Bind qty inputs
+  var qtyInputs = wrap.querySelectorAll('.qty-input');
+  var i;
+  for (i = 0; i < qtyInputs.length; i++) {
+    (function(inp) {
+      inp.addEventListener('input', function() {
+        var idx = parseInt(this.getAttribute('data-idx'), 10);
+        var qty = parseInt(this.value, 10) || 1;
+        if (qty < 1) { this.value = 1; qty = 1; }
+        _pb.items[idx].qty   = qty;
+        _pb.items[idx].total = qty * _pb.items[idx].unit_price;
+        var totalCell = document.getElementById('pb-item-total-' + idx);
+        if (totalCell) totalCell.textContent = formatBRL(_pb.items[idx].total);
+        _pbUpdateGrandTotal();
+      });
+    })(qtyInputs[i]);
+  }
+
+  // Bind price inputs
+  var priceInputs = wrap.querySelectorAll('.price-input');
+  for (i = 0; i < priceInputs.length; i++) {
+    (function(inp) {
+      inp.addEventListener('input', function() {
+        var idx   = parseInt(this.getAttribute('data-idx'), 10);
+        var price = parseFloat(this.value) || 0;
+        _pb.items[idx].unit_price = price;
+        _pb.items[idx].total      = _pb.items[idx].qty * price;
+        var totalCell = document.getElementById('pb-item-total-' + idx);
+        if (totalCell) totalCell.textContent = formatBRL(_pb.items[idx].total);
+        _pbUpdateGrandTotal();
+      });
+    })(priceInputs[i]);
+  }
+
+  // Bind remove buttons
+  var removeBtns = wrap.querySelectorAll('[data-remove-idx]');
+  for (i = 0; i < removeBtns.length; i++) {
+    (function(btn) {
+      btn.addEventListener('click', function() {
+        var idx = parseInt(this.getAttribute('data-remove-idx'), 10);
+        _pb.items.splice(idx, 1);
+        _pbRenderItemsTable();
+        _pbUpdateGrandTotal();
+      });
+    })(removeBtns[i]);
+  }
+}
+
+function _pbUpdateGrandTotal() {
+  var itemsTotal = 0;
+  for (var i = 0; i < _pb.items.length; i++) {
+    itemsTotal += _pb.items[i].total || 0;
+  }
+  var startup = _pb.startupValue || 0;
+  var grandTotal = itemsTotal + startup;
+
+  var el = document.getElementById('pb-grand-total');
+  if (el) el.textContent = formatBRL(grandTotal);
+}
+
+// ============================================================
+// STEP 3: Escopo Técnico
+// ============================================================
+function _pbRenderStep3(container) {
+  container.innerHTML = [
+    '<div class="card">',
+    '  <div class="card-header"><div class="card-title">Escopo Técnico</div></div>',
+    '  <div class="card-body">',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">Descrição do Escopo</label>',
+    '      <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Descreva o escopo detalhado: local de instalação, tipo de instalação, requisitos específicos, etc.</div>',
+    '      <textarea id="pb-scope-textarea" class="form-input" rows="8" style="resize:vertical;min-height:200px;font-family:inherit;line-height:1.6;">' + escapeHtml(_pb.scopeText) + '</textarea>',
+    '    </div>',
+
+    '    <div style="margin-top:12px;">',
+    '      <button class="btn btn-ghost" id="pb-ai-review-btn" style="display:inline-flex;align-items:center;gap:6px;">',
+    '        🤖 Revisar com IA',
+    '      </button>',
+    '      <span id="pb-ai-loading" style="display:none;margin-left:12px;font-size:13px;color:#6b7280;">',
+    '        <span class="spinner-ring" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px;"></span> Revisando com IA...',
+    '      </span>',
+    '    </div>',
+
+    '    <div id="pb-ai-review-panel" style="display:none;margin-top:16px;"></div>',
+
+    '  </div>',
+    '</div>',
+
+    '<div class="pb-nav-actions">',
+    '  <button class="btn btn-ghost" id="pb-step3-prev">← Produtos</button>',
+    '  <button class="btn btn-primary" id="pb-step3-next">Próximo: Revisar →</button>',
+    '</div>'
+  ].join('\n');
+
+  // Bind AI review button
+  var btnAI = document.getElementById('pb-ai-review-btn');
+  if (btnAI) btnAI.addEventListener('click', _pbRunAIReview);
+
+  // Nav
+  var btnPrev = document.getElementById('pb-step3-prev');
+  var btnNext = document.getElementById('pb-step3-next');
+  if (btnPrev) btnPrev.addEventListener('click', function() {
+    _pbSaveStep3Fields();
+    _pbRenderStep(_pb._area, 2);
+  });
+  if (btnNext) btnNext.addEventListener('click', function() {
+    _pbSaveStep3Fields();
+    _pbRenderStep(_pb._area, 4);
+  });
+
+  // If we have a previous AI review, show it
+  if (_pb.aiReview) {
+    var panel = document.getElementById('pb-ai-review-panel');
+    if (panel) {
+      panel.style.display = 'block';
+      panel.innerHTML = _pbBuildAIReviewPanel(_pb.aiReview);
+      _pbBindApplyImprovedBtn();
+    }
+  }
+}
+
+function _pbSaveStep3Fields() {
+  var ta = document.getElementById('pb-scope-textarea');
+  if (ta) _pb.scopeText = ta.value;
+}
+
+function _pbRunAIReview() {
+  var ta = document.getElementById('pb-scope-textarea');
+  var scopeText = ta ? ta.value.trim() : '';
+  if (!scopeText) {
+    showAlert('Digite o escopo técnico antes de revisar com IA.', 'warning');
+    return;
+  }
+  _pb.scopeText = scopeText;
+
+  var btnAI   = document.getElementById('pb-ai-review-btn');
+  var loading = document.getElementById('pb-ai-loading');
+  var panel   = document.getElementById('pb-ai-review-panel');
+
+  if (btnAI)   btnAI.style.display   = 'none';
+  if (loading) loading.style.display = 'inline-flex';
+  if (panel)   panel.style.display   = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btnAI)   btnAI.style.display   = 'inline-flex';
+      if (loading) loading.style.display = 'none';
+      if (!res || !res.ok) {
+        showAlert('Erro na revisão IA: ' + (res ? res.error : 'sem resposta'), 'error');
+        return;
+      }
+      _pb.aiReview = res.data || res.review || res;
+      if (panel) {
+        panel.style.display = 'block';
+        panel.innerHTML = _pbBuildAIReviewPanel(_pb.aiReview);
+        _pbBindApplyImprovedBtn();
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btnAI)   btnAI.style.display   = 'inline-flex';
+      if (loading) loading.style.display = 'none';
+      showAlert('Falha na revisão IA: ' + (err.message || 'erro'), 'error');
+    })
+    .Api_reviewProposalScope(null, scopeText);
+}
+
+function _pbBuildAIReviewPanel(review) {
+  var strengths = '';
+  var suggestions = '';
+  var improved = '';
+
+  if (typeof review === 'string') {
+    improved = review;
+  } else if (review) {
+    strengths   = review.strengths   || review.pontos_fortes   || review.strong_points || '';
+    suggestions = review.suggestions || review.sugestoes       || review.improvements  || '';
+    improved    = review.improved    || review.versao_melhorada || review.improved_text || '';
+  }
+
+  return [
+    '<div class="pb-ai-panel">',
+    '  <div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">',
+    '    <span style="font-size:13px;font-weight:600;color:#374151;">🤖 Revisão da IA</span>',
+    '    <button class="btn btn-ghost btn-sm" id="pb-ai-dismiss-btn">Dispensar</button>',
+    '  </div>',
+
+    strengths ? [
+      '  <div class="pb-ai-section pb-ai-strengths">',
+      '    <div class="pb-ai-section-title">Pontos Fortes</div>',
+      '    <div class="pb-ai-text">' + escapeHtml(strengths) + '</div>',
+      '  </div>'
+    ].join('\n') : '',
+
+    suggestions ? [
+      '  <div class="pb-ai-section pb-ai-suggestions">',
+      '    <div class="pb-ai-section-title">Sugestões</div>',
+      '    <div class="pb-ai-text">' + escapeHtml(suggestions) + '</div>',
+      '  </div>'
+    ].join('\n') : '',
+
+    improved ? [
+      '  <div class="pb-ai-section pb-ai-improved">',
+      '    <div class="pb-ai-section-title" style="display:flex;justify-content:space-between;align-items:center;">',
+      '      <span>Versão Melhorada</span>',
+      '      <button class="btn btn-primary btn-sm" id="pb-apply-improved-btn">Aplicar</button>',
+      '    </div>',
+      '    <div class="pb-ai-text" style="margin-top:8px;" id="pb-ai-improved-text">' + escapeHtml(improved) + '</div>',
+      '  </div>'
+    ].join('\n') : '',
+
+    '</div>'
+  ].join('\n');
+}
+
+function _pbBindApplyImprovedBtn() {
+  var btnApply = document.getElementById('pb-apply-improved-btn');
+  if (btnApply) btnApply.addEventListener('click', function() {
+    var improvedEl = document.getElementById('pb-ai-improved-text');
+    var ta = document.getElementById('pb-scope-textarea');
+    if (ta && improvedEl) {
+      ta.value = improvedEl.textContent || improvedEl.innerText || '';
+      _pb.scopeText = ta.value;
+      showAlert('Versão melhorada aplicada ao escopo.', 'success');
+    }
+  });
+
+  var btnDismiss = document.getElementById('pb-ai-dismiss-btn');
+  if (btnDismiss) btnDismiss.addEventListener('click', function() {
+    var panel = document.getElementById('pb-ai-review-panel');
+    if (panel) panel.style.display = 'none';
+  });
+}
+
+// ============================================================
+// STEP 4: Revisão Final
+// ============================================================
+function _pbRenderStep4(container) {
+  // Calculate totals
+  var itemsTotal = 0;
+  for (var i = 0; i < _pb.items.length; i++) {
+    itemsTotal += _pb.items[i].total || 0;
+  }
+  var grandTotal = itemsTotal + (_pb.startupValue || 0);
+
+  // Build items summary
+  var itemRows = _pb.items.map(function(item) {
+    var shortDesc = item.description.length > 40 ? item.description.substring(0, 40) + '…' : item.description;
+    return '<tr>' +
+      '<td style="font-size:12px;">' + escapeHtml(item.code) + '</td>' +
+      '<td title="' + escapeHtml(item.description) + '">' + escapeHtml(shortDesc) + '</td>' +
+      '<td style="text-align:center;">' + item.qty + '</td>' +
+      '<td style="text-align:right;">' + formatBRL(item.unit_price) + '</td>' +
+      '<td style="text-align:right;font-weight:600;">' + formatBRL(item.total) + '</td>' +
+      '</tr>';
+  }).join('');
+
+  // Scope preview (truncate to 200 chars)
+  var scopePreview = _pb.scopeText || '';
+  var scopeFull    = scopePreview;
+  var scopeTruncated = scopePreview.length > 200;
+  if (scopeTruncated) scopePreview = scopePreview.substring(0, 200) + '…';
+
+  // AI review summary
+  var aiSummaryHtml = '';
+  if (_pb.aiReview) {
+    aiSummaryHtml = [
+      '<div class="pb-summary-section">',
+      '  <div class="pb-summary-title">Revisão da IA</div>',
+      '  <div style="padding:10px;background:#eff6ff;border-radius:6px;font-size:13px;color:#1a56db;border:1px solid #bfdbfe;">',
+      '    🤖 Revisão de IA aplicada a este escopo técnico.',
+      '  </div>',
+      '</div>'
+    ].join('\n');
+  }
+
+  container.innerHTML = [
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-header"><div class="card-title">Resumo da Proposta</div></div>',
+    '  <div class="card-body">',
+
+    '    <div class="pb-summary-section">',
+    '      <div class="pb-summary-title">Dados Gerais</div>',
+    '      <div class="pb-summary-grid">',
+    '        <div class="pb-summary-field">',
+    '          <div class="pb-summary-field-label">Tipo</div>',
+    '          <div class="pb-summary-field-value">' + (_pb.type === 'CONCRETO' ? '🏗️ Concreto' : '🌾 Orgânico') + '</div>',
+    '        </div>',
+    '        <div class="pb-summary-field">',
+    '          <div class="pb-summary-field-label">Cliente</div>',
+    '          <div class="pb-summary-field-value">' + escapeHtml(_pb.clientName) + '</div>',
+    '        </div>',
+    '        <div class="pb-summary-field">',
+    '          <div class="pb-summary-field-label">Local</div>',
+    '          <div class="pb-summary-field-value">' + escapeHtml(_pb.location) + '</div>',
+    '        </div>',
+    '        <div class="pb-summary-field">',
+    '          <div class="pb-summary-field-label">Responsável</div>',
+    '          <div class="pb-summary-field-value">' + escapeHtml(_pb.responsible) + '</div>',
+    '        </div>',
+    '      </div>',
+    '    </div>',
+
+    '    <div class="pb-summary-section">',
+    '      <div class="pb-summary-title">Produtos</div>',
+    '      <div style="overflow-x:auto;">',
+    '        <table class="pb-items-table">',
+    '          <thead>',
+    '            <tr><th>Código</th><th>Descrição</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">V. Unit.</th><th style="text-align:right;">Total</th></tr>',
+    '          </thead>',
+    '          <tbody>' + (itemRows || '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:12px;">Sem itens</td></tr>') + '</tbody>',
+    '        </table>',
+    '      </div>',
+    _pb.startupValue ? '      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;font-size:13px;color:#6b7280;"><span>Start-Up / Comissionamento:</span><span style="font-weight:600;">' + formatBRL(_pb.startupValue) + '</span></div>' : '',
+    '      <div class="pb-total-row"><span class="pb-total-label">Total Geral:</span><span class="pb-total-value">' + formatBRL(grandTotal) + '</span></div>',
+    '    </div>',
+
+    _pb.scopeText ? [
+      '    <div class="pb-summary-section">',
+      '      <div class="pb-summary-title">Escopo Técnico</div>',
+      '      <div class="pb-scope-preview" id="pb-scope-preview">' + escapeHtml(scopePreview) + '</div>',
+      scopeTruncated ? '      <button class="btn btn-ghost btn-sm" id="pb-scope-expand-btn" style="margin-top:6px;">Ver mais</button>' : '',
+      '    </div>'
+    ].join('\n') : '',
+
+    aiSummaryHtml,
+
+    '  </div>',
+    '</div>',
+
+    // Editable commercial terms
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-header"><div class="card-title">Condições Comerciais</div></div>',
+    '  <div class="card-body">',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">Condições de Pagamento</label>',
+    '      <textarea id="pb-payment-terms" class="form-input" rows="2" style="resize:vertical;">' + escapeHtml(_pb.paymentTerms) + '</textarea>',
+    '    </div>',
+
+    '    <div class="form-row-2">',
+    '      <div class="form-group">',
+    '        <label class="form-label">Prazo de Entrega (dias)</label>',
+    '        <input type="number" id="pb-delivery-days" class="form-input" value="' + _pb.deliveryDays + '" min="1">',
+    '      </div>',
+    '      <div class="form-group">',
+    '        <label class="form-label">Validade do Orçamento (dias)</label>',
+    '        <input type="number" id="pb-validity-days" class="form-input" value="' + _pb.validityDays + '" min="1">',
+    '      </div>',
+    '    </div>',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">Observações</label>',
+    '      <textarea id="pb-observations" class="form-input" rows="4" style="resize:vertical;font-family:inherit;line-height:1.6;">' + escapeHtml(_pb.observations) + '</textarea>',
+    '    </div>',
+
+    '  </div>',
+    '</div>',
+
+    '<div class="pb-nav-actions">',
+    '  <button class="btn btn-ghost" id="pb-step4-prev">← Escopo</button>',
+    '  <div style="display:flex;gap:8px;">',
+    '    <button class="btn btn-ghost" id="pb-save-draft-btn">💾 Salvar Rascunho</button>',
+    '    <button class="btn btn-primary" id="pb-save-print-btn">🖨️ Gerar e Imprimir</button>',
+    '  </div>',
+    '</div>'
+  ].join('\n');
+
+  // Scope expand button
+  if (scopeTruncated) {
+    var btnExpand = document.getElementById('pb-scope-expand-btn');
+    if (btnExpand) btnExpand.addEventListener('click', function() {
+      var preview = document.getElementById('pb-scope-preview');
+      if (preview) {
+        preview.textContent = scopeFull;
+        this.style.display = 'none';
+      }
+    });
+  }
+
+  // Nav
+  var btnPrev = document.getElementById('pb-step4-prev');
+  if (btnPrev) btnPrev.addEventListener('click', function() {
+    _pbSaveStep4Fields();
+    _pbRenderStep(_pb._area, 3);
+  });
+
+  var btnDraft = document.getElementById('pb-save-draft-btn');
+  if (btnDraft) btnDraft.addEventListener('click', function() {
+    _pbSaveStep4Fields();
+    _pbSaveProposal(false);
+  });
+
+  var btnPrint = document.getElementById('pb-save-print-btn');
+  if (btnPrint) btnPrint.addEventListener('click', function() {
+    _pbSaveStep4Fields();
+    _pbSaveProposal(true);
+  });
+}
+
+function _pbSaveStep4Fields() {
+  var paymentEl    = document.getElementById('pb-payment-terms');
+  var deliveryEl   = document.getElementById('pb-delivery-days');
+  var validityEl   = document.getElementById('pb-validity-days');
+  var obsEl        = document.getElementById('pb-observations');
+
+  if (paymentEl)  _pb.paymentTerms  = paymentEl.value;
+  if (deliveryEl) _pb.deliveryDays  = parseInt(deliveryEl.value, 10) || 45;
+  if (validityEl) _pb.validityDays  = parseInt(validityEl.value, 10) || 10;
+  if (obsEl)      _pb.observations  = obsEl.value;
+}
+
+// ------------------------------------------------------------
+// Save proposal — called from step 4 action buttons
+// ------------------------------------------------------------
+function _pbSaveProposal(andPrint) {
+  var btnDraft = document.getElementById('pb-save-draft-btn');
+  var btnPrint = document.getElementById('pb-save-print-btn');
+
+  if (btnDraft) { btnDraft.disabled = true; btnDraft.textContent = 'Salvando...'; }
+  if (btnPrint) { btnPrint.disabled = true; btnPrint.textContent = 'Salvando...'; }
+
+  // Calculate total
+  var itemsTotal = 0;
+  for (var i = 0; i < _pb.items.length; i++) {
+    itemsTotal += _pb.items[i].total || 0;
+  }
+  var grandTotal = itemsTotal + (_pb.startupValue || 0);
+
+  var payload = {
+    type:           _pb.type,
+    client_id:      _pb.clientId,
+    client_name:    _pb.clientName,
+    location:       _pb.location,
+    responsible:    _pb.responsible,
+    items:          _pb.items,
+    scope_text:     _pb.scopeText,
+    startup_value:  _pb.startupValue || 0,
+    payment_terms:  _pb.paymentTerms,
+    delivery_days:  _pb.deliveryDays,
+    validity_days:  _pb.validityDays,
+    observations:   _pb.observations,
+    ai_review:      _pb.aiReview ? JSON.stringify(_pb.aiReview) : ''
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btnDraft) { btnDraft.disabled = false; btnDraft.textContent = '💾 Salvar Rascunho'; }
+      if (btnPrint) { btnPrint.disabled = false; btnPrint.textContent = '🖨️ Gerar e Imprimir'; }
+
+      if (!res || !res.ok) {
+        showAlert('Erro ao salvar proposta: ' + (res ? res.error : 'desconhecido'), 'error');
+        return;
+      }
+
+      var proposalId = res.id;
+      showAlert('Proposta ' + proposalId + ' salva com sucesso!', 'success');
+
+      if (andPrint) {
+        _printProposal(proposalId);
+      } else {
+        showSection('quotes');
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btnDraft) { btnDraft.disabled = false; btnDraft.textContent = '💾 Salvar Rascunho'; }
+      if (btnPrint) { btnPrint.disabled = false; btnPrint.textContent = '🖨️ Gerar e Imprimir'; }
+      showAlert('Falha ao salvar proposta: ' + (err.message || 'erro desconhecido'), 'error');
+    })
+    .Api_createProposal(payload);
+}
+</script>

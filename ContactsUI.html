@@ -1,0 +1,399 @@
+<script>
+// ============================================================
+// ContactsUI.html — ALLEGRO Business System
+// Contacts module UI — ES5, no arrow functions
+// ============================================================
+
+var _contacts         = [];
+var _contactsCompanies = [];
+
+// ------------------------------------------------------------
+// Entry point
+// ------------------------------------------------------------
+
+function renderContacts(area) {
+  area.innerHTML = _buildContactsShell();
+  _loadContacts();
+}
+
+// ------------------------------------------------------------
+// Shell HTML
+// ------------------------------------------------------------
+
+function _buildContactsShell() {
+  return [
+    '<div class="page-header">',
+    '  <div class="page-header-left">',
+    '    <div class="page-title">Contatos</div>',
+    '    <div class="page-subtitle">Gerencie os contatos da sua base</div>',
+    '  </div>',
+    '  <button class="btn btn-primary" onclick="_openNewContactModal()">+ Novo Contato</button>',
+    '</div>',
+
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-body" style="padding:12px 16px;">',
+    '    <input id="contacts-search" class="form-input" type="text"',
+    '      placeholder="Buscar por nome, e-mail ou empresa..."',
+    '      oninput="_filterContacts()"',
+    '      style="max-width:380px;" />',
+    '  </div>',
+    '</div>',
+
+    '<div id="contacts-stats" class="card" style="margin-bottom:16px; display:none;">',
+    '  <div class="card-body" style="padding:10px 16px; display:flex; gap:24px; align-items:center;">',
+    '    <span id="contacts-count-label" style="font-size:14px; color:#555;"></span>',
+    '  </div>',
+    '</div>',
+
+    '<div class="card">',
+    '  <div class="card-body" style="padding:0;">',
+    '    <div id="contacts-table-wrap" class="table-wrap"></div>',
+    '  </div>',
+    '</div>',
+
+    _buildDetailModal(),
+    _buildNewContactModal()
+  ].join('\n');
+}
+
+// ------------------------------------------------------------
+// Data loading
+// ------------------------------------------------------------
+
+function _loadContacts() {
+  var wrap = document.getElementById('contacts-table-wrap');
+  wrap.innerHTML = '<div style="padding:32px; text-align:center;"><div class="spinner-ring"></div></div>';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        wrap.innerHTML = '<div class="empty-state"><div class="empty-title">Erro ao carregar contatos</div><div class="empty-desc">' + escapeHtml((res && res.error) || 'Erro desconhecido') + '</div></div>';
+        return;
+      }
+      _contacts = res.data || [];
+      _renderContactsTable(_contacts);
+      _updateStats(_contacts.length);
+    })
+    .withFailureHandler(function(err) {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-title">Falha na requisição</div><div class="empty-desc">' + escapeHtml(String(err)) + '</div></div>';
+    })
+    .Api_getContacts();
+}
+
+// ------------------------------------------------------------
+// Rendering
+// ------------------------------------------------------------
+
+function _renderContactsTable(list) {
+  var wrap = document.getElementById('contacts-table-wrap');
+
+  if (!list || list.length === 0) {
+    wrap.innerHTML = [
+      '<div class="empty-state">',
+      '  <div class="empty-icon">👥</div>',
+      '  <div class="empty-title">Nenhum contato encontrado</div>',
+      '  <div class="empty-desc">Adicione o primeiro contato clicando em "Novo Contato".</div>',
+      '</div>'
+    ].join('\n');
+    return;
+  }
+
+  var rows = '';
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    var activeBadge = (c.active === true || c.active === 'TRUE' || c.active === '1')
+      ? '<span class="badge badge-green">Ativo</span>'
+      : '<span class="badge badge-red">Inativo</span>';
+    rows += [
+      '<tr>',
+      '  <td>' + escapeHtml(c.name || '') + '</td>',
+      '  <td>' + escapeHtml(c.company_name || '') + '</td>',
+      '  <td>' + escapeHtml(c.phone || '') + '</td>',
+      '  <td>' + escapeHtml(c.email || '') + '</td>',
+      '  <td>' + escapeHtml(c.role || '') + '</td>',
+      '  <td>' + activeBadge + '</td>',
+      '  <td><button class="btn btn-ghost btn-sm" onclick="_openContactDetail(' + "'" + escapeHtml(c.id) + "'" + ')">Ver</button></td>',
+      '</tr>'
+    ].join('\n');
+  }
+
+  wrap.innerHTML = [
+    '<table class="data-table" style="width:100%;">',
+    '  <thead>',
+    '    <tr>',
+    '      <th>Nome</th>',
+    '      <th>Empresa</th>',
+    '      <th>Telefone</th>',
+    '      <th>E-mail</th>',
+    '      <th>Cargo</th>',
+    '      <th>Status</th>',
+    '      <th></th>',
+    '    </tr>',
+    '  </thead>',
+    '  <tbody>' + rows + '</tbody>',
+    '</table>'
+  ].join('\n');
+}
+
+function _updateStats(total) {
+  var statsEl = document.getElementById('contacts-stats');
+  var label   = document.getElementById('contacts-count-label');
+  if (statsEl && label) {
+    label.textContent = 'Total de contatos ativos: ' + total;
+    statsEl.style.display = '';
+  }
+}
+
+// ------------------------------------------------------------
+// Client-side search filter
+// ------------------------------------------------------------
+
+function _filterContacts() {
+  var q = (document.getElementById('contacts-search').value || '').toLowerCase().trim();
+  if (!q) {
+    _renderContactsTable(_contacts);
+    _updateStats(_contacts.length);
+    return;
+  }
+  var filtered = [];
+  for (var i = 0; i < _contacts.length; i++) {
+    var c = _contacts[i];
+    var haystack = [
+      c.name         || '',
+      c.email        || '',
+      c.company_name || ''
+    ].join(' ').toLowerCase();
+    if (haystack.indexOf(q) !== -1) {
+      filtered.push(c);
+    }
+  }
+  _renderContactsTable(filtered);
+  _updateStats(filtered.length);
+}
+
+// ------------------------------------------------------------
+// Detail modal
+// ------------------------------------------------------------
+
+function _buildDetailModal() {
+  return [
+    '<div id="contacts-detail-overlay" class="hidden" style="',
+    '  position:fixed; top:0; left:0; width:100%; height:100%;',
+    '  background:rgba(0,0,0,0.5); z-index:9999;',
+    '  display:flex; align-items:center; justify-content:center;">',
+    '  <div style="background:#fff; border-radius:12px; padding:28px 24px;',
+    '    max-width:460px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.18);',
+    '    position:relative; max-height:90vh; overflow-y:auto;">',
+    '    <h2 class="card-title" style="margin:0 0 20px 0;">Detalhes do Contato</h2>',
+    '    <div id="contacts-detail-body"></div>',
+    '    <div style="margin-top:24px; display:flex; justify-content:flex-end; gap:8px;">',
+    '      <button class="btn btn-ghost" onclick="_closeDetailModal()">Fechar</button>',
+    '    </div>',
+    '  </div>',
+    '</div>'
+  ].join('\n');
+}
+
+function _openContactDetail(id) {
+  var contact = null;
+  for (var i = 0; i < _contacts.length; i++) {
+    if (_contacts[i].id === id) { contact = _contacts[i]; break; }
+  }
+  if (!contact) { showAlert('Contato não encontrado.', 'error'); return; }
+
+  var activeBadge = (contact.active === true || contact.active === 'TRUE' || contact.active === '1')
+    ? '<span class="badge badge-green">Ativo</span>'
+    : '<span class="badge badge-red">Inativo</span>';
+
+  var companyDisplay = contact.company_name
+    ? '<span style="color:#2563eb; text-decoration:underline; cursor:default;">' + escapeHtml(contact.company_name) + '</span>'
+    : '<span style="color:#999;">—</span>';
+
+  var body = [
+    _detailRow('ID',         escapeHtml(contact.id || '')),
+    _detailRow('Nome',       escapeHtml(contact.name || '')),
+    _detailRow('Empresa',    companyDisplay, true),
+    _detailRow('Telefone',   escapeHtml(contact.phone || '') || '—'),
+    _detailRow('E-mail',     escapeHtml(contact.email || '') || '—'),
+    _detailRow('Cargo',      escapeHtml(contact.role || '') || '—'),
+    _detailRow('Status',     activeBadge, true),
+    _detailRow('Origem',     escapeHtml(contact.import_source || '')),
+    _detailRow('Criado em',  formatDate(contact.created_at))
+  ].join('');
+
+  document.getElementById('contacts-detail-body').innerHTML = body;
+  _showOverlay('contacts-detail-overlay');
+}
+
+function _detailRow(label, value, raw) {
+  var displayVal = raw ? value : value;
+  return [
+    '<div style="display:flex; padding:8px 0; border-bottom:1px solid #f0f0f0;">',
+    '  <span style="min-width:110px; font-weight:600; color:#555; font-size:13px;">' + label + '</span>',
+    '  <span style="color:#111; font-size:13px;">' + displayVal + '</span>',
+    '</div>'
+  ].join('\n');
+}
+
+function _closeDetailModal() {
+  _hideOverlay('contacts-detail-overlay');
+}
+
+// ------------------------------------------------------------
+// New Contact modal
+// ------------------------------------------------------------
+
+function _buildNewContactModal() {
+  return [
+    '<div id="contacts-new-overlay" class="hidden" style="',
+    '  position:fixed; top:0; left:0; width:100%; height:100%;',
+    '  background:rgba(0,0,0,0.5); z-index:9999;',
+    '  display:flex; align-items:center; justify-content:center;">',
+    '  <div style="background:#fff; border-radius:12px; padding:28px 24px;',
+    '    max-width:460px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.18);',
+    '    position:relative; max-height:90vh; overflow-y:auto;">',
+    '    <h2 class="card-title" style="margin:0 0 20px 0;">Novo Contato</h2>',
+    '    <form id="contacts-new-form" onsubmit="_submitNewContact(event)">',
+
+    '      <div class="form-group">',
+    '        <label class="form-label" for="nc-company">Empresa</label>',
+    '        <select id="nc-company" class="form-input">',
+    '          <option value="">— Sem empresa —</option>',
+    '        </select>',
+    '      </div>',
+
+    '      <div class="form-group">',
+    '        <label class="form-label" for="nc-name">Nome <span style="color:#e53e3e;">*</span></label>',
+    '        <input id="nc-name" class="form-input" type="text" required placeholder="Nome completo" />',
+    '      </div>',
+
+    '      <div class="form-row-2">',
+    '        <div class="form-group">',
+    '          <label class="form-label" for="nc-phone">Telefone</label>',
+    '          <input id="nc-phone" class="form-input" type="tel" placeholder="(00) 00000-0000" />',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label" for="nc-role">Cargo</label>',
+    '          <input id="nc-role" class="form-input" type="text" placeholder="Ex: Diretor" />',
+    '        </div>',
+    '      </div>',
+
+    '      <div class="form-group">',
+    '        <label class="form-label" for="nc-email">E-mail</label>',
+    '        <input id="nc-email" class="form-input" type="email" placeholder="email@empresa.com" />',
+    '      </div>',
+
+    '      <div id="contacts-new-error" style="display:none; color:#e53e3e; font-size:13px; margin-bottom:12px;"></div>',
+
+    '      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">',
+    '        <button type="button" class="btn btn-ghost" onclick="_closeNewContactModal()">Cancelar</button>',
+    '        <button type="submit" id="nc-submit-btn" class="btn btn-primary">Salvar</button>',
+    '      </div>',
+    '    </form>',
+    '  </div>',
+    '</div>'
+  ].join('\n');
+}
+
+function _openNewContactModal() {
+  // Reset form
+  var form = document.getElementById('contacts-new-form');
+  if (form) form.reset();
+  var errEl = document.getElementById('contacts-new-error');
+  if (errEl) errEl.style.display = 'none';
+
+  // Populate company select
+  var sel = document.getElementById('nc-company');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Carregando empresas... —</option>';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        sel.innerHTML = '<option value="">— Sem empresa —</option>';
+        if (res && res.ok && res.data) {
+          _contactsCompanies = res.data;
+          for (var i = 0; i < res.data.length; i++) {
+            var co = res.data[i];
+            var opt = document.createElement('option');
+            opt.value       = co.id;
+            opt.textContent = co.name || co.id;
+            sel.appendChild(opt);
+          }
+        }
+      })
+      .withFailureHandler(function() {
+        sel.innerHTML = '<option value="">— Erro ao carregar —</option>';
+      })
+      .Api_getCompanies();
+  }
+
+  _showOverlay('contacts-new-overlay');
+}
+
+function _closeNewContactModal() {
+  _hideOverlay('contacts-new-overlay');
+}
+
+function _submitNewContact(event) {
+  event.preventDefault();
+
+  var errEl  = document.getElementById('contacts-new-error');
+  var btnEl  = document.getElementById('nc-submit-btn');
+  errEl.style.display = 'none';
+
+  var data = {
+    company_id: document.getElementById('nc-company').value,
+    name:       document.getElementById('nc-name').value.trim(),
+    phone:      document.getElementById('nc-phone').value.trim(),
+    email:      document.getElementById('nc-email').value.trim(),
+    role:       document.getElementById('nc-role').value.trim()
+  };
+
+  if (!data.name) {
+    errEl.textContent    = 'O campo Nome é obrigatório.';
+    errEl.style.display  = 'block';
+    return;
+  }
+
+  btnEl.disabled       = true;
+  btnEl.textContent    = 'Salvando...';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btnEl.disabled    = false;
+      btnEl.textContent = 'Salvar';
+      if (!res || !res.ok) {
+        errEl.textContent   = (res && res.error) ? res.error : 'Erro ao criar contato.';
+        errEl.style.display = 'block';
+        return;
+      }
+      _closeNewContactModal();
+      showAlert('Contato criado com sucesso!', 'success');
+      _loadContacts();
+    })
+    .withFailureHandler(function(err) {
+      btnEl.disabled    = false;
+      btnEl.textContent = 'Salvar';
+      errEl.textContent   = 'Falha na requisição: ' + String(err);
+      errEl.style.display = 'block';
+    })
+    .Api_createContact(data);
+}
+
+// ------------------------------------------------------------
+// Overlay helpers
+// ------------------------------------------------------------
+
+function _showOverlay(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.style.display = 'flex';
+}
+
+function _hideOverlay(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('hidden');
+  el.style.display = 'none';
+}
+</script>

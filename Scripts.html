@@ -1,0 +1,919 @@
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   ALLEGRO BUSINESS SYSTEM — Scripts.html
+   Lógica de UI: login, navegação, seções, utilitários
+   Compatível com HtmlService (Google Apps Script)
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Estado global ──────────────────────────────────────────── */
+var ALLEGRO = {
+  currentUser: null,
+  activeSection: null,
+  users: []
+};
+
+/* ── Inicialização ──────────────────────────────────────────── */
+window.onload = function () {
+  loadUsers();
+};
+
+/* ══════════════════════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Carrega usuários do backend e renderiza os cards de seleção.
+ */
+function loadUsers() {
+  google.script.run
+    .withSuccessHandler(function (users) {
+      ALLEGRO.users = users || [];
+      renderUserCards(ALLEGRO.users);
+    })
+    .withFailureHandler(function (err) {
+      var grid = document.getElementById('user-cards-grid');
+      grid.innerHTML = '';
+      showLoginError('Não foi possível carregar os usuários. Recarregue a página.');
+      console.error('loadUsers error:', err);
+    })
+    .Api_getUsers();
+}
+
+/**
+ * Renderiza os cards de usuário na tela de login.
+ */
+function renderUserCards(users) {
+  var grid = document.getElementById('user-cards-grid');
+  grid.innerHTML = '';
+
+  if (!users || users.length === 0) {
+    grid.innerHTML =
+      '<div style="grid-column:1/-1;text-align:center;padding:32px 0;color:#64748b;font-size:13px;">' +
+      '  Nenhum usuário encontrado.' +
+      '</div>';
+    return;
+  }
+
+  users.forEach(function (u) {
+    var card = document.createElement('div');
+    card.className = 'user-card';
+    card.setAttribute('data-user-id', u.id);
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', 'Entrar como ' + u.name);
+    card.onclick = function () { doLogin(u.id); };
+    card.onkeypress = function (e) { if (e.key === 'Enter' || e.key === ' ') doLogin(u.id); };
+
+    var initials = getInitials(u.name);
+    var roleBadge = getRoleBadge(u.role);
+    var roleLabel = u.role || 'Usuário';
+
+    card.innerHTML =
+      '<div class="user-card-avatar">' + initials + '</div>' +
+      '<div class="user-card-name">' + escapeHtml(u.name) + '</div>' +
+      '<div class="user-card-role">' + escapeHtml(roleLabel) + '</div>' +
+      '<span class="user-card-badge ' + roleBadge.cls + '">' + roleBadge.label + '</span>';
+
+    grid.appendChild(card);
+  });
+}
+
+/**
+ * Executa o login com o userId selecionado.
+ */
+function doLogin(userId) {
+  if (!userId) {
+    showLoginError('Selecione um usuário para continuar.');
+    return;
+  }
+
+  hideLoginError();
+
+  // Marca o card como selecionado e desabilita todos
+  var allCards = document.querySelectorAll('.user-card');
+  allCards.forEach(function (c) {
+    c.classList.remove('selected');
+    c.style.pointerEvents = 'none';
+    c.style.opacity = '0.6';
+  });
+  var selectedCard = document.querySelector('[data-user-id="' + userId + '"]');
+  if (selectedCard) {
+    selectedCard.classList.add('selected', 'loading-in');
+    selectedCard.style.opacity = '1';
+  }
+
+  setLoading(true);
+
+  google.script.run
+    .withSuccessHandler(function (user) {
+      setLoading(false);
+
+      if (!user) {
+        allCards.forEach(function (c) {
+          c.classList.remove('selected', 'loading-in');
+          c.style.pointerEvents = '';
+          c.style.opacity = '';
+        });
+        showLoginError('Usuário inválido ou inativo. Tente novamente.');
+        return;
+      }
+
+      ALLEGRO.currentUser = user;
+      enterApp(user);
+    })
+    .withFailureHandler(function (err) {
+      setLoading(false);
+      allCards.forEach(function (c) {
+        c.classList.remove('selected', 'loading-in');
+        c.style.pointerEvents = '';
+        c.style.opacity = '';
+      });
+      showLoginError(err.message || 'Erro ao realizar login. Tente novamente.');
+    })
+    .Api_loginUser(userId);
+}
+
+/**
+ * Transição para o app após login bem-sucedido.
+ */
+function enterApp(user) {
+  // Esconde tela de login
+  document.getElementById('login-screen').classList.add('hidden');
+
+  // Atualiza dados do usuário na sidebar
+  var initials = getInitials(user.name);
+  var roleLabel = user.role || 'Usuário';
+
+  document.getElementById('sidebar-avatar').textContent    = initials;
+  document.getElementById('sidebar-user-name').textContent = user.name;
+  document.getElementById('sidebar-user-role').textContent = roleLabel;
+
+  // Exibe item de configurações apenas para role GERAL
+  var isAdmin = user.role === 'GERAL' || user.role === 'ADMIN';
+  var adminItems = document.querySelectorAll('.nav-item-admin');
+  adminItems.forEach(function (el) {
+    if (isAdmin) { el.classList.remove('hidden'); }
+    else         { el.classList.add('hidden'); }
+  });
+
+  // Mostra o app shell
+  document.getElementById('app-shell').classList.remove('hidden');
+
+  // Navega para o dashboard por padrão
+  showSection('dashboard');
+
+  showAlert('Bem-vindo, ' + user.name + '!', 'success');
+}
+
+/**
+ * Realiza logout e retorna para a tela de login.
+ */
+function doLogout() {
+  setLoading(true);
+
+  google.script.run
+    .withSuccessHandler(function () {
+      setLoading(false);
+      ALLEGRO.currentUser = null;
+      ALLEGRO.activeSection = null;
+
+      // Limpa área de conteúdo
+      document.getElementById('section-content').innerHTML = '';
+
+      // Esconde app, mostra login
+      document.getElementById('app-shell').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+
+      // Re-habilita cards
+      var allCards = document.querySelectorAll('.user-card');
+      allCards.forEach(function (c) {
+        c.classList.remove('selected', 'loading-in');
+        c.style.pointerEvents = '';
+        c.style.opacity = '';
+      });
+
+      showAlert('Sessão encerrada com sucesso.', 'info');
+    })
+    .withFailureHandler(function (err) {
+      setLoading(false);
+      showAlert('Erro ao sair: ' + (err.message || 'Tente novamente.'), 'error');
+    })
+    .Api_logoutUser();
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   NAVEGAÇÃO / SEÇÕES
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Exibe a seção solicitada na área de conteúdo principal.
+ */
+function showSection(section) {
+  if (ALLEGRO.activeSection === section) return;
+  ALLEGRO.activeSection = section;
+
+  // Atualiza estado ativo nos navs
+  var navItems = document.querySelectorAll('.nav-item, .topbar-nav-btn');
+  navItems.forEach(function (el) {
+    var s = el.getAttribute('data-section');
+    if (s === section) { el.classList.add('active'); }
+    else               { el.classList.remove('active'); }
+  });
+
+  // Renderiza o conteúdo da seção
+  var area = document.getElementById('section-content');
+
+  switch (section) {
+    case 'dashboard':     renderDashboard(area);     break;
+    case 'companies':     renderCompanies(area);     break;
+    case 'contacts':      renderContacts(area);      break;
+    case 'opportunities': renderOpportunities(area); break;
+    case 'quotes':        renderQuotes(area);        break;
+    case 'expenses':      renderExpenses(area);      break;
+    case 'actioncards':   renderActionCards(area);   break;
+    case 'config':        renderConfig(area);        break;
+    default:
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div>' +
+        '<div class="empty-title">Módulo não encontrado</div></div>';
+  }
+
+  // Volta ao topo do conteúdo
+  var main = document.getElementById('main-content');
+  if (main) main.scrollTop = 0;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   RENDERIZADORES DE SEÇÃO
+══════════════════════════════════════════════════════════════ */
+
+function renderDashboard(area) {
+  var user = ALLEGRO.currentUser;
+  var greeting = getGreeting();
+  var firstName = user ? user.name.split(' ')[0] : '';
+
+  area.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">' + greeting + ', ' + escapeHtml(firstName) + ' 👋</h1>' +
+        '<p class="page-subtitle">Aqui está um resumo da sua operação comercial hoje.</p>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="stat-grid">' +
+      statCard('◈', 'stat-icon-blue',   '<span id="dash-opps">—</span>',      'Oportunidades Ativas',  '') +
+      statCard('📄', 'stat-icon-green',  '<span id="dash-quotes">—</span>',    'Propostas Emitidas',    '') +
+      statCard('🏢', 'stat-icon-orange', '<span id="dash-companies">—</span>', 'Empresas Cadastradas',  '') +
+      statCard('👤', 'stat-icon-purple', '<span id="dash-contacts">—</span>',  'Contatos Registrados',  '') +
+    '</div>' +
+
+    '<div class="dashboard-grid">' +
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div>' +
+            '<div class="card-title">Pipeline de Oportunidades</div>' +
+            '<div class="card-subtitle" style="font-size:12px;color:var(--color-text-muted)">Distribuição por estágio</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="pipeline-stages">' +
+            pipelineStage('Lead',       '<span id="pipe-lead">—</span>', '', '#1a56db') +
+            pipelineStage('Elaborando', '<span id="pipe-elab">—</span>', '', '#d97706') +
+            pipelineStage('Enviada',    '<span id="pipe-env">—</span>',  '', '#0d9488') +
+            pipelineStage('Fechada',    '<span id="pipe-fech">—</span>', '', '#16a34a') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="card-title">Atividade Recente</div>' +
+        '</div>' +
+        '<div class="card-body" style="padding:0">' +
+          '<ul class="activity-list" id="dash-activity" style="padding:0 20px">' +
+            activityItem('dot-green', 'Login realizado — ' + escapeHtml(firstName), 'agora') +
+            activityItem('dot-gray',  'Carregando atividades...', '') +
+          '</ul>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.ok) return;
+      var d = r.data;
+      var el;
+      el = document.getElementById('dash-opps');      if (el && d.opportunities) el.textContent = d.opportunities.totalActive;
+      el = document.getElementById('dash-quotes');    if (el && d.quotes)        el.textContent = d.quotes.total;
+      el = document.getElementById('dash-companies'); if (el && d.companies)     el.textContent = d.companies.active;
+      el = document.getElementById('dash-contacts');  if (el && d.contacts)      el.textContent = d.contacts.active;
+      if (d.opportunities && d.opportunities.byStatus) {
+        var bs = d.opportunities.byStatus;
+        el = document.getElementById('pipe-lead'); if (el) el.textContent = bs['Lead'] || 0;
+        el = document.getElementById('pipe-elab'); if (el) el.textContent = bs['Elaborando proposta'] || 0;
+        el = document.getElementById('pipe-env');  if (el) el.textContent = bs['Proposta enviada'] || 0;
+        el = document.getElementById('pipe-fech'); if (el) el.textContent = bs['Proposta fechada'] || 0;
+      }
+      var actEl = document.getElementById('dash-activity');
+      if (actEl && d.recentActivity && d.recentActivity.length) {
+        actEl.innerHTML = d.recentActivity.slice(0, 8).map(function(ev) {
+          var dotCls = ev.event_type === 'STATUS_CHANGE' ? 'dot-blue' :
+                       ev.event_type === 'CREATED'       ? 'dot-green' : 'dot-gray';
+          var ts = ev.timestamp ? ev.timestamp.substring(0, 10) : '';
+          return activityItem(dotCls, ev.description || ev.event_type, formatDate(ts));
+        }).join('');
+      }
+    })
+    .withFailureHandler(function() {})
+    .Api_getDashboardStats();
+}
+
+function renderCompanies(area) {
+  area.innerHTML = buildModulePlaceholder(
+    '🏢', '#dbeafe', '#1e40af',
+    'Empresas',
+    'Gerencie sua carteira de clientes e prospects. Mantenha histórico completo de cada conta comercial.',
+    ['Cadastro de empresas (CNPJ, segmento, porte)', 'Relacionamento com contatos e oportunidades',
+     'Histórico de interações e notas', 'Importação via planilha', 'Filtros e busca avançada'],
+    'companies'
+  );
+}
+
+function renderContacts(area) {
+  area.innerHTML = buildModulePlaceholder(
+    '👤', '#ede9fe', '#5b21b6',
+    'Contatos',
+    'Registre as pessoas-chave de cada empresa. Guarde cargo, e-mail, telefone e histórico de contato.',
+    ['Cadastro com vínculo à empresa', 'Múltiplos contatos por empresa',
+     'Histórico de interações', 'Exportação para planilha', 'Busca por nome, cargo ou empresa'],
+    'contacts'
+  );
+}
+
+function renderOpportunities(area) {
+  area.innerHTML = buildModulePlaceholder(
+    '🎯', '#fef3c7', '#92400e',
+    'Oportunidades',
+    'Acompanhe todo o ciclo de vendas — do primeiro contato ao fechamento. Visualize o pipeline completo.',
+    ['Pipeline visual por estágio', 'Estimativa de valor e probabilidade',
+     'Vínculo com empresa e contato', 'Previsão de fechamento', 'Histórico de atividades por oportunidade'],
+    'opportunities'
+  );
+}
+
+function renderQuotes(area) {
+  area.innerHTML = buildModulePlaceholder(
+    '📄', '#d1fae5', '#065f46',
+    'Propostas',
+    'Gere e gerencie propostas comerciais para os sensores Hydronix. Controle versões e status de aprovação.',
+    ['Criação de proposta com itens e preços', 'Geração de PDF automática',
+     'Controle de status (rascunho, enviada, aprovada)', 'Vínculo com oportunidade', 'Histórico de revisões'],
+    'quotes'
+  );
+}
+
+function renderConfig(area) {
+  if (!ALLEGRO.currentUser) return;
+  var isAdmin = ALLEGRO.currentUser.role === 'GERAL' || ALLEGRO.currentUser.role === 'ADMIN';
+  if (!isAdmin) {
+    area.innerHTML =
+      '<div class="empty-state">' +
+        '<div class="empty-icon">🔒</div>' +
+        '<div class="empty-title">Acesso restrito</div>' +
+        '<div class="empty-desc">Você não tem permissão para acessar as configurações.</div>' +
+      '</div>';
+    return;
+  }
+
+  area.innerHTML = buildModulePlaceholder(
+    '⚙️', '#f1f5f9', '#475569',
+    'Configurações',
+    'Administre usuários, parâmetros do sistema e integrações com a planilha.',
+    ['Gerenciamento de usuários e permissões', 'Parâmetros gerais do sistema',
+     'Configuração da planilha de dados', 'Logs de auditoria', 'Backup e exportação'],
+    'config'
+  );
+}
+
+
+/* ── Helpers de template ─────────────────────────────────────── */
+
+function statCard(icon, iconCls, value, label, delta) {
+  return (
+    '<div class="stat-card">' +
+      '<div class="stat-card-icon ' + iconCls + '">' + icon + '</div>' +
+      '<div class="stat-value">' + value + '</div>' +
+      '<div class="stat-label">' + label + '</div>' +
+      (delta ? '<div class="stat-delta delta-up">' + delta + '</div>' : '') +
+    '</div>'
+  );
+}
+
+function pipelineStage(title, count, value, color) {
+  return (
+    '<div class="pipeline-stage">' +
+      '<div class="pipeline-stage-title">' + title + '</div>' +
+      '<div class="pipeline-stage-count">' + count + '</div>' +
+      '<div class="pipeline-stage-value">' + value + '</div>' +
+      '<div class="pipeline-bar" style="background:' + color + ';opacity:0.3"></div>' +
+    '</div>'
+  );
+}
+
+function activityItem(dotCls, text, time) {
+  return (
+    '<li class="activity-item">' +
+      '<div class="activity-dot status-dot ' + dotCls + '"></div>' +
+      '<div class="activity-text">' + escapeHtml(text) + '</div>' +
+      '<div class="activity-time">' + time + '</div>' +
+    '</li>'
+  );
+}
+
+function buildModulePlaceholder(icon, bgColor, textColor, title, desc, features, sectionKey) {
+  var featuresHtml = features.map(function (f) {
+    return '<li>' + escapeHtml(f) + '</li>';
+  }).join('');
+
+  return (
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">' + icon + ' ' + title + '</h1>' +
+        '<p class="page-subtitle">' + escapeHtml(desc) + '</p>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="module-placeholder">' +
+      '<div class="placeholder-icon-wrap" style="background:' + bgColor + '">' +
+        '<span style="color:' + textColor + '">' + icon + '</span>' +
+      '</div>' +
+      '<h2 class="placeholder-title">Módulo ' + title + '</h2>' +
+      '<p class="placeholder-desc">' + escapeHtml(desc) + '</p>' +
+      '<ul class="placeholder-features">' + featuresHtml + '</ul>' +
+      '<span class="badge badge-yellow" style="font-size:12px;padding:5px 14px">' +
+        '🚧 Em desenvolvimento — Sprint em andamento' +
+      '</span>' +
+    '</div>'
+  );
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   ALERTAS / TOASTS
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Exibe um toast de alerta.
+ * @param {string} msg   Mensagem a exibir
+ * @param {string} type  'success' | 'error' | 'warning' | 'info'
+ * @param {number} duration Duração em ms (padrão: 4500)
+ */
+function showAlert(msg, type, duration) {
+  type = type || 'info';
+  duration = duration || 4500;
+
+  var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  var icon = icons[type] || 'ℹ️';
+
+  var container = document.getElementById('toast-container');
+  var toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+
+  toast.innerHTML =
+    '<span class="toast-icon">' + icon + '</span>' +
+    '<span class="toast-body">' + escapeHtml(String(msg)) + '</span>' +
+    '<button class="toast-close" onclick="dismissToast(this.parentNode)" aria-label="Fechar">×</button>';
+
+  container.appendChild(toast);
+
+  // Auto-dismiss
+  var timer = setTimeout(function () { dismissToast(toast); }, duration);
+  toast._dismissTimer = timer;
+}
+
+function dismissToast(toast) {
+  if (!toast || toast._dismissed) return;
+  toast._dismissed = true;
+  clearTimeout(toast._dismissTimer);
+  toast.classList.add('out');
+  setTimeout(function () {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 300);
+}
+
+/* Atalho para erros globais */
+function showGlobalError(msg) {
+  showAlert(typeof msg === 'object' ? (msg.message || 'Erro desconhecido') : msg, 'error', 7000);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   LOADING GLOBAL
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Ativa ou desativa o overlay de carregamento global.
+ */
+function setLoading(active) {
+  var el = document.getElementById('global-loading');
+  if (!el) return;
+  if (active) { el.classList.remove('hidden'); }
+  else        { el.classList.add('hidden'); }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   HELPERS DE LOGIN
+══════════════════════════════════════════════════════════════ */
+
+function showLoginError(msg) {
+  var el = document.getElementById('login-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function hideLoginError() {
+  var el = document.getElementById('login-error');
+  if (el) el.classList.add('hidden');
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   UTILITÁRIOS
+══════════════════════════════════════════════════════════════ */
+
+/**
+ * Extrai iniciais de um nome (máx. 2 letras).
+ */
+function getInitials(name) {
+  if (!name) return '?';
+  var parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+/**
+ * Retorna classe CSS e label para cada role.
+ */
+function getRoleBadge(role) {
+  var map = {
+    'GERAL':   { cls: 'badge-geral',  label: 'Admin' },
+    'ADMIN':   { cls: 'badge-geral',  label: 'Admin' },
+    'VENDAS':  { cls: 'badge-user',   label: 'Vendas' },
+    'TECNICO': { cls: 'badge-admin',  label: 'Técnico' }
+  };
+  return map[role] || { cls: 'badge-user', label: role || 'Usuário' };
+}
+
+/**
+ * Retorna saudação de acordo com a hora do dia.
+ */
+function getGreeting() {
+  var h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+/**
+ * Escapa caracteres HTML para evitar XSS.
+ */
+function escapeHtml(str) {
+  if (typeof str !== 'string') return String(str || '');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Formata valor monetário em BRL.
+ */
+function formatBRL(value) {
+  if (isNaN(value)) return '—';
+  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+/**
+ * Formata data ISO (yyyy-mm-dd) para dd/mm/yyyy.
+ */
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  var parts = String(dateStr).split('-');
+  if (parts.length !== 3) return dateStr;
+  return parts[2] + '/' + parts[1] + '/' + parts[0];
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   MÓDULO DESPESAS + OCR
+   Estratégia de compressão: canvas resize max 1200px + JPEG 0.65
+   antes de enviar ao servidor → ~70-80% menos tokens na API.
+══════════════════════════════════════════════════════════════ */
+
+var _ocrBase64 = null;
+var _ocrMime   = 'image/jpeg';
+
+function renderExpenses(area) {
+  area.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">💰 Despesas</h1>' +
+        '<p class="page-subtitle">Lance despesas via foto do cupom fiscal. A IA extrai os dados automaticamente.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary" onclick="showExpenseUpload()">+ Nova Despesa</button>' +
+    '</div>' +
+    '<div id="expenses-ocr-wrap" class="hidden"></div>' +
+    '<div id="expenses-list-wrap"></div>';
+
+  loadExpensesList();
+}
+
+function loadExpensesList() {
+  var wrap = document.getElementById('expenses-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center;padding:40px 0;color:#64748b">Carregando...</div>';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.ok) { wrap.innerHTML = ''; return; }
+      renderExpensesList(r.data || []);
+    })
+    .withFailureHandler(function() { wrap.innerHTML = ''; })
+    .Api_getExpenses();
+}
+
+function renderExpensesList(list) {
+  var wrap = document.getElementById('expenses-list-wrap');
+  if (!wrap) return;
+  if (!list.length) {
+    wrap.innerHTML =
+      '<div class="card"><div class="card-body">' +
+        '<div class="empty-state" style="padding:32px 0">' +
+          '<div class="empty-icon">💰</div>' +
+          '<div class="empty-title">Nenhuma despesa lançada</div>' +
+          '<div class="empty-desc">Clique em "+ Nova Despesa" e fotografe o cupom.</div>' +
+        '</div>' +
+      '</div></div>';
+    return;
+  }
+  var rows = list.map(function(e) {
+    return '<tr>' +
+      '<td><code style="font-size:11px">' + escapeHtml(e.id) + '</code></td>' +
+      '<td>' + formatDate(e.data) + '</td>' +
+      '<td>' + escapeHtml(e.estabelecimento) + '</td>' +
+      '<td><span class="badge badge-blue" style="font-size:11px">' + escapeHtml(e.categoria) + '</span></td>' +
+      '<td style="font-weight:600;color:#16a34a">' + formatBRL(Number(e.total)) + '</td>' +
+      '<td style="color:#64748b;font-size:12px">' + escapeHtml(e.criado_por) + '</td>' +
+    '</tr>';
+  }).join('');
+  wrap.innerHTML =
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">Histórico (' + list.length + ')</div></div>' +
+      '<div class="table-wrap">' +
+        '<table class="data-table">' +
+          '<thead><tr><th>ID</th><th>Data</th><th>Estabelecimento</th><th>Categoria</th><th>Total</th><th>Usuário</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+    '</div>';
+}
+
+/* ── Upload + compressão de imagem ── */
+
+function showExpenseUpload() {
+  var wrap = document.getElementById('expenses-ocr-wrap');
+  if (!wrap) return;
+  _ocrBase64 = null;
+  wrap.classList.remove('hidden');
+  wrap.innerHTML =
+    '<div class="card" style="margin-bottom:20px">' +
+      '<div class="card-header">' +
+        '<div class="card-title">📷 Fotografar Cupom Fiscal</div>' +
+        '<button class="btn btn-sm btn-ghost" onclick="cancelExpenseUpload()">× Cancelar</button>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="ocr-drop-zone" id="ocr-drop-zone" onclick="document.getElementById(\'ocr-file-inp\').click()">' +
+          '<div class="ocr-drop-icon">📸</div>' +
+          '<div class="ocr-drop-label">Clique para selecionar a foto do cupom</div>' +
+          '<div class="ocr-drop-hint">JPG · PNG · HEIC — até 10 MB<br>A imagem é comprimida no navegador antes do envio</div>' +
+          '<input type="file" id="ocr-file-inp" accept="image/*" style="display:none" onchange="handleReceiptFile(this)">' +
+        '</div>' +
+        '<div id="ocr-preview-wrap" class="hidden">' +
+          '<div class="ocr-preview-inner">' +
+            '<img id="ocr-preview-img" class="ocr-preview-img" alt="Cupom">' +
+            '<div id="ocr-compress-info" class="ocr-compress-info"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:12px;margin-top:16px">' +
+            '<button class="btn btn-primary" id="btn-ocr-run" onclick="runOCR()">🔍 Extrair dados com IA</button>' +
+            '<button class="btn btn-ghost" onclick="resetOCRUpload()">Trocar imagem</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="ocr-loading-wrap" class="hidden" style="text-align:center;padding:28px 0">' +
+          '<div class="spinner-ring" style="margin:0 auto 14px"></div>' +
+          '<div style="color:#64748b;font-size:13px">Analisando cupom com IA (Claude Haiku)...</div>' +
+          '<div style="color:#94a3b8;font-size:11px;margin-top:4px">Custo estimado: ~R$ 0,01</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="ocr-review-wrap" class="hidden"></div>';
+}
+
+function handleReceiptFile(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 10 * 1024 * 1024) { showAlert('Arquivo muito grande. Máximo 10 MB.', 'error'); return; }
+
+  document.getElementById('ocr-drop-zone').classList.add('hidden');
+
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var img = new Image();
+    img.onload = function() {
+      /* Redimensiona para max 1200px preservando proporção */
+      var MAX = 1200, w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+        else        { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      /* JPEG quality 0.65 — boa legibilidade, ~65% menor que o original */
+      var dataUrl  = canvas.toDataURL('image/jpeg', 0.65);
+      _ocrBase64   = dataUrl.split(',')[1];
+      _ocrMime     = 'image/jpeg';
+
+      var origKB = Math.round(file.size / 1024);
+      var compKB = Math.round(_ocrBase64.length * 0.75 / 1024);
+      var pct    = origKB > 0 ? Math.round((1 - compKB / origKB) * 100) : 0;
+
+      document.getElementById('ocr-preview-img').src = dataUrl;
+      document.getElementById('ocr-compress-info').innerHTML =
+        '<span class="badge badge-green">✓ Comprimida</span> ' +
+        escapeHtml(w + '×' + h + 'px') + ' · ' +
+        escapeHtml(origKB + ' KB → ' + compKB + ' KB') +
+        (pct > 0 ? ' <span style="color:#16a34a;font-weight:600">(' + pct + '% menor)</span>' : '');
+      document.getElementById('ocr-preview-wrap').classList.remove('hidden');
+    };
+    img.onerror = function() { showAlert('Não foi possível ler a imagem.', 'error'); resetOCRUpload(); };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetOCRUpload() {
+  _ocrBase64 = null;
+  var dz = document.getElementById('ocr-drop-zone');
+  var pw = document.getElementById('ocr-preview-wrap');
+  var fi = document.getElementById('ocr-file-inp');
+  if (dz) dz.classList.remove('hidden');
+  if (pw) pw.classList.add('hidden');
+  if (fi) fi.value = '';
+}
+
+/* ── OCR call ── */
+
+function runOCR() {
+  if (!_ocrBase64) { showAlert('Selecione uma imagem primeiro.', 'warning'); return; }
+  var pw  = document.getElementById('ocr-preview-wrap');
+  var lw  = document.getElementById('ocr-loading-wrap');
+  var btn = document.getElementById('btn-ocr-run');
+  if (pw)  pw.classList.add('hidden');
+  if (lw)  lw.classList.remove('hidden');
+  if (btn) btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (lw)  lw.classList.add('hidden');
+      if (btn) btn.disabled = false;
+      if (!r || !r.ok) {
+        showAlert('Erro na extração: ' + (r ? r.error : 'sem resposta'), 'error');
+        if (pw) pw.classList.remove('hidden');
+        return;
+      }
+      renderOCRReview(r.data);
+    })
+    .withFailureHandler(function(err) {
+      if (lw)  lw.classList.add('hidden');
+      if (btn) btn.disabled = false;
+      if (pw)  pw.classList.remove('hidden');
+      showAlert('Falha de comunicação: ' + (err.message || 'tente novamente'), 'error');
+    })
+    .Api_ocrReceipt(_ocrBase64, _ocrMime);
+}
+
+/* ── Formulário de revisão ── */
+
+function renderOCRReview(data) {
+  var wrap = document.getElementById('ocr-review-wrap');
+  if (!wrap) return;
+
+  var cats = ['Alimentação','Transporte','Material de Escritório','Serviços','Equipamentos','Marketing','Outros'];
+  var opts = cats.map(function(c) {
+    var sel = (data.categoria === c || (!data.categoria && c === 'Outros')) ? ' selected' : '';
+    return '<option value="' + c + '"' + sel + '>' + c + '</option>';
+  }).join('');
+
+  var itensHtml = '';
+  if (data.itens && data.itens.length) {
+    itensHtml =
+      '<div class="form-group">' +
+        '<label class="form-label">Itens extraídos</label>' +
+        '<div class="ocr-items-list">' +
+          data.itens.map(function(it) {
+            return '<div class="ocr-item">' +
+              '<span class="ocr-item-name">' + escapeHtml(it.nome || '') + '</span>' +
+              '<span class="ocr-item-val">'  + formatBRL(Number(it.valor) || 0) + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+  }
+
+  wrap.classList.remove('hidden');
+  wrap.innerHTML =
+    '<div class="card">' +
+      '<div class="card-header">' +
+        '<div class="card-title">✏️ Revisar e Salvar</div>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="form-row-2">' +
+          '<div class="form-group">' +
+            '<label class="form-label">Data *</label>' +
+            '<input type="date" class="form-input" id="exp-data" value="' + escapeHtml(data.data || '') + '">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Categoria *</label>' +
+            '<select class="form-input" id="exp-cat">' + opts + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label class="form-label">Estabelecimento *</label>' +
+          '<input type="text" class="form-input" id="exp-est" value="' + escapeHtml(data.estabelecimento || '') + '">' +
+        '</div>' +
+        '<div class="form-row-2">' +
+          '<div class="form-group">' +
+            '<label class="form-label">Total (R$) *</label>' +
+            '<input type="number" step="0.01" min="0" class="form-input" id="exp-total" value="' + (data.total || '') + '">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Descrição (opcional)</label>' +
+            '<input type="text" class="form-input" id="exp-desc" placeholder="Ex: Almoço com cliente">' +
+          '</div>' +
+        '</div>' +
+        itensHtml +
+        '<div style="display:flex;gap:12px;margin-top:8px">' +
+          '<button class="btn btn-primary" onclick="saveExpense()" id="btn-save-exp">💾 Salvar Despesa</button>' +
+          '<button class="btn btn-ghost" onclick="cancelExpenseUpload()">Cancelar</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+/* ── Salvar despesa ── */
+
+function saveExpense() {
+  var data  = document.getElementById('exp-data')  ? document.getElementById('exp-data').value  : '';
+  var est   = document.getElementById('exp-est')   ? document.getElementById('exp-est').value   : '';
+  var cat   = document.getElementById('exp-cat')   ? document.getElementById('exp-cat').value   : 'Outros';
+  var total = document.getElementById('exp-total') ? parseFloat(document.getElementById('exp-total').value) : 0;
+  var desc  = document.getElementById('exp-desc')  ? document.getElementById('exp-desc').value  : '';
+
+  if (!data || !est || !total || isNaN(total)) {
+    showAlert('Preencha Data, Estabelecimento e Total.', 'warning');
+    return;
+  }
+
+  var btn = document.getElementById('btn-save-exp');
+  if (btn) btn.disabled = true;
+  setLoading(true);
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      setLoading(false);
+      if (btn) btn.disabled = false;
+      if (!r || !r.ok) { showAlert('Erro ao salvar: ' + (r ? r.error : '?'), 'error'); return; }
+      showAlert('Despesa ' + r.id + ' salva com sucesso!', 'success');
+      cancelExpenseUpload();
+      loadExpensesList();
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      if (btn) btn.disabled = false;
+      showAlert('Falha ao salvar: ' + (err.message || 'erro desconhecido'), 'error');
+    })
+    .Api_saveExpense({ data: data, estabelecimento: est, categoria: cat, total: total, descricao: desc, itens: [] });
+}
+
+function cancelExpenseUpload() {
+  _ocrBase64 = null;
+  var ow = document.getElementById('expenses-ocr-wrap');
+  var rw = document.getElementById('ocr-review-wrap');
+  if (ow) { ow.classList.add('hidden'); ow.innerHTML = ''; }
+  if (rw) { rw.classList.add('hidden'); rw.innerHTML = ''; }
+}
+</script>

@@ -1,0 +1,430 @@
+<style>
+  #allegro-chatbot-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 10000;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #1a56db;
+    color: #fff;
+    font-size: 24px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    outline: none;
+  }
+  #allegro-chatbot-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 0 6px 20px rgba(26,86,219,0.35);
+  }
+  #allegro-chatbot-panel {
+    position: fixed;
+    bottom: 96px;
+    right: 24px;
+    z-index: 9999;
+    width: 380px;
+    height: 520px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    overflow: hidden;
+    display: none;
+    flex-direction: column;
+  }
+  #allegro-chatbot-panel.open {
+    display: flex;
+  }
+  #allegro-chat-header {
+    background: #1a56db;
+    color: #fff;
+    padding: 14px 18px 12px;
+    flex-shrink: 0;
+  }
+  #allegro-chat-header .chat-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 2px;
+  }
+  #allegro-chat-header .chat-subtitle {
+    font-size: 11px;
+    opacity: 0.82;
+    margin: 0;
+  }
+  #allegro-chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .allegro-msg-wrapper {
+    display: flex;
+    flex-direction: column;
+  }
+  .allegro-msg-wrapper.user {
+    align-items: flex-end;
+  }
+  .allegro-msg-wrapper.bot {
+    align-items: flex-start;
+  }
+  .allegro-bubble {
+    max-width: 80%;
+    padding: 8px 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .allegro-bubble.user {
+    background: #1a56db;
+    color: #fff;
+    border-radius: 12px 12px 2px 12px;
+  }
+  .allegro-bubble.bot {
+    background: #fff;
+    color: #1e293b;
+    border-radius: 12px 12px 12px 2px;
+    border: 1px solid #e2e8f0;
+  }
+  .allegro-bubble.error {
+    background: #fff0f0;
+    color: #c0392b;
+    border-radius: 12px 12px 12px 2px;
+    border: 1px solid #fca5a5;
+  }
+  .allegro-ts {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+    padding: 0 2px;
+  }
+  #allegro-chat-input-area {
+    border-top: 1px solid #e2e8f0;
+    padding: 12px;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    background: #fff;
+  }
+  #allegro-chat-textarea {
+    flex-grow: 1;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    padding: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: none;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #allegro-chat-textarea:focus {
+    border-color: #1a56db;
+  }
+  #allegro-chat-send {
+    background: #1a56db;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  #allegro-chat-send:hover {
+    background: #1648c0;
+  }
+  #allegro-chat-send:disabled {
+    background: #93a8e6;
+    cursor: not-allowed;
+  }
+  .allegro-typing-dots {
+    display: inline-block;
+    font-size: 18px;
+    letter-spacing: 2px;
+    animation: allegroTyping 1s infinite;
+  }
+  @keyframes allegroTyping {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+  @media (max-width: 440px) {
+    #allegro-chatbot-panel {
+      width: calc(100vw - 16px);
+      right: 8px;
+    }
+  }
+</style>
+
+<script>
+(function() {
+  'use strict';
+
+  var _chatbot_open    = false;
+  var _chatbot_greeted = false;
+  var _chatbot_busy    = false;
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  function _chatbot_timestamp() {
+    var d = new Date();
+    var hh = ('0' + d.getHours()).slice(-2);
+    var mm = ('0' + d.getMinutes()).slice(-2);
+    return hh + ':' + mm;
+  }
+
+  function _chatbot_scrollBottom() {
+    var area = document.getElementById('allegro-chat-messages');
+    if (area) area.scrollTop = area.scrollHeight;
+  }
+
+  /**
+   * Appends a message bubble.
+   * @param {'user'|'bot'|'error'} side
+   * @param {string} text
+   * @param {string} [id]  Optional id for later replacement.
+   */
+  function _chatbot_appendMsg(side, text, id) {
+    var area    = document.getElementById('allegro-chat-messages');
+    if (!area) return;
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'allegro-msg-wrapper ' + (side === 'user' ? 'user' : 'bot');
+
+    var bubble  = document.createElement('div');
+    bubble.className = 'allegro-bubble ' + side;
+    bubble.textContent = text;
+    if (id) bubble.id = id;
+
+    var ts = document.createElement('div');
+    ts.className = 'allegro-ts';
+    ts.textContent = _chatbot_timestamp();
+
+    wrapper.appendChild(bubble);
+    wrapper.appendChild(ts);
+    area.appendChild(wrapper);
+    _chatbot_scrollBottom();
+    return bubble;
+  }
+
+  /** Appends the animated "digitando…" bubble and returns its id. */
+  function _chatbot_appendTyping() {
+    var area = document.getElementById('allegro-chat-messages');
+    if (!area) return null;
+
+    var id      = 'allegro-typing-' + Date.now();
+    var wrapper = document.createElement('div');
+    wrapper.className = 'allegro-msg-wrapper bot';
+
+    var bubble  = document.createElement('div');
+    bubble.className = 'allegro-bubble bot';
+    bubble.id = id;
+
+    var dots    = document.createElement('span');
+    dots.className = 'allegro-typing-dots';
+    dots.textContent = '●●●';
+
+    var label   = document.createTextNode(' digitando');
+    bubble.appendChild(dots);
+    bubble.appendChild(label);
+
+    var ts      = document.createElement('div');
+    ts.className = 'allegro-ts';
+    ts.textContent = _chatbot_timestamp();
+
+    wrapper.appendChild(bubble);
+    wrapper.appendChild(ts);
+    area.appendChild(wrapper);
+    _chatbot_scrollBottom();
+    return id;
+  }
+
+  /** Replaces a bubble's content (for swapping typing → reply). */
+  function _chatbot_replaceBubble(id, text, extraClass) {
+    var bubble = document.getElementById(id);
+    if (!bubble) return;
+    bubble.textContent = text;
+    if (extraClass) bubble.className = 'allegro-bubble ' + extraClass;
+  }
+
+  // ── greeting ───────────────────────────────────────────────────────────────
+
+  function _chatbot_greet() {
+    if (_chatbot_greeted) return;
+    _chatbot_greeted = true;
+    _chatbot_appendMsg(
+      'bot',
+      'Olá! Sou o assistente ALLEGRO 🤖\n\nPosso te ajudar a usar o sistema ou buscar informações. Experimente perguntar:\n• "Como criar uma nova empresa?"\n• "Mostre empresas em SP"\n• "Como mudar o status de uma oportunidade?"'
+    );
+  }
+
+  // ── toggle panel ───────────────────────────────────────────────────────────
+
+  function _chatbot_toggle() {
+    _chatbot_open = !_chatbot_open;
+    var panel = document.getElementById('allegro-chatbot-panel');
+    var btn   = document.getElementById('allegro-chatbot-btn');
+    if (!panel || !btn) return;
+
+    if (_chatbot_open) {
+      panel.classList.add('open');
+      btn.textContent = '×';
+      _chatbot_greet();
+      setTimeout(function() {
+        var ta = document.getElementById('allegro-chat-textarea');
+        if (ta) ta.focus();
+      }, 80);
+    } else {
+      panel.classList.remove('open');
+      btn.textContent = '💬';
+    }
+  }
+
+  // ── send message ───────────────────────────────────────────────────────────
+
+  function _chatbot_send() {
+    if (_chatbot_busy) return;
+
+    var ta = document.getElementById('allegro-chat-textarea');
+    if (!ta) return;
+    var msg = ta.value.trim();
+    if (!msg) return;
+
+    ta.value = '';
+    _chatbot_appendMsg('user', msg);
+
+    var sendBtn = document.getElementById('allegro-chat-send');
+    _chatbot_busy = true;
+    if (sendBtn) sendBtn.disabled = true;
+
+    var typingId = _chatbot_appendTyping();
+
+    // Gather context from ALLEGRO globals (may not exist — guard safely)
+    var ctx = {};
+    try {
+      if (typeof ALLEGRO !== 'undefined') {
+        if (ALLEGRO.activeSection) ctx.section  = ALLEGRO.activeSection;
+        if (ALLEGRO.currentUser && ALLEGRO.currentUser.name) ctx.userName = ALLEGRO.currentUser.name;
+      }
+    } catch (e) { /* ignore */ }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        _chatbot_busy = false;
+        if (sendBtn) sendBtn.disabled = false;
+        if (result && result.ok) {
+          _chatbot_replaceBubble(typingId, result.reply, 'bot');
+        } else {
+          var errMsg = (result && result.error) ? result.error : 'Erro desconhecido.';
+          _chatbot_replaceBubble(typingId, '⚠ ' + errMsg, 'error');
+        }
+        _chatbot_scrollBottom();
+        ta.focus();
+      })
+      .withFailureHandler(function(err) {
+        _chatbot_busy = false;
+        if (sendBtn) sendBtn.disabled = false;
+        var errMsg = (err && err.message) ? err.message : String(err);
+        _chatbot_replaceBubble(typingId, '⚠ Falha na comunicação: ' + errMsg, 'error');
+        _chatbot_scrollBottom();
+        ta.focus();
+      })
+      .Api_chatMessage(msg, ctx);
+  }
+
+  // ── build DOM ──────────────────────────────────────────────────────────────
+
+  function _chatbot_init() {
+    if (document.getElementById('allegro-chatbot-btn')) return; // guard double-init
+
+    // ── floating button
+    var btn = document.createElement('button');
+    btn.id          = 'allegro-chatbot-btn';
+    btn.title       = 'Assistente ALLEGRO';
+    btn.textContent = '💬';
+    btn.setAttribute('aria-label', 'Abrir assistente ALLEGRO');
+    btn.addEventListener('click', _chatbot_toggle);
+
+    // ── panel
+    var panel = document.createElement('div');
+    panel.id = 'allegro-chatbot-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Assistente ALLEGRO');
+
+    // header
+    var header = document.createElement('div');
+    header.id = 'allegro-chat-header';
+
+    var title = document.createElement('p');
+    title.className   = 'chat-title';
+    title.textContent = '🤖 Assistente ALLEGRO';
+
+    var subtitle = document.createElement('p');
+    subtitle.className   = 'chat-subtitle';
+    subtitle.textContent = 'Pergunte sobre o sistema ou busque dados';
+
+    header.appendChild(title);
+    header.appendChild(subtitle);
+
+    // messages area
+    var messages = document.createElement('div');
+    messages.id = 'allegro-chat-messages';
+
+    // input area
+    var inputArea = document.createElement('div');
+    inputArea.id = 'allegro-chat-input-area';
+
+    var textarea = document.createElement('textarea');
+    textarea.id          = 'allegro-chat-textarea';
+    textarea.rows        = 2;
+    textarea.placeholder = 'Digite sua pergunta…';
+    textarea.setAttribute('aria-label', 'Mensagem para o assistente');
+    textarea.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        _chatbot_send();
+      }
+    });
+
+    var sendBtn = document.createElement('button');
+    sendBtn.id          = 'allegro-chat-send';
+    sendBtn.textContent = 'Enviar';
+    sendBtn.setAttribute('aria-label', 'Enviar mensagem');
+    sendBtn.addEventListener('click', _chatbot_send);
+
+    inputArea.appendChild(textarea);
+    inputArea.appendChild(sendBtn);
+
+    // assemble panel
+    panel.appendChild(header);
+    panel.appendChild(messages);
+    panel.appendChild(inputArea);
+
+    // inject into body
+    document.body.appendChild(btn);
+    document.body.appendChild(panel);
+  }
+
+  // ── auto-inject ────────────────────────────────────────────────────────────
+
+  document.addEventListener('DOMContentLoaded', function() {
+    _chatbot_init();
+  });
+
+  // Also call directly in case DOM is already loaded
+  if (document.readyState !== 'loading') {
+    _chatbot_init();
+  }
+
+}());
+</script>

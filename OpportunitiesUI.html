@@ -1,0 +1,669 @@
+<script>
+// =============================================================================
+// OpportunitiesUI.html — ALLEGRO Business System
+// Opportunities view: pipeline summary, filter bar, table, modals
+// ES5 only
+// =============================================================================
+
+var _opps = [];
+var _oppsFilter = { status: '', q: '' };
+
+var _OPP_STATUSES = [
+  'Lead',
+  'Elaborando proposta',
+  'Proposta enviada',
+  'Proposta fechada',
+  'Proposta recusada',
+  'Cancelada',
+  'Não elaborada'
+];
+
+// Badge class map
+function _oppBadgeClass(status) {
+  var map = {
+    'Lead': 'badge-blue',
+    'Elaborando proposta': 'badge-yellow',
+    'Proposta enviada': 'badge-blue',
+    'Proposta fechada': 'badge-green',
+    'Proposta recusada': 'badge-red',
+    'Cancelada': 'badge-red',
+    'Não elaborada': 'badge-gray'
+  };
+  return map[status] || 'badge-gray';
+}
+
+// Short label for pipeline summary cards
+function _oppShortLabel(status) {
+  var map = {
+    'Lead': 'Lead',
+    'Elaborando proposta': 'Elaborando',
+    'Proposta enviada': 'Enviada',
+    'Proposta fechada': 'Fechada',
+    'Proposta recusada': 'Recusada',
+    'Cancelada': 'Cancelada',
+    'Não elaborada': 'Não elaborada'
+  };
+  return map[status] || status;
+}
+
+// ---------------------------------------------------------------------------
+// Main render entry point
+// ---------------------------------------------------------------------------
+function renderOpportunities(area) {
+  area.innerHTML = '<div class="spinner-ring" id="opp-spinner"></div>';
+  setLoading(true);
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      setLoading(false);
+      if (!res || !res.ok) {
+        showAlert('Erro ao carregar oportunidades: ' + (res ? res.error : 'desconhecido'), 'error');
+        area.innerHTML = '<div class="empty-state">Falha ao carregar dados.</div>';
+        return;
+      }
+      _opps = res.data || [];
+      _oppsFilter = { status: '', q: '' };
+      area.innerHTML = _buildOpportunitiesHTML();
+      _bindOpportunitiesEvents(area);
+    })
+    .withFailureHandler(function (err) {
+      setLoading(false);
+      showAlert('Erro: ' + err.message, 'error');
+      area.innerHTML = '<div class="empty-state">Falha ao carregar dados.</div>';
+    })
+    .Api_getOpportunities();
+}
+
+// ---------------------------------------------------------------------------
+// Build full HTML string
+// ---------------------------------------------------------------------------
+function _buildOpportunitiesHTML() {
+  return (
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<div class="page-title">Oportunidades</div>' +
+        '<div class="page-subtitle">Pipeline de negócios e propostas</div>' +
+      '</div>' +
+      '<button class="btn btn-primary" id="opp-btn-new">+ Nova Oportunidade</button>' +
+    '</div>' +
+
+    _buildPipelineSummary() +
+    _buildFilterBar() +
+
+    '<div class="card">' +
+      '<div class="card-body" style="padding:0">' +
+        '<div class="table-wrap" id="opp-table-wrap">' +
+          _buildTable(_getFilteredOpps()) +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    _buildNewOppModal() +
+    _buildDetailModal()
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline summary: count per key status
+// ---------------------------------------------------------------------------
+function _buildPipelineSummary() {
+  var summaryStatuses = [
+    'Lead',
+    'Elaborando proposta',
+    'Proposta enviada',
+    'Proposta fechada',
+    'Proposta recusada'
+  ];
+
+  var counts = {};
+  for (var s = 0; s < summaryStatuses.length; s++) counts[summaryStatuses[s]] = 0;
+  for (var i = 0; i < _opps.length; i++) {
+    var st = _opps[i].status || '';
+    if (counts.hasOwnProperty(st)) counts[st]++;
+  }
+
+  var html = '<div class="stat-grid" style="margin-bottom:16px">';
+  for (var j = 0; j < summaryStatuses.length; j++) {
+    var label = _oppShortLabel(summaryStatuses[j]);
+    var badgeClass = _oppBadgeClass(summaryStatuses[j]);
+    html +=
+      '<div class="card" style="padding:12px 16px;cursor:pointer" data-filter-status="' + escapeHtml(summaryStatuses[j]) + '" title="Filtrar por ' + escapeHtml(label) + '">' +
+        '<div style="font-size:11px;color:#6b7280;margin-bottom:4px">' + escapeHtml(label) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<span style="font-size:22px;font-weight:700">' + counts[summaryStatuses[j]] + '</span>' +
+          '<span class="badge ' + badgeClass + '">' + escapeHtml(label) + '</span>' +
+        '</div>' +
+      '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Filter bar
+// ---------------------------------------------------------------------------
+function _buildFilterBar() {
+  var options = '<option value="">Todos os status</option>';
+  for (var i = 0; i < _OPP_STATUSES.length; i++) {
+    var sel = _oppsFilter.status === _OPP_STATUSES[i] ? ' selected' : '';
+    options += '<option value="' + escapeHtml(_OPP_STATUSES[i]) + '"' + sel + '>' + escapeHtml(_OPP_STATUSES[i]) + '</option>';
+  }
+
+  return (
+    '<div class="card" style="margin-bottom:12px">' +
+      '<div class="card-body">' +
+        '<div class="form-row-2" style="align-items:flex-end">' +
+          '<div class="form-group" style="margin-bottom:0">' +
+            '<label class="form-label">Status</label>' +
+            '<select class="form-input" id="opp-filter-status">' + options + '</select>' +
+          '</div>' +
+          '<div class="form-group" style="margin-bottom:0">' +
+            '<label class="form-label">Buscar empresa</label>' +
+            '<input class="form-input" id="opp-filter-q" type="text" placeholder="Nome da empresa..." value="' + escapeHtml(_oppsFilter.q) + '">' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Table
+// ---------------------------------------------------------------------------
+function _buildTable(rows) {
+  if (!rows || rows.length === 0) {
+    return '<div class="empty-state">Nenhuma oportunidade encontrada.</div>';
+  }
+
+  var html =
+    '<table class="data-table">' +
+      '<thead><tr>' +
+        '<th>Empresa</th>' +
+        '<th>Representante</th>' +
+        '<th>Produto</th>' +
+        '<th>Temp. Máx.</th>' +
+        '<th>Status</th>' +
+        '<th>Data</th>' +
+        '<th></th>' +
+      '</tr></thead>' +
+      '<tbody>';
+
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var badgeClass = _oppBadgeClass(r.status || '');
+    html +=
+      '<tr>' +
+        '<td>' + escapeHtml(r.company_name || r.company_id || '—') + '</td>' +
+        '<td>' + escapeHtml(r.representative || '—') + '</td>' +
+        '<td>' + escapeHtml(r.product || '—') + '</td>' +
+        '<td>' + escapeHtml(r.max_temp || '—') + '</td>' +
+        '<td><span class="badge ' + badgeClass + '">' + escapeHtml(r.status || '—') + '</span></td>' +
+        '<td>' + escapeHtml(formatDate(r.created_at || r.form_date || '')) + '</td>' +
+        '<td>' +
+          '<button class="btn btn-ghost btn-sm opp-btn-view" data-id="' + escapeHtml(r.id) + '">Ver</button>' +
+        '</td>' +
+      '</tr>';
+  }
+
+  html += '</tbody></table>';
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// New Opportunity Modal
+// ---------------------------------------------------------------------------
+function _buildNewOppModal() {
+  var statusOptions = '';
+  for (var i = 0; i < _OPP_STATUSES.length; i++) {
+    statusOptions += '<option value="' + escapeHtml(_OPP_STATUSES[i]) + '">' + escapeHtml(_OPP_STATUSES[i]) + '</option>';
+  }
+
+  return (
+    '<div id="opp-modal-new" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center">' +
+      '<div class="card" style="width:520px;max-width:96vw;max-height:90vh;overflow-y:auto">' +
+        '<div class="card-header">' +
+          '<div class="card-title">Nova Oportunidade</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="form-group">' +
+            '<label class="form-label">Empresa *</label>' +
+            '<select class="form-input" id="opp-new-company">' +
+              '<option value="">Carregando empresas...</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Representante</label>' +
+            '<input class="form-input" id="opp-new-representative" type="text" placeholder="Nome do representante">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Produto</label>' +
+            '<input class="form-input" id="opp-new-product" type="text" placeholder="Produto / solução">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Status</label>' +
+            '<select class="form-input" id="opp-new-status">' + statusOptions + '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Notas</label>' +
+            '<textarea class="form-input" id="opp-new-notes" rows="3" placeholder="Observações iniciais..."></textarea>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button class="btn btn-ghost" id="opp-modal-new-cancel">Cancelar</button>' +
+            '<button class="btn btn-primary" id="opp-modal-new-save">Criar Oportunidade</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detail Modal
+// ---------------------------------------------------------------------------
+function _buildDetailModal() {
+  var statusOptions = '';
+  for (var i = 0; i < _OPP_STATUSES.length; i++) {
+    statusOptions += '<option value="' + escapeHtml(_OPP_STATUSES[i]) + '">' + escapeHtml(_OPP_STATUSES[i]) + '</option>';
+  }
+
+  return (
+    '<div id="opp-modal-detail" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center">' +
+      '<div class="card" style="width:600px;max-width:96vw;max-height:90vh;overflow-y:auto">' +
+        '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title" id="opp-detail-title">Oportunidade</div>' +
+          '<button class="btn btn-ghost btn-sm" id="opp-modal-detail-close">✕</button>' +
+        '</div>' +
+        '<div class="card-body" id="opp-detail-body">' +
+          '<div class="spinner-ring"></div>' +
+        '</div>' +
+        '<div class="card-body" style="border-top:1px solid #e5e7eb">' +
+          '<div class="card-title" style="font-size:13px;margin-bottom:8px">Mudar Status</div>' +
+          '<div class="form-row-2" style="align-items:flex-end">' +
+            '<div class="form-group" style="margin-bottom:0">' +
+              '<label class="form-label">Novo Status</label>' +
+              '<select class="form-input" id="opp-detail-status-sel">' + statusOptions + '</select>' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:0">' +
+              '<label class="form-label">Nota (opcional)</label>' +
+              '<input class="form-input" id="opp-detail-status-note" type="text" placeholder="Adicionar nota...">' +
+            '</div>' +
+          '</div>' +
+          '<div style="margin-top:10px;text-align:right">' +
+            '<button class="btn btn-primary btn-sm" id="opp-detail-status-confirm">Confirmar Mudança</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Filter helpers
+// ---------------------------------------------------------------------------
+function _getFilteredOpps() {
+  var result = [];
+  for (var i = 0; i < _opps.length; i++) {
+    var o = _opps[i];
+    if (_oppsFilter.status && o.status !== _oppsFilter.status) continue;
+    if (_oppsFilter.q) {
+      var haystack = (o.company_name || '').toLowerCase();
+      if (haystack.indexOf(_oppsFilter.q.toLowerCase()) === -1) continue;
+    }
+    result.push(o);
+  }
+  return result;
+}
+
+function _refreshTable() {
+  var wrap = document.getElementById('opp-table-wrap');
+  if (wrap) wrap.innerHTML = _buildTable(_getFilteredOpps());
+  _bindTableEvents();
+}
+
+// ---------------------------------------------------------------------------
+// Event binding
+// ---------------------------------------------------------------------------
+function _bindOpportunitiesEvents(area) {
+  // Pipeline summary card filter
+  var summaryCards = area.querySelectorAll('[data-filter-status]');
+  for (var c = 0; c < summaryCards.length; c++) {
+    (function (card) {
+      card.addEventListener('click', function () {
+        var st = card.getAttribute('data-filter-status');
+        _oppsFilter.status = (_oppsFilter.status === st) ? '' : st;
+        var sel = document.getElementById('opp-filter-status');
+        if (sel) sel.value = _oppsFilter.status;
+        _refreshTable();
+      });
+    })(summaryCards[c]);
+  }
+
+  // Filter status dropdown
+  var filterSel = document.getElementById('opp-filter-status');
+  if (filterSel) {
+    filterSel.addEventListener('change', function () {
+      _oppsFilter.status = this.value;
+      _refreshTable();
+    });
+  }
+
+  // Filter search input
+  var filterQ = document.getElementById('opp-filter-q');
+  if (filterQ) {
+    filterQ.addEventListener('input', function () {
+      _oppsFilter.q = this.value;
+      _refreshTable();
+    });
+  }
+
+  // New opportunity button
+  var btnNew = document.getElementById('opp-btn-new');
+  if (btnNew) {
+    btnNew.addEventListener('click', function () {
+      _openNewModal();
+    });
+  }
+
+  // New modal cancel
+  var btnCancel = document.getElementById('opp-modal-new-cancel');
+  if (btnCancel) {
+    btnCancel.addEventListener('click', function () {
+      _closeNewModal();
+    });
+  }
+
+  // New modal save
+  var btnSave = document.getElementById('opp-modal-new-save');
+  if (btnSave) {
+    btnSave.addEventListener('click', function () {
+      _submitNewOpp();
+    });
+  }
+
+  // Detail modal close
+  var btnDetailClose = document.getElementById('opp-modal-detail-close');
+  if (btnDetailClose) {
+    btnDetailClose.addEventListener('click', function () {
+      _closeDetailModal();
+    });
+  }
+
+  // Detail status confirm
+  var btnStatusConfirm = document.getElementById('opp-detail-status-confirm');
+  if (btnStatusConfirm) {
+    btnStatusConfirm.addEventListener('click', function () {
+      _submitStatusChange();
+    });
+  }
+
+  // Backdrop close for new modal
+  var newModal = document.getElementById('opp-modal-new');
+  if (newModal) {
+    newModal.addEventListener('click', function (e) {
+      if (e.target === newModal) _closeNewModal();
+    });
+  }
+
+  // Backdrop close for detail modal
+  var detailModal = document.getElementById('opp-modal-detail');
+  if (detailModal) {
+    detailModal.addEventListener('click', function (e) {
+      if (e.target === detailModal) _closeDetailModal();
+    });
+  }
+
+  _bindTableEvents();
+}
+
+function _bindTableEvents() {
+  var viewBtns = document.querySelectorAll('.opp-btn-view');
+  for (var i = 0; i < viewBtns.length; i++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        _openDetailModal(id);
+      });
+    })(viewBtns[i]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// New Opportunity Modal
+// ---------------------------------------------------------------------------
+var _currentDetailId = null;
+
+function _openNewModal() {
+  var modal = document.getElementById('opp-modal-new');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  // Clear fields
+  var fields = ['opp-new-representative', 'opp-new-product', 'opp-new-notes'];
+  for (var i = 0; i < fields.length; i++) {
+    var el = document.getElementById(fields[i]);
+    if (el) el.value = '';
+  }
+  var statusSel = document.getElementById('opp-new-status');
+  if (statusSel) statusSel.value = 'Lead';
+
+  // Load companies
+  var companySel = document.getElementById('opp-new-company');
+  if (companySel) {
+    companySel.innerHTML = '<option value="">Carregando...</option>';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          companySel.innerHTML = '<option value="">Erro ao carregar</option>';
+          return;
+        }
+        var opts = '<option value="">Selecione a empresa</option>';
+        var companies = res.data || [];
+        companies.sort(function (a, b) {
+          return (a.name || '').localeCompare(b.name || '');
+        });
+        for (var i = 0; i < companies.length; i++) {
+          opts += '<option value="' + escapeHtml(companies[i].id) + '" data-name="' + escapeHtml(companies[i].name || '') + '">' +
+            escapeHtml(companies[i].name || companies[i].id) + '</option>';
+        }
+        companySel.innerHTML = opts;
+      })
+      .withFailureHandler(function () {
+        companySel.innerHTML = '<option value="">Erro ao carregar</option>';
+      })
+      .Api_getCompanies();
+  }
+}
+
+function _closeNewModal() {
+  var modal = document.getElementById('opp-modal-new');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+}
+
+function _submitNewOpp() {
+  var companySel = document.getElementById('opp-new-company');
+  var company_id = companySel ? companySel.value : '';
+  var company_name = '';
+  if (companySel && companySel.selectedIndex >= 0) {
+    var opt = companySel.options[companySel.selectedIndex];
+    company_name = opt ? (opt.getAttribute('data-name') || opt.text || '') : '';
+  }
+
+  if (!company_id) {
+    showAlert('Selecione uma empresa.', 'warning');
+    return;
+  }
+
+  var data = {
+    company_id: company_id,
+    company_name: company_name,
+    representative: (document.getElementById('opp-new-representative') || {}).value || '',
+    product: (document.getElementById('opp-new-product') || {}).value || '',
+    status: (document.getElementById('opp-new-status') || {}).value || 'Lead',
+    notes: (document.getElementById('opp-new-notes') || {}).value || ''
+  };
+
+  var btnSave = document.getElementById('opp-modal-new-save');
+  if (btnSave) { btnSave.disabled = true; btnSave.textContent = 'Salvando...'; }
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'Criar Oportunidade'; }
+      if (!res || !res.ok) {
+        showAlert('Erro ao criar: ' + (res ? res.error : 'desconhecido'), 'error');
+        return;
+      }
+      showAlert('Oportunidade criada com sucesso!', 'success');
+      _closeNewModal();
+      // Reload list
+      google.script.run
+        .withSuccessHandler(function (r2) {
+          if (r2 && r2.ok) {
+            _opps = r2.data || [];
+            _refreshTable();
+          }
+        })
+        .Api_getOpportunities();
+    })
+    .withFailureHandler(function (err) {
+      if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'Criar Oportunidade'; }
+      showAlert('Erro: ' + err.message, 'error');
+    })
+    .Api_createOpportunity(data);
+}
+
+// ---------------------------------------------------------------------------
+// Detail Modal
+// ---------------------------------------------------------------------------
+function _openDetailModal(id) {
+  _currentDetailId = id;
+  var modal = document.getElementById('opp-modal-detail');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  var body = document.getElementById('opp-detail-body');
+  if (body) body.innerHTML = '<div class="spinner-ring"></div>';
+
+  var title = document.getElementById('opp-detail-title');
+  if (title) title.textContent = 'Carregando...';
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.ok) {
+        if (body) body.innerHTML = '<div class="empty-state">Erro ao carregar oportunidade.</div>';
+        return;
+      }
+      var opp = res.data;
+      if (title) title.textContent = escapeHtml(opp.company_name || opp.id || 'Oportunidade');
+
+      // Sync status select to current
+      var sel = document.getElementById('opp-detail-status-sel');
+      if (sel) sel.value = opp.status || '';
+
+      if (body) body.innerHTML = _buildDetailBody(opp);
+    })
+    .withFailureHandler(function (err) {
+      if (body) body.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(err.message) + '</div>';
+    })
+    .Api_getOpportunity(id);
+}
+
+function _buildDetailBody(opp) {
+  var badge = '<span class="badge ' + _oppBadgeClass(opp.status || '') + '">' + escapeHtml(opp.status || '—') + '</span>';
+
+  var rows = [
+    ['ID', opp.id],
+    ['Empresa', opp.company_name || opp.company_id],
+    ['Representante', opp.representative],
+    ['Tipo de Cliente', opp.client_type],
+    ['Produto', opp.product],
+    ['Temperatura Máx.', opp.max_temp],
+    ['Sensores XT', opp.qty_sensors_xt],
+    ['Sensores HT', opp.qty_sensors_ht],
+    ['Sensores Probe', opp.qty_sensors_probe],
+    ['Ponto de Instalação', opp.installation_point],
+    ['Detalhe Automação', opp.automation_detail],
+    ['Hydro View', opp.hydro_view],
+    ['Distância Infra', opp.infra_distance],
+    ['Notas Técnicas', opp.tech_notes],
+    ['Notas', opp.notes],
+    ['Data Formulário', formatDate(opp.form_date)],
+    ['Nº Proposta Legacy', opp.legacy_quote_number],
+    ['Fonte Importação', opp.import_source],
+    ['Criado em', formatDate(opp.created_at)]
+  ];
+
+  var html = '<div style="margin-bottom:12px">' + badge + '</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+  for (var i = 0; i < rows.length; i++) {
+    var val = rows[i][1];
+    if (!val && val !== 0) continue;
+    html +=
+      '<tr style="border-bottom:1px solid #f3f4f6">' +
+        '<td style="padding:6px 8px;color:#6b7280;width:40%;vertical-align:top">' + escapeHtml(rows[i][0]) + '</td>' +
+        '<td style="padding:6px 8px;vertical-align:top">' + escapeHtml(String(val)) + '</td>' +
+      '</tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+function _closeDetailModal() {
+  _currentDetailId = null;
+  var modal = document.getElementById('opp-modal-detail');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+
+  var note = document.getElementById('opp-detail-status-note');
+  if (note) note.value = '';
+}
+
+function _submitStatusChange() {
+  if (!_currentDetailId) return;
+
+  var sel = document.getElementById('opp-detail-status-sel');
+  var note = document.getElementById('opp-detail-status-note');
+  var newStatus = sel ? sel.value : '';
+  var noteVal = note ? note.value : '';
+
+  if (!newStatus) {
+    showAlert('Selecione um status.', 'warning');
+    return;
+  }
+
+  var btn = document.getElementById('opp-detail-status-confirm');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
+  var id = _currentDetailId;
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Mudança'; }
+      if (!res || !res.ok) {
+        showAlert('Erro: ' + (res ? res.error : 'desconhecido'), 'error');
+        return;
+      }
+      showAlert('Status atualizado com sucesso!', 'success');
+
+      // Update local cache
+      for (var i = 0; i < _opps.length; i++) {
+        if (_opps[i].id === id) { _opps[i].status = newStatus; break; }
+      }
+
+      // Refresh detail body with updated data
+      _openDetailModal(id);
+      _refreshTable();
+
+      if (note) note.value = '';
+    })
+    .withFailureHandler(function (err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Mudança'; }
+      showAlert('Erro: ' + err.message, 'error');
+    })
+    .Api_updateOpportunityStatus(id, newStatus, noteVal);
+}
+</script>

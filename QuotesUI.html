@@ -1,0 +1,541 @@
+<script>
+// ============================================================
+// QuotesUI.html — ALLEGRO Business System
+// Quotes module UI — ES5 only
+// ============================================================
+
+var _quotes = [];
+var _quotesFilter = { status: '', q: '' };
+
+function renderQuotes(area) {
+  area.innerHTML = _buildQuotesShell();
+  _loadQuoteStats();
+  _loadQuotes();
+  _bindQuotesEvents(area);
+}
+
+// ------------------------------------------------------------
+// Shell HTML
+// ------------------------------------------------------------
+function _buildQuotesShell() {
+  return [
+    '<div class="page-header">',
+    '  <div class="page-header-left">',
+    '    <div class="page-title">Propostas Comerciais</div>',
+    '    <div class="page-subtitle">Gestão de propostas e oportunidades</div>',
+    '  </div>',
+    '  <button class="btn btn-primary" id="btn-nova-proposta">Nova Proposta</button>',
+    '</div>',
+
+    // Stats row
+    '<div id="quotes-stats-row" style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">',
+    '  <div class="card" style="flex:1;min-width:160px;">',
+    '    <div class="card-body" style="padding:16px;">',
+    '      <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Total de Propostas</div>',
+    '      <div id="stat-total" style="font-size:24px;font-weight:700;color:#111827;">—</div>',
+    '    </div>',
+    '  </div>',
+    '  <div class="card" style="flex:1;min-width:160px;">',
+    '    <div class="card-body" style="padding:16px;">',
+    '      <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Valor Total (BRL)</div>',
+    '      <div id="stat-total-val" style="font-size:24px;font-weight:700;color:#111827;">—</div>',
+    '    </div>',
+    '  </div>',
+    '  <div class="card" style="flex:1;min-width:160px;">',
+    '    <div class="card-body" style="padding:16px;">',
+    '      <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Valor Fechado (BRL)</div>',
+    '      <div id="stat-closed-val" style="font-size:24px;font-weight:700;color:#22c55e;">—</div>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    // Filter bar
+    '<div class="card" style="margin-bottom:16px;">',
+    '  <div class="card-body" style="padding:12px 16px;">',
+    '    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">',
+    '      <select id="quotes-filter-status" class="form-input" style="min-width:200px;">',
+    '        <option value="">Todos os status</option>',
+    '        <option value="Elaborando proposta">Elaborando proposta</option>',
+    '        <option value="Proposta enviada">Proposta enviada</option>',
+    '        <option value="Proposta fechada">Proposta fechada</option>',
+    '        <option value="Proposta recusada">Proposta recusada</option>',
+    '        <option value="Cancelada">Cancelada</option>',
+    '        <option value="Não elaborada">Não elaborada</option>',
+    '      </select>',
+    '      <input id="quotes-filter-q" class="form-input" type="text" placeholder="Buscar por empresa ou nº proposta..." style="flex:1;min-width:220px;">',
+    '      <button class="btn btn-ghost btn-sm" id="btn-quotes-clear-filter">Limpar</button>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    // Table card
+    '<div class="card">',
+    '  <div class="card-header">',
+    '    <div class="card-title">Propostas</div>',
+    '  </div>',
+    '  <div class="card-body" style="padding:0;">',
+    '    <div id="quotes-table-wrap" class="table-wrap">',
+    '      <div style="text-align:center;padding:32px;"><div class="spinner-ring"></div></div>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    // Detail modal
+    '<div id="quote-detail-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">',
+    '  <div class="card" style="width:100%;max-width:640px;max-height:90vh;overflow-y:auto;margin:16px;">',
+    '    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">',
+    '      <div class="card-title" id="detail-modal-title">Detalhes da Proposta</div>',
+    '      <button class="btn btn-ghost btn-sm" id="btn-detail-close">Fechar</button>',
+    '    </div>',
+    '    <div class="card-body" id="detail-modal-body"></div>',
+    '    <div style="padding:16px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;">',
+    '      <select id="detail-status-select" class="form-input" style="min-width:200px;">',
+    '        <option value="Elaborando proposta">Elaborando proposta</option>',
+    '        <option value="Proposta enviada">Proposta enviada</option>',
+    '        <option value="Proposta fechada">Proposta fechada</option>',
+    '        <option value="Proposta recusada">Proposta recusada</option>',
+    '        <option value="Cancelada">Cancelada</option>',
+    '        <option value="Não elaborada">Não elaborada</option>',
+    '      </select>',
+    '      <button class="btn btn-primary btn-sm" id="btn-detail-save-status">Mudar Status</button>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+
+    // New quote modal
+    '<div id="quote-new-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">',
+    '  <div class="card" style="width:100%;max-width:560px;max-height:90vh;overflow-y:auto;margin:16px;">',
+    '    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">',
+    '      <div class="card-title">Nova Proposta</div>',
+    '      <button class="btn btn-ghost btn-sm" id="btn-new-close">Fechar</button>',
+    '    </div>',
+    '    <div class="card-body">',
+    '      <form id="form-new-quote">',
+    '        <div class="form-group">',
+    '          <label class="form-label">Empresa *</label>',
+    '          <select id="new-company-id" class="form-input" required>',
+    '            <option value="">Carregando empresas...</option>',
+    '          </select>',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label">Nome da Empresa (confirmação)</label>',
+    '          <input id="new-company-name" class="form-input" type="text" readonly style="background:#f9fafb;">',
+    '        </div>',
+    '        <div class="form-row-2">',
+    '          <div class="form-group">',
+    '            <label class="form-label">Representante</label>',
+    '            <input id="new-representative" class="form-input" type="text">',
+    '          </div>',
+    '          <div class="form-group">',
+    '            <label class="form-label">UF</label>',
+    '            <input id="new-state" class="form-input" type="text" maxlength="2" style="text-transform:uppercase;">',
+    '          </div>',
+    '        </div>',
+    '        <div class="form-row-2">',
+    '          <div class="form-group">',
+    '            <label class="form-label">Valor (BRL)</label>',
+    '            <input id="new-total-value" class="form-input" type="number" min="0" step="0.01">',
+    '          </div>',
+    '          <div class="form-group">',
+    '            <label class="form-label">Data de Fechamento</label>',
+    '            <input id="new-closing-date" class="form-input" type="date">',
+    '          </div>',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label">Status</label>',
+    '          <select id="new-status" class="form-input">',
+    '            <option value="Elaborando proposta">Elaborando proposta</option>',
+    '            <option value="Proposta enviada">Proposta enviada</option>',
+    '            <option value="Proposta fechada">Proposta fechada</option>',
+    '            <option value="Proposta recusada">Proposta recusada</option>',
+    '            <option value="Cancelada">Cancelada</option>',
+    '            <option value="Não elaborada">Não elaborada</option>',
+    '          </select>',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label">Observações</label>',
+    '          <textarea id="new-notes" class="form-input" rows="3" style="resize:vertical;"></textarea>',
+    '        </div>',
+    '      </form>',
+    '    </div>',
+    '    <div style="padding:16px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;">',
+    '      <button class="btn btn-ghost" id="btn-new-cancel">Cancelar</button>',
+    '      <button class="btn btn-primary" id="btn-new-submit">Criar Proposta</button>',
+    '    </div>',
+    '  </div>',
+    '</div>'
+  ].join('\n');
+}
+
+// ------------------------------------------------------------
+// Event binding
+// ------------------------------------------------------------
+function _bindQuotesEvents(area) {
+  // Nova Proposta button
+  var btnNova = document.getElementById('btn-nova-proposta');
+  if (btnNova) btnNova.addEventListener('click', _openNewQuoteModal);
+
+  // Filter changes
+  var filterStatus = document.getElementById('quotes-filter-status');
+  var filterQ = document.getElementById('quotes-filter-q');
+  if (filterStatus) filterStatus.addEventListener('change', function() {
+    _quotesFilter.status = this.value;
+    _renderQuotesTable();
+  });
+  if (filterQ) filterQ.addEventListener('input', function() {
+    _quotesFilter.q = this.value.toLowerCase();
+    _renderQuotesTable();
+  });
+
+  var btnClear = document.getElementById('btn-quotes-clear-filter');
+  if (btnClear) btnClear.addEventListener('click', function() {
+    _quotesFilter = { status: '', q: '' };
+    if (filterStatus) filterStatus.value = '';
+    if (filterQ) filterQ.value = '';
+    _renderQuotesTable();
+  });
+
+  // Detail modal close
+  var btnDetailClose = document.getElementById('btn-detail-close');
+  if (btnDetailClose) btnDetailClose.addEventListener('click', _closeDetailModal);
+
+  // Detail modal save status
+  var btnSaveStatus = document.getElementById('btn-detail-save-status');
+  if (btnSaveStatus) btnSaveStatus.addEventListener('click', _saveDetailStatus);
+
+  // New modal close/cancel
+  var btnNewClose = document.getElementById('btn-new-close');
+  var btnNewCancel = document.getElementById('btn-new-cancel');
+  if (btnNewClose) btnNewClose.addEventListener('click', _closeNewModal);
+  if (btnNewCancel) btnNewCancel.addEventListener('click', _closeNewModal);
+
+  // New modal submit
+  var btnNewSubmit = document.getElementById('btn-new-submit');
+  if (btnNewSubmit) btnNewSubmit.addEventListener('click', _submitNewQuote);
+
+  // Company select auto-fill
+  var newCompanyId = document.getElementById('new-company-id');
+  if (newCompanyId) newCompanyId.addEventListener('change', _onNewCompanyChange);
+
+  // Close modals on backdrop click
+  var detailModal = document.getElementById('quote-detail-modal');
+  if (detailModal) detailModal.addEventListener('click', function(e) {
+    if (e.target === detailModal) _closeDetailModal();
+  });
+  var newModal = document.getElementById('quote-new-modal');
+  if (newModal) newModal.addEventListener('click', function(e) {
+    if (e.target === newModal) _closeNewModal();
+  });
+}
+
+// ------------------------------------------------------------
+// Data loading
+// ------------------------------------------------------------
+function _loadQuoteStats() {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) return;
+      var d = res.data;
+      var statTotal = document.getElementById('stat-total');
+      var statTotalVal = document.getElementById('stat-total-val');
+      var statClosedVal = document.getElementById('stat-closed-val');
+      if (statTotal) statTotal.textContent = d.total || 0;
+      if (statTotalVal) statTotalVal.textContent = formatBRL(d.totalValueBRL || 0);
+      if (statClosedVal) statClosedVal.textContent = formatBRL(d.closedValueBRL || 0);
+    })
+    .withFailureHandler(function() {})
+    .Api_getQuoteStats();
+}
+
+function _loadQuotes() {
+  var wrap = document.getElementById('quotes-table-wrap');
+  if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:32px;"><div class="spinner-ring"></div></div>';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        var w = document.getElementById('quotes-table-wrap');
+        if (w) w.innerHTML = '<div class="empty-state">Erro ao carregar propostas.</div>';
+        return;
+      }
+      _quotes = res.data || [];
+      _renderQuotesTable();
+    })
+    .withFailureHandler(function(err) {
+      var w = document.getElementById('quotes-table-wrap');
+      if (w) w.innerHTML = '<div class="empty-state">Falha ao carregar propostas.</div>';
+    })
+    .Api_getQuotes();
+}
+
+// ------------------------------------------------------------
+// Table rendering
+// ------------------------------------------------------------
+function _renderQuotesTable() {
+  var wrap = document.getElementById('quotes-table-wrap');
+  if (!wrap) return;
+
+  var filtered = _quotes.filter(function(q) {
+    var matchStatus = !_quotesFilter.status || q.status === _quotesFilter.status;
+    var matchQ = !_quotesFilter.q || (
+      (q.company_name || '').toLowerCase().indexOf(_quotesFilter.q) !== -1 ||
+      (q.id || '').toLowerCase().indexOf(_quotesFilter.q) !== -1 ||
+      (q.legacy_quote_number || '').toLowerCase().indexOf(_quotesFilter.q) !== -1
+    );
+    return matchStatus && matchQ;
+  });
+
+  if (filtered.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">Nenhuma proposta encontrada.</div>';
+    return;
+  }
+
+  var rows = filtered.map(function(q) {
+    return [
+      '<tr>',
+      '  <td style="font-size:13px;">' + escapeHtml(q.id || '') + (q.legacy_quote_number ? '<br><span style="color:#9ca3af;font-size:11px;">' + escapeHtml(q.legacy_quote_number) + '</span>' : '') + '</td>',
+      '  <td>' + escapeHtml(q.company_name || '') + '</td>',
+      '  <td>' + escapeHtml(q.representative || '') + '</td>',
+      '  <td style="white-space:nowrap;">' + formatBRL(q.total_value_brl) + '</td>',
+      '  <td>' + _statusBadge(q.status) + '</td>',
+      '  <td>' + formatDate(q.closing_date) + '</td>',
+      '  <td>' + escapeHtml(q.state || '') + '</td>',
+      '  <td><button class="btn btn-ghost btn-sm" data-quote-id="' + escapeHtml(q.id) + '">Ver</button></td>',
+      '</tr>'
+    ].join('');
+  }).join('');
+
+  wrap.innerHTML = [
+    '<table class="data-table">',
+    '  <thead>',
+    '    <tr>',
+    '      <th>Nº Proposta</th>',
+    '      <th>Empresa</th>',
+    '      <th>Representante</th>',
+    '      <th>Valor</th>',
+    '      <th>Status</th>',
+    '      <th>Data Fechamento</th>',
+    '      <th>UF</th>',
+    '      <th></th>',
+    '    </tr>',
+    '  </thead>',
+    '  <tbody>' + rows + '</tbody>',
+    '</table>'
+  ].join('');
+
+  // Bind "Ver" buttons
+  var btns = wrap.querySelectorAll('[data-quote-id]');
+  for (var i = 0; i < btns.length; i++) {
+    (function(btn) {
+      btn.addEventListener('click', function() {
+        _openDetailModal(btn.getAttribute('data-quote-id'));
+      });
+    })(btns[i]);
+  }
+}
+
+// ------------------------------------------------------------
+// Status badge helper
+// ------------------------------------------------------------
+function _statusBadge(status) {
+  var cls = 'badge-gray';
+  var s = status || '';
+  if (s === 'Elaborando proposta') cls = 'badge-yellow';
+  else if (s === 'Proposta enviada') cls = 'badge-blue';
+  else if (s === 'Proposta fechada') cls = 'badge-green';
+  else if (s === 'Proposta recusada') cls = 'badge-red';
+  return '<span class="badge ' + cls + '">' + escapeHtml(s || 'Sem status') + '</span>';
+}
+
+// ------------------------------------------------------------
+// Detail modal
+// ------------------------------------------------------------
+var _detailQuoteId = null;
+
+function _openDetailModal(quoteId) {
+  _detailQuoteId = quoteId;
+  var modal = document.getElementById('quote-detail-modal');
+  var body = document.getElementById('detail-modal-body');
+  var title = document.getElementById('detail-modal-title');
+  var statusSel = document.getElementById('detail-status-select');
+  if (!modal || !body) return;
+
+  // Find quote in local cache
+  var q = null;
+  for (var i = 0; i < _quotes.length; i++) {
+    if (_quotes[i].id === quoteId) { q = _quotes[i]; break; }
+  }
+  if (!q) return;
+
+  if (title) title.textContent = 'Proposta: ' + (q.id || '');
+  if (statusSel) statusSel.value = q.status || 'Elaborando proposta';
+
+  body.innerHTML = [
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">',
+    _detailField('ID', q.id),
+    _detailField('Nº Proposta (legado)', q.legacy_quote_number),
+    _detailField('Nº Final (legado)', q.legacy_quote_number_final),
+    _detailField('Ano', q.year),
+    _detailField('Empresa', q.company_name),
+    _detailField('ID Empresa', q.company_id),
+    _detailField('Oportunidade', q.opportunity_id),
+    _detailField('Representante', q.representative),
+    _detailField('Tipo de Cliente', q.client_type),
+    _detailField('Valor Total (BRL)', formatBRL(q.total_value_brl)),
+    _detailField('Status', q.status),
+    _detailField('Data Fechamento', formatDate(q.closing_date)),
+    _detailField('UF', q.state),
+    _detailField('Fonte de Importação', q.import_source),
+    _detailField('Criado em', formatDate(q.created_at)),
+    '</div>',
+    q.notes ? '<div style="margin-top:12px;"><div style="font-size:12px;color:#6b7280;font-weight:600;margin-bottom:4px;">Observações</div><div style="padding:10px;background:#f9fafb;border-radius:6px;font-size:13px;">' + escapeHtml(q.notes) + '</div></div>' : ''
+  ].join('');
+
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+}
+
+function _detailField(label, value) {
+  return '<div><div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">' +
+    escapeHtml(label) + '</div><div style="font-size:13px;color:#111827;">' +
+    escapeHtml(value || '—') + '</div></div>';
+}
+
+function _closeDetailModal() {
+  var modal = document.getElementById('quote-detail-modal');
+  if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+  _detailQuoteId = null;
+}
+
+function _saveDetailStatus() {
+  if (!_detailQuoteId) return;
+  var sel = document.getElementById('detail-status-select');
+  if (!sel) return;
+  var newStatus = sel.value;
+  var btn = document.getElementById('btn-detail-save-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Mudar Status'; }
+      if (!res || !res.ok) {
+        showAlert('Erro ao atualizar status: ' + (res && res.error ? res.error : 'desconhecido'), 'error');
+        return;
+      }
+      showAlert('Status atualizado com sucesso.', 'success');
+      // Update local cache
+      for (var i = 0; i < _quotes.length; i++) {
+        if (_quotes[i].id === _detailQuoteId) { _quotes[i].status = newStatus; break; }
+      }
+      _closeDetailModal();
+      _renderQuotesTable();
+      _loadQuoteStats();
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Mudar Status'; }
+      showAlert('Falha de comunicação ao atualizar status.', 'error');
+    })
+    .Api_updateQuoteStatus(_detailQuoteId, newStatus);
+}
+
+// ------------------------------------------------------------
+// New quote modal
+// ------------------------------------------------------------
+var _companiesCache = [];
+
+function _openNewQuoteModal() {
+  var modal = document.getElementById('quote-new-modal');
+  if (!modal) return;
+
+  // Reset form
+  var form = document.getElementById('form-new-quote');
+  if (form) form.reset();
+  var nameField = document.getElementById('new-company-name');
+  if (nameField) nameField.value = '';
+
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  _loadCompaniesForSelect();
+}
+
+function _closeNewModal() {
+  var modal = document.getElementById('quote-new-modal');
+  if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+}
+
+function _loadCompaniesForSelect() {
+  var sel = document.getElementById('new-company-id');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Carregando...</option>';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      _companiesCache = (res && res.ok && res.data) ? res.data : [];
+      var options = ['<option value="">Selecione uma empresa</option>'];
+      for (var i = 0; i < _companiesCache.length; i++) {
+        var c = _companiesCache[i];
+        options.push('<option value="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(c.name || c.company_name || '') + '">' + escapeHtml(c.name || c.company_name || c.id) + '</option>');
+      }
+      if (sel) sel.innerHTML = options.join('');
+    })
+    .withFailureHandler(function() {
+      if (sel) sel.innerHTML = '<option value="">Erro ao carregar empresas</option>';
+    })
+    .Api_getCompanies();
+}
+
+function _onNewCompanyChange() {
+  var sel = document.getElementById('new-company-id');
+  var nameField = document.getElementById('new-company-name');
+  if (!sel || !nameField) return;
+  var opt = sel.options[sel.selectedIndex];
+  nameField.value = opt ? (opt.getAttribute('data-name') || '') : '';
+}
+
+function _submitNewQuote() {
+  var companyId = (document.getElementById('new-company-id') || {}).value || '';
+  var companyName = (document.getElementById('new-company-name') || {}).value || '';
+  var representative = (document.getElementById('new-representative') || {}).value || '';
+  var state = (document.getElementById('new-state') || {}).value || '';
+  var totalValue = (document.getElementById('new-total-value') || {}).value || '';
+  var closingDate = (document.getElementById('new-closing-date') || {}).value || '';
+  var status = (document.getElementById('new-status') || {}).value || 'Elaborando proposta';
+  var notes = (document.getElementById('new-notes') || {}).value || '';
+
+  if (!companyId) { showAlert('Selecione uma empresa.', 'error'); return; }
+  if (!companyName) { showAlert('Nome da empresa não preenchido.', 'error'); return; }
+
+  var btn = document.getElementById('btn-new-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
+
+  var payload = {
+    company_id: companyId,
+    company_name: companyName,
+    representative: representative,
+    state: state.toUpperCase(),
+    total_value_brl: totalValue ? parseFloat(totalValue) : 0,
+    closing_date: closingDate,
+    status: status,
+    notes: notes
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Criar Proposta'; }
+      if (!res || !res.ok) {
+        showAlert('Erro ao criar proposta: ' + (res && res.error ? res.error : 'desconhecido'), 'error');
+        return;
+      }
+      showAlert('Proposta criada com sucesso! ID: ' + res.id, 'success');
+      _closeNewModal();
+      _loadQuotes();
+      _loadQuoteStats();
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Criar Proposta'; }
+      showAlert('Falha de comunicação ao criar proposta.', 'error');
+    })
+    .Api_createQuote(payload);
+}
+</script>

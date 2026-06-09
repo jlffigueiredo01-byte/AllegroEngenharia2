@@ -1,0 +1,386 @@
+<style>
+#help-panel { position:fixed; top:0; right:-420px; width:420px; height:100vh; background:#fff; z-index:8001; transition:right 0.3s ease; box-shadow:-4px 0 20px rgba(0,0,0,.15); overflow-y:auto; display:flex; flex-direction:column; }
+#help-panel.open { right:0; }
+#help-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.3); z-index:8000; display:none; }
+#help-backdrop.open { display:block; }
+.help-header { background:#1a56db; color:#fff; padding:20px 24px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.help-header h2 { font-size:16px; font-weight:600; margin:0; }
+.help-close { background:none; border:none; color:#fff; font-size:22px; cursor:pointer; padding:0; line-height:1; }
+.help-body { padding:24px; flex-grow:1; }
+.help-section { margin-bottom:20px; }
+.help-section-title { font-size:13px; font-weight:700; color:#1a56db; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+.help-section-text { font-size:13px; color:#374151; line-height:1.6; }
+.help-steps { list-style:none; padding:0; margin:0; }
+.help-steps li { font-size:13px; color:#374151; padding:4px 0 4px 20px; position:relative; line-height:1.5; }
+.help-steps li::before { content:counter(step); counter-increment:step; position:absolute; left:0; color:#1a56db; font-weight:700; }
+.help-steps { counter-reset:step; }
+.help-tip { background:#eff6ff; border-left:3px solid #1a56db; padding:10px 14px; border-radius:0 8px 8px 0; font-size:12px; color:#1e40af; margin-top:8px; }
+</style>
+
+<script>
+(function() {
+
+  var _helpContent = {
+    dashboard: {
+      title: 'Dashboard',
+      quickStart: 'Visão geral da operação comercial em tempo real.',
+      recursos: [
+        'Contadores de Oportunidades Ativas, Propostas, Empresas e Contatos',
+        'Pipeline de oportunidades por estágio',
+        'Atividade recente da equipe'
+      ],
+      tasks: [
+        {
+          label: 'Como usar',
+          steps: [
+            'Aguarde o carregamento automático dos dados.',
+            'Os números atualizam a cada acesso.'
+          ]
+        }
+      ],
+      tip: 'O dashboard é somente leitura. Para editar dados, use os módulos específicos na sidebar.'
+    },
+    companies: {
+      title: 'Empresas',
+      quickStart: 'Cadastre e gerencie sua carteira de empresas clientes e prospects.',
+      recursos: [
+        'Lista de empresas ativas com busca em tempo real',
+        'Cadastro de novas empresas',
+        'Edição de dados cadastrais',
+        'Desativação (não exclui, apenas inativa)'
+      ],
+      tasks: [
+        {
+          label: 'Criar empresa',
+          steps: [
+            'Clique "+ Nova Empresa".',
+            'Preencha Nome (obrigatório), Estado, Cidade, Tipo de cliente.',
+            'Clique Salvar.'
+          ]
+        },
+        {
+          label: 'Buscar',
+          steps: [
+            'Digite na barra de busca — filtra por nome, cidade ou estado em tempo real.'
+          ]
+        }
+      ],
+      tip: 'A busca funciona mesmo com acentos e letras maiúsculas/minúsculas.'
+    },
+    contacts: {
+      title: 'Contatos',
+      quickStart: 'Registre as pessoas-chave de cada empresa cliente.',
+      recursos: [
+        'Lista de contatos com nome da empresa',
+        'Criar contato vinculado a uma empresa',
+        'Busca por nome, email ou empresa'
+      ],
+      tasks: [
+        {
+          label: 'Criar contato',
+          steps: [
+            'Clique "+ Novo Contato".',
+            'Selecione a empresa no dropdown.',
+            'Preencha Nome, Telefone, Email, Cargo.',
+            'Clique Salvar.'
+          ]
+        }
+      ],
+      tip: 'Um contato sempre precisa estar vinculado a uma empresa. Crie a empresa primeiro se necessário.'
+    },
+    opportunities: {
+      title: 'Oportunidades',
+      quickStart: 'Acompanhe todo o ciclo de vendas dos sensores Hydronix.',
+      recursos: [
+        'Pipeline de Status: Lead → Elaborando proposta → Proposta enviada → Proposta fechada (ou recusada/cancelada)'
+      ],
+      tasks: [
+        {
+          label: 'Criar oportunidade',
+          steps: [
+            'Clique "+ Nova Oportunidade".',
+            'Selecione a empresa.',
+            'Preencha produto, representante, status.',
+            'Clique Salvar.'
+          ]
+        },
+        {
+          label: 'Avançar no funil',
+          steps: [
+            'Clique "Ver" na oportunidade.',
+            'Selecione o novo status no dropdown.',
+            'Clique "Mudar Status".'
+          ]
+        }
+      ],
+      tip: 'Cada mudança de status é registrada no histórico do Timeline.'
+    },
+    quotes: {
+      title: 'Propostas',
+      quickStart: 'Gerencie as propostas comerciais enviadas aos clientes.',
+      recursos: [
+        'Lista com valor total e por status',
+        'Filtro por status e busca por empresa/número',
+        'Acompanhamento de valor fechado (R$)'
+      ],
+      tasks: [
+        {
+          label: 'Criar proposta',
+          steps: [
+            'Clique "+ Nova Proposta".',
+            'Selecione a empresa.',
+            'Preencha valor, representante, status.',
+            'Clique Salvar.'
+          ]
+        }
+      ],
+      tip: 'O total de Propostas Fechadas aparece no painel de stats. Use isso para acompanhar o faturamento.'
+    },
+    expenses: {
+      title: 'Despesas',
+      quickStart: 'Lance despesas fotografando o cupom fiscal — a IA extrai os dados automaticamente.',
+      recursos: [
+        'Como funciona: 1) Foto do cupom → comprimida no navegador (~70% menor); 2) Enviada para Claude Haiku (IA); 3) IA extrai: data, estabelecimento, total, itens; 4) Você revisa e salva.',
+        'Custo estimado: R$ 0,01 por cupom analisado.'
+      ],
+      tasks: [
+        {
+          label: 'Lançar despesa com cupom',
+          steps: [
+            'Clique no botão de nova despesa.',
+            'Fotografe ou selecione a imagem do cupom fiscal.',
+            'Aguarde a extração automática pela IA.',
+            'Revise os campos extraídos (data, estabelecimento, total, itens).',
+            'Corrija eventuais erros e clique Salvar.'
+          ]
+        }
+      ],
+      tip: 'Use boa iluminação ao fotografar. Se a extração errar algum campo, você pode corrigir antes de salvar.'
+    },
+    actioncards: {
+      title: 'Action Cards',
+      quickStart: 'Board Kanban estilo Jira para tarefas e acompanhamentos internos.',
+      recursos: [
+        'Colunas: OPEN (azul) → IN_PROGRESS (amarelo) → FINISHED (verde) / CANCELLED (cinza)',
+        'Cards urgentes com borda vermelha e alerta por email'
+      ],
+      tasks: [
+        {
+          label: 'Criar card',
+          steps: [
+            'Clique "+ Novo Card".',
+            'Preencha título e mensagem.',
+            'Marque Urgente se necessário.',
+            'Vincule a uma proposta (opcional).',
+            'Clique Salvar.'
+          ]
+        },
+        {
+          label: 'Mover card',
+          steps: [
+            'Arraste o card para outra coluna OU clique "Ver" e mude o status.',
+            'Selecione o membro responsável.',
+            'Escreva uma nota.',
+            'Clique Confirmar.'
+          ]
+        }
+      ],
+      tip: 'Cards urgentes aparecem com borda vermelha. Um email de alerta é enviado ao criar cards urgentes.'
+    },
+    proposals: {
+      title: 'Propostas Técnicas',
+      quickStart: 'Gere propostas técnicas profissionais para os sensores Hydronix com geração automática de PDF.',
+      recursos: [
+        'Lista de propostas com status e valores totais',
+        'Wizard de 4 passos para criação guiada',
+        'Seleção de produtos da tabela de preços',
+        'Revisão do escopo técnico com IA',
+        'Geração de PDF pronto para impressão'
+      ],
+      passos: [
+        { title: 'Criar nova proposta', steps: [
+          'Clique "Gerar Nova Proposta"',
+          'Selecione tipo: Orgânico ou Concreto',
+          'Escolha o cliente e preencha local e responsável',
+          'Avance para selecionar os produtos'
+        ]},
+        { title: 'Adicionar produtos', steps: [
+          'Selecione o produto no dropdown',
+          'Defina a quantidade',
+          'O preço de venda já vem preenchido (editável)',
+          'Clique Adicionar para incluir na lista'
+        ]},
+        { title: 'Escrever o escopo', steps: [
+          'Descreva o escopo técnico da instalação',
+          'Clique "Revisar com IA" para sugestões',
+          'Aplique a versão melhorada se desejar'
+        ]},
+        { title: 'Gerar PDF', steps: [
+          'Revise condições de pagamento e prazos',
+          'Clique "Gerar e Imprimir"',
+          'O PDF abre em nova janela — use Ctrl+P para salvar'
+        ]}
+      ],
+      tip: 'O Dólar do dia é configurável em Configurações → Config do Sistema. Atualize-o regularmente para manter os preços corretos.'
+    },
+    config: {
+      title: 'Configurações',
+      quickStart: 'Administração do sistema — visível apenas para perfil GERAL.',
+      recursos: [
+        'Gestão de usuários (criar, ativar/desativar)',
+        'Configurações do sistema (valores editáveis)'
+      ],
+      tasks: [
+        {
+          label: 'Criar usuário',
+          steps: [
+            'Acesse a tab "Usuários".',
+            'Clique "+ Novo Usuário".',
+            'Preencha Nome, Email, Perfil (GERAL / VENDAS / TECNICO).',
+            'Clique Salvar.'
+          ]
+        },
+        {
+          label: 'Perfis de acesso',
+          steps: [
+            'GERAL = acesso total ao sistema.',
+            'VENDAS = acesso comercial.',
+            'TECNICO = acesso técnico.'
+          ]
+        }
+      ],
+      tip: 'Desativar um usuário impede o login mas mantém o histórico. Não há exclusão permanente.'
+    }
+  };
+
+  function _buildHelpHTML(section) {
+    var data = _helpContent[section];
+    if (!data) return '';
+
+    var html = '';
+
+    html += '<div class="help-section">';
+    html += '<div class="help-section-title">Início Rápido</div>';
+    html += '<div class="help-section-text">' + data.quickStart + '</div>';
+    html += '</div>';
+
+    if (data.recursos && data.recursos.length) {
+      html += '<div class="help-section">';
+      html += '<div class="help-section-title">Principais Recursos</div>';
+      html += '<ul class="help-steps">';
+      for (var r = 0; r < data.recursos.length; r++) {
+        html += '<li>' + data.recursos[r] + '</li>';
+      }
+      html += '</ul>';
+      html += '</div>';
+    }
+
+    if (data.tasks && data.tasks.length) {
+      for (var t = 0; t < data.tasks.length; t++) {
+        var task = data.tasks[t];
+        html += '<div class="help-section">';
+        html += '<div class="help-section-title">Passo a Passo — ' + task.label + '</div>';
+        html += '<ol class="help-steps">';
+        for (var s = 0; s < task.steps.length; s++) {
+          html += '<li>' + task.steps[s] + '</li>';
+        }
+        html += '</ol>';
+        html += '</div>';
+      }
+    }
+
+    if (data.tip) {
+      html += '<div class="help-tip">💡 ' + data.tip + '</div>';
+    }
+
+    return html;
+  }
+
+  function _ensurePanel() {
+    if (document.getElementById('help-panel')) return;
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'help-backdrop';
+    document.body.appendChild(backdrop);
+
+    var panel = document.createElement('div');
+    panel.id = 'help-panel';
+    panel.innerHTML =
+      '<div class="help-header">' +
+        '<h2 id="help-panel-title">❓ Ajuda</h2>' +
+        '<button class="help-close" id="help-close-btn" aria-label="Fechar ajuda">×</button>' +
+      '</div>' +
+      '<div class="help-body" id="help-panel-body"></div>';
+    document.body.appendChild(panel);
+
+    document.getElementById('help-close-btn').onclick = function() {
+      closeHelp();
+    };
+
+    backdrop.onclick = function() {
+      closeHelp();
+    };
+  }
+
+  function closeHelp() {
+    var panel = document.getElementById('help-panel');
+    var backdrop = document.getElementById('help-backdrop');
+    if (panel) panel.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  window.showHelp = function(section) {
+    _ensurePanel();
+
+    var data = _helpContent[section];
+    var title = data ? '❓ Ajuda — ' + data.title : '❓ Ajuda';
+    var body = _buildHelpHTML(section);
+
+    document.getElementById('help-panel-title').textContent = title;
+    document.getElementById('help-panel-body').innerHTML = body || '<p style="color:#6b7280;font-size:13px;">Nenhuma ajuda disponível para esta seção.</p>';
+
+    var panel = document.getElementById('help-panel');
+    var backdrop = document.getElementById('help-backdrop');
+    panel.classList.add('open');
+    backdrop.classList.add('open');
+  };
+
+  window.closeHelp = closeHelp;
+
+  function _wrapShowSection() {
+    if (typeof window.showSection !== 'function') {
+      setTimeout(_wrapShowSection, 200);
+      return;
+    }
+
+    var _origShowSection = window.showSection;
+
+    window.showSection = function(section) {
+      _origShowSection(section);
+
+      setTimeout(function() {
+        var header = document.querySelector('#section-content .page-header');
+        if (header && _helpContent[section]) {
+          var existing = document.getElementById('help-trigger-btn');
+          if (!existing) {
+            var btn = document.createElement('button');
+            btn.id = 'help-trigger-btn';
+            btn.className = 'btn btn-ghost btn-sm';
+            btn.style.cssText = 'margin-left:auto;display:flex;align-items:center;gap:6px;';
+            btn.innerHTML = '❓ Ajuda';
+            btn.onclick = function() { showHelp(section); };
+            header.appendChild(btn);
+          }
+        }
+      }, 100);
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _wrapShowSection);
+  } else {
+    _wrapShowSection();
+  }
+
+})();
+</script>

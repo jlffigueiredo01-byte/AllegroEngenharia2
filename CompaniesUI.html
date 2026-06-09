@@ -1,0 +1,395 @@
+<script>
+// CompaniesUI.html — Companies module UI (ES5, no arrow functions)
+// Overrides renderCompanies(area) declared as placeholder in Scripts.html
+
+var _companies = [];
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+function renderCompanies(area) {
+  area.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<div class="page-title">Empresas</div>' +
+        '<div class="page-subtitle">Cadastro de empresas e organizações</div>' +
+      '</div>' +
+      '<button class="btn btn-primary" onclick="_openNewCompanyModal()">+ Nova Empresa</button>' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-body" style="padding:12px 16px">' +
+        '<input id="co-search" class="form-input" type="text" placeholder="Buscar por nome, cidade ou estado…" ' +
+               'oninput="_filterCompaniesTable()" style="max-width:360px">' +
+      '</div>' +
+    '</div>' +
+    '<div id="co-stats" class="card" style="margin-bottom:16px;display:none">' +
+      '<div class="card-body" style="padding:10px 16px;display:flex;gap:24px;font-size:13px;color:#555">' +
+        '<span id="co-stat-total"></span>' +
+        '<span id="co-stat-active"></span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-header"><div class="card-title">Lista de Empresas</div></div>' +
+      '<div class="card-body" id="co-table-wrap">' +
+        '<div style="text-align:center;padding:32px"><div class="spinner-ring"></div></div>' +
+      '</div>' +
+    '</div>' +
+    _companyDetailModalHtml() +
+    _newCompanyModalHtml();
+
+  _loadCompanies();
+}
+
+// ---------------------------------------------------------------------------
+// Data loading
+// ---------------------------------------------------------------------------
+
+function _loadCompanies() {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res.ok) { showAlert('Erro ao carregar empresas: ' + res.error, 'error'); return; }
+      _companies = res.data || [];
+      _renderCompaniesTable(_companies);
+      _updateStats();
+    })
+    .withFailureHandler(function(err) {
+      showAlert('Falha de comunicação: ' + err.message, 'error');
+    })
+    .Api_getCompanies();
+}
+
+function _updateStats() {
+  var statsEl = document.getElementById('co-stats');
+  if (!statsEl) return;
+  var total  = _companies.length;
+  var active = _companies.filter(function(c) {
+    return String(c.active).toUpperCase() === 'TRUE';
+  }).length;
+  document.getElementById('co-stat-total').textContent  = 'Total: ' + total;
+  document.getElementById('co-stat-active').textContent = 'Ativas: ' + active;
+  statsEl.style.display = '';
+}
+
+// ---------------------------------------------------------------------------
+// Table rendering
+// ---------------------------------------------------------------------------
+
+function _renderCompaniesTable(list) {
+  var wrap = document.getElementById('co-table-wrap');
+  if (!wrap) return;
+
+  if (!list || list.length === 0) {
+    wrap.innerHTML =
+      '<div class="empty-state">' +
+        '<div class="empty-icon">🏢</div>' +
+        '<div class="empty-title">Nenhuma empresa encontrada</div>' +
+        '<div class="empty-desc">Cadastre a primeira empresa clicando em "Nova Empresa".</div>' +
+      '</div>';
+    return;
+  }
+
+  var rows = '';
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    var isActive = String(c.active).toUpperCase() === 'TRUE';
+    var badge = isActive
+      ? '<span class="badge badge-green">Ativo</span>'
+      : '<span class="badge badge-red">Inativo</span>';
+    rows +=
+      '<tr>' +
+        '<td>' + escapeHtml(c.name || '') + '</td>' +
+        '<td>' + escapeHtml(c.city  || '') + '</td>' +
+        '<td>' + escapeHtml(c.state || '') + '</td>' +
+        '<td>' + escapeHtml(c.client_type || '') + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td>' +
+          '<button class="btn btn-ghost btn-sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Ver</button>' +
+        '</td>' +
+      '</tr>';
+  }
+
+  wrap.innerHTML =
+    '<div class="table-wrap">' +
+      '<table class="data-table">' +
+        '<thead><tr>' +
+          '<th>Nome</th><th>Cidade</th><th>Estado</th><th>Tipo</th><th>Status</th><th></th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>';
+}
+
+function _filterCompaniesTable() {
+  var input = document.getElementById('co-search');
+  if (!input) return;
+  var term = input.value.toUpperCase().trim();
+  if (!term) {
+    _renderCompaniesTable(_companies);
+    return;
+  }
+  var filtered = _companies.filter(function(c) {
+    var name  = String(c.name  || '').toUpperCase();
+    var city  = String(c.city  || '').toUpperCase();
+    var state = String(c.state || '').toUpperCase();
+    var norm  = String(c.normalized_name || '').toUpperCase();
+    return (
+      name.indexOf(term)  !== -1 ||
+      norm.indexOf(term)  !== -1 ||
+      city.indexOf(term)  !== -1 ||
+      state.indexOf(term) !== -1
+    );
+  });
+  _renderCompaniesTable(filtered);
+}
+
+// ---------------------------------------------------------------------------
+// Detail modal
+// ---------------------------------------------------------------------------
+
+function _companyDetailModalHtml() {
+  return (
+    '<div id="co-detail-overlay" class="hidden" ' +
+         'style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;" ' +
+         'onclick="_closeDetailModal(event)">' +
+      '<div style="background:#fff;border-radius:8px;width:100%;max-width:480px;padding:24px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,.18);" ' +
+           'onclick="event.stopPropagation()">' +
+        '<button onclick="_closeDetailModalDirect()" ' +
+                'style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>' +
+        '<div id="co-detail-content"></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function _openCompanyDetail(id) {
+  var company = null;
+  for (var i = 0; i < _companies.length; i++) {
+    if (String(_companies[i].id) === String(id)) { company = _companies[i]; break; }
+  }
+  if (!company) { showAlert('Empresa não encontrada', 'error'); return; }
+
+  document.getElementById('co-detail-content').innerHTML = _detailViewHtml(company);
+  document.getElementById('co-detail-overlay').classList.remove('hidden');
+}
+
+function _detailViewHtml(c) {
+  var isActive = String(c.active).toUpperCase() === 'TRUE';
+  var badge = isActive
+    ? '<span class="badge badge-green">Ativo</span>'
+    : '<span class="badge badge-red">Inativo</span>';
+  return (
+    '<h3 style="margin:0 0 16px">' + escapeHtml(c.name || '') + '</h3>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;font-size:14px">' +
+      '<div><strong>ID</strong><br>' + escapeHtml(c.id || '') + '</div>' +
+      '<div><strong>Status</strong><br>' + badge + '</div>' +
+      '<div><strong>Cidade</strong><br>' + escapeHtml(c.city  || '—') + '</div>' +
+      '<div><strong>Estado</strong><br>' + escapeHtml(c.state || '—') + '</div>' +
+      '<div><strong>Tipo</strong><br>'   + escapeHtml(c.client_type || '—') + '</div>' +
+      '<div><strong>Criado em</strong><br>' + formatDate(c.created_at || '') + '</div>' +
+    '</div>' +
+    '<div style="margin-top:20px;display:flex;gap:8px">' +
+      '<button class="btn btn-primary btn-sm" onclick="_openEditForm(\'' + escapeHtml(c.id) + '\')">Editar</button>' +
+      (isActive
+        ? '<button class="btn btn-ghost btn-sm" onclick="_confirmDeactivate(\'' + escapeHtml(c.id) + '\')">Desativar</button>'
+        : '') +
+    '</div>'
+  );
+}
+
+function _openEditForm(id) {
+  var company = null;
+  for (var i = 0; i < _companies.length; i++) {
+    if (String(_companies[i].id) === String(id)) { company = _companies[i]; break; }
+  }
+  if (!company) return;
+
+  document.getElementById('co-detail-content').innerHTML = _editFormHtml(company);
+}
+
+function _editFormHtml(c) {
+  return (
+    '<h3 style="margin:0 0 16px">Editar Empresa</h3>' +
+    '<div class="form-group">' +
+      '<label class="form-label">Nome *</label>' +
+      '<input id="edit-name" class="form-input" type="text" value="' + escapeHtml(c.name || '') + '">' +
+    '</div>' +
+    '<div class="form-row-2">' +
+      '<div class="form-group">' +
+        '<label class="form-label">Cidade</label>' +
+        '<input id="edit-city" class="form-input" type="text" value="' + escapeHtml(c.city || '') + '">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Estado</label>' +
+        '<input id="edit-state" class="form-input" type="text" maxlength="2" value="' + escapeHtml(c.state || '') + '">' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-group">' +
+      '<label class="form-label">Tipo</label>' +
+      '<select id="edit-client-type" class="form-input">' +
+        _clientTypeOptions(c.client_type) +
+      '</select>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:20px">' +
+      '<button class="btn btn-primary btn-sm" onclick="_submitEditCompany(\'' + escapeHtml(c.id) + '\')">Salvar</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Cancelar</button>' +
+    '</div>'
+  );
+}
+
+function _submitEditCompany(id) {
+  var name       = document.getElementById('edit-name').value.trim();
+  var city       = document.getElementById('edit-city').value.trim();
+  var state      = document.getElementById('edit-state').value.trim().toUpperCase();
+  var clientType = document.getElementById('edit-client-type').value;
+
+  if (!name) { showAlert('Nome é obrigatório', 'error'); return; }
+
+  setLoading(true);
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setLoading(false);
+      if (!res.ok) { showAlert('Erro ao atualizar: ' + res.error, 'error'); return; }
+      showAlert('Empresa atualizada com sucesso', 'success');
+      _closeDetailModalDirect();
+      _loadCompanies();
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      showAlert('Falha de comunicação: ' + err.message, 'error');
+    })
+    .Api_updateCompany(id, { name: name, city: city, state: state, client_type: clientType });
+}
+
+function _confirmDeactivate(id) {
+  if (!confirm('Desativar esta empresa? Esta ação pode ser revertida posteriormente.')) return;
+  setLoading(true);
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setLoading(false);
+      if (!res.ok) { showAlert('Erro ao desativar: ' + res.error, 'error'); return; }
+      showAlert('Empresa desativada', 'success');
+      _closeDetailModalDirect();
+      _loadCompanies();
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      showAlert('Falha de comunicação: ' + err.message, 'error');
+    })
+    .Api_deactivateCompany(id);
+}
+
+function _closeDetailModal(event) {
+  if (event.target.id === 'co-detail-overlay') _closeDetailModalDirect();
+}
+
+function _closeDetailModalDirect() {
+  var overlay = document.getElementById('co-detail-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// New Company modal
+// ---------------------------------------------------------------------------
+
+function _newCompanyModalHtml() {
+  return (
+    '<div id="co-new-overlay" class="hidden" ' +
+         'style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;" ' +
+         'onclick="_closeNewModal(event)">' +
+      '<div style="background:#fff;border-radius:8px;width:100%;max-width:480px;padding:24px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,.18);" ' +
+           'onclick="event.stopPropagation()">' +
+        '<button onclick="_closeNewModalDirect()" ' +
+                'style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>' +
+        '<h3 style="margin:0 0 16px">Nova Empresa</h3>' +
+        '<div class="form-group">' +
+          '<label class="form-label">Nome *</label>' +
+          '<input id="new-name" class="form-input" type="text" placeholder="Nome da empresa">' +
+        '</div>' +
+        '<div class="form-row-2">' +
+          '<div class="form-group">' +
+            '<label class="form-label">Cidade</label>' +
+            '<input id="new-city" class="form-input" type="text" placeholder="Cidade">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Estado</label>' +
+            '<input id="new-state" class="form-input" type="text" maxlength="2" placeholder="UF">' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label class="form-label">Tipo de Cliente</label>' +
+          '<select id="new-client-type" class="form-input">' +
+            _clientTypeOptions('') +
+          '</select>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:20px">' +
+          '<button class="btn btn-primary" onclick="_submitNewCompany()">Cadastrar</button>' +
+          '<button class="btn btn-ghost" onclick="_closeNewModalDirect()">Cancelar</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function _openNewCompanyModal() {
+  var overlay = document.getElementById('co-new-overlay');
+  if (!overlay) return;
+  // Reset fields
+  var fields = ['new-name', 'new-city', 'new-state'];
+  for (var i = 0; i < fields.length; i++) {
+    var el = document.getElementById(fields[i]);
+    if (el) el.value = '';
+  }
+  var sel = document.getElementById('new-client-type');
+  if (sel) sel.selectedIndex = 0;
+  overlay.classList.remove('hidden');
+}
+
+function _submitNewCompany() {
+  var name       = document.getElementById('new-name').value.trim();
+  var city       = document.getElementById('new-city').value.trim();
+  var state      = document.getElementById('new-state').value.trim().toUpperCase();
+  var clientType = document.getElementById('new-client-type').value;
+
+  if (!name) { showAlert('Nome é obrigatório', 'error'); return; }
+
+  setLoading(true);
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setLoading(false);
+      if (!res.ok) { showAlert('Erro ao cadastrar: ' + res.error, 'error'); return; }
+      showAlert('Empresa cadastrada com sucesso (ID: ' + res.id + ')', 'success');
+      _closeNewModalDirect();
+      _loadCompanies();
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      showAlert('Falha de comunicação: ' + err.message, 'error');
+    })
+    .Api_createCompany({ name: name, city: city, state: state, client_type: clientType });
+}
+
+function _closeNewModal(event) {
+  if (event.target.id === 'co-new-overlay') _closeNewModalDirect();
+}
+
+function _closeNewModalDirect() {
+  var overlay = document.getElementById('co-new-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function _clientTypeOptions(selected) {
+  var types = ['', 'Empresa', 'Órgão', 'Produtor', 'Cooperativa'];
+  var labels = ['— Selecione —', 'Empresa', 'Órgão', 'Produtor', 'Cooperativa'];
+  var html = '';
+  for (var i = 0; i < types.length; i++) {
+    var sel = (String(selected) === String(types[i])) ? ' selected' : '';
+    html += '<option value="' + escapeHtml(types[i]) + '"' + sel + '>' + escapeHtml(labels[i]) + '</option>';
+  }
+  return html;
+}
+</script>
