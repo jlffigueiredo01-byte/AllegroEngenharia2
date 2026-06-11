@@ -282,3 +282,17 @@ function Api_generateProposalHTML(proposalId) {
     return { ok: false, error: e.message };
   }
 }
+
+
+/**
+ * Fluxograma padrão (automático) de uma proposta — usado pelo editor.
+ * @param {string} proposalId
+ */
+function Api_propGetDefaultFlow(proposalId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    return { ok: true, data: propSvcDefaultFlow(proposalId) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}

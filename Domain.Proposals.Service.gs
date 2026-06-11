@@ -691,22 +691,23 @@ function propSvcGerarHTML(proposalId) {
       '<td style="text-align:right">' + _propFmtCurrency(totalValue) + '</td></tr>' +
       '</tbody></table>';
 
-    // Fluxograma da solução: caixas conforme o que a proposta contém
-    var temDisplay = false, temInterface = false;
-    for (var fx = 0; fx < productRows.length; fx++) {
-      var fc = String(productRows[fx].code || '');
-      if (fc.indexOf('HV') === 0 || fc.indexOf('HH') === 0 || fc.indexOf('PH') === 0) temDisplay = true;
-      if (fc.indexOf('SIM') === 0 || fc.indexOf('095') === 0 || fc.indexOf('097') === 0) temInterface = true;
+    // Fluxograma da solução: editável (flow_json) com padrão automático
+    var flowBoxes = null;
+    if (p.flow_json) {
+      try {
+        var parsedFlow = JSON.parse(p.flow_json);
+        if (parsedFlow && parsedFlow.length) flowBoxes = parsedFlow;
+      } catch (eFlow) { /* inválido: cai no automático */ }
     }
+    if (!flowBoxes) flowBoxes = _propBuildDefaultFlow(productRows);
+
     var farr = '<div class="farr">→</div>';
-    var flowHtml =
-      '<div class="flow">' +
-        '<div class="fbox"><b>Sensor(es) Hydronix</b><span>medição em fluxo, no processo</span></div>' + farr +
-        (temInterface ? '<div class="fbox"><b>Cabeamento / Interface</b><span>sinal digital blindado</span></div>' + farr : '') +
-        (temDisplay ? '<div class="fbox"><b>Hydro-View / Hydro-Hub</b><span>visualização e calibração</span></div>' + farr : '') +
-        '<div class="fbox"><b>CLP / Supervisório do cliente</b><span>integração 4–20 mA · RS485 · fieldbus</span></div>' + farr +
-        '<div class="fbox"><b>Relatórios e acesso remoto</b><span>Hydro-Com · histórico · suporte Allegro</span></div>' +
-      '</div>';
+    var flowParts = [];
+    for (var fb = 0; fb < flowBoxes.length; fb++) {
+      flowParts.push('<div class="fbox"><b>' + _propEsc(flowBoxes[fb].title || '') + '</b>' +
+        (flowBoxes[fb].sub ? '<span>' + _propEsc(flowBoxes[fb].sub) + '</span>' : '') + '</div>');
+    }
+    var flowHtml = flowParts.length ? '<div class="flow">' + flowParts.join(farr) + '</div>' : '';
 
     var scopeHtml = (p.scope_text ? _paras(p.scope_text) : '<p>—</p>') + flowHtml;
     var obsHtml   = p.observations ? '<p>' + _propEsc(p.observations).replace(/\n/g, '<br>') + '</p>' : '<p>—</p>';
@@ -1043,4 +1044,40 @@ function _propSyncOppStatus(oppId, novoStatus) {
   } catch (e) {
     Logger.log('_propSyncOppStatus: ' + e.message);
   }
+}
+
+
+/**
+ * Fluxograma padrão da solução, derivado dos itens da proposta.
+ * @param {Array} productRows  [{code, isService, ...}]
+ * @return {Array<{title:string, sub:string}>}
+ */
+function _propBuildDefaultFlow(productRows) {
+  var temDisplay = false, temInterface = false;
+  for (var i = 0; i < productRows.length; i++) {
+    var c = String(productRows[i].code || '');
+    if (c.indexOf('HV') === 0 || c.indexOf('HH') === 0 || c.indexOf('PH') === 0) temDisplay = true;
+    if (c.indexOf('SIM') === 0 || c.indexOf('095') === 0 || c.indexOf('097') === 0) temInterface = true;
+  }
+  var boxes = [{ title: 'Sensor(es) Hydronix', sub: 'medição em fluxo, no processo' }];
+  if (temInterface) boxes.push({ title: 'Cabeamento / Interface', sub: 'sinal digital blindado' });
+  if (temDisplay)   boxes.push({ title: 'Hydro-View / Hydro-Hub', sub: 'visualização e calibração' });
+  boxes.push({ title: 'CLP / Supervisório do cliente', sub: 'integração 4–20 mA · RS485 · fieldbus' });
+  boxes.push({ title: 'Relatórios e acesso remoto', sub: 'Hydro-Com · histórico · suporte Allegro' });
+  return boxes;
+}
+
+/**
+ * Fluxograma padrão de uma proposta (para o editor da UI).
+ * @param {string} proposalId
+ * @return {Array<{title, sub}>}
+ */
+function propSvcDefaultFlow(proposalId) {
+  var p = propRepoGetById(proposalId);
+  if (!p) throw new Error('Proposta não encontrada: ' + proposalId);
+  var items = [];
+  try { items = JSON.parse(p.items_json || '[]') || []; } catch (e) {}
+  var rows = [];
+  for (var i = 0; i < items.length; i++) rows.push({ code: items[i].code || '' });
+  return _propBuildDefaultFlow(rows);
 }

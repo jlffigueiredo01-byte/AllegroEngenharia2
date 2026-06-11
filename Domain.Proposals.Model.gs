@@ -73,6 +73,7 @@ var PROPOSAL_TRANSITIONS = {
  * initProposalsAddColumns() garante que só insere o que ainda não existe.
  */
 var PROPOSALS_NEW_COLS = [
+  'flow_json',      // fluxograma editável da solução [{title, sub}] — vazio = automático
   'opportunity_id', // FK — oportunidade de origem (CONCEITO_FLUXO.md)
   'revision_num',   // 'R0', 'R1', 'R2'…
   'parent_id',      // ID da proposta original (para revisões)

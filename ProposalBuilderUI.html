@@ -320,6 +320,7 @@ function _renderProposalsTable() {
       '  <td style="white-space:nowrap;">',
       '    <button class="btn btn-ghost btn-sm" style="margin-right:4px;" data-pb-view="' + escapeHtml(p.id) + '">Ver</button>',
       '    <button class="btn btn-ghost btn-sm" data-pb-print="' + escapeHtml(p.id) + '">🖨️</button>',
+      '    <button class="btn btn-ghost btn-sm" data-pb-flow="' + escapeHtml(p.id) + '" title="Editar fluxograma da solução">🧩</button>',
       '  </td>',
       '</tr>'
     ].join('');
@@ -344,6 +345,12 @@ function _renderProposalsTable() {
 
   // Bind "Ver" and print buttons
   var viewBtns  = wrap.querySelectorAll('[data-pb-view]');
+  var flowBtns = wrap.querySelectorAll('[data-pb-flow]');
+  for (var fb = 0; fb < flowBtns.length; fb++) {
+    flowBtns[fb].addEventListener('click', function () {
+      _pflOpen(this.getAttribute('data-pb-flow'));
+    });
+  }
   var printBtns = wrap.querySelectorAll('[data-pb-print]');
   var i;
   for (i = 0; i < viewBtns.length; i++) {
@@ -1442,4 +1449,150 @@ function _pbSaveProposal(andPrint) {
     })
     .Api_createProposal(payload);
 }
+
+/* ===========================================================================
+   EDITOR DE FLUXOGRAMA DA PROPOSTA (prefixo _pfl)
+   Caixas com título/subtítulo: criar, duplicar, excluir, reordenar.
+   Vazio = a proposta usa o fluxo automático derivado dos itens.
+   =========================================================================== */
+
+var _pflPropId = null;
+
+function _pflEnsureModal() {
+  if (document.getElementById('pfl-modal')) return;
+  var html =
+    '<div class="modal-backdrop hidden" id="pfl-modal" style="z-index:1150">' +
+      '<div class="modal" style="max-width:720px;width:95%;max-height:90vh;overflow:auto">' +
+        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title">🧩 Fluxograma da solução</div>' +
+          '<button class="btn btn-ghost btn-sm" id="pfl-close">✕</button>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<p style="font-size:12px;color:#64748b;margin:0 0 10px">As caixas aparecem na seção Escopo da proposta, ligadas por setas, na ordem abaixo. Deixe vazio e salve para voltar ao fluxo automático.</p>' +
+          '<div id="pfl-rows"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
+            '<button class="btn btn-ghost btn-sm" id="pfl-add">+ caixa</button>' +
+            '<button class="btn btn-ghost btn-sm" id="pfl-default">↺ Carregar padrão (dos itens)</button>' +
+            '<button class="btn btn-primary btn-sm" id="pfl-save" style="margin-left:auto">Salvar fluxograma</button>' +
+          '</div>' +
+          '<div id="pfl-preview" style="margin-top:14px"></div>' +
+        '</div></div>' +
+      '</div>' +
+    '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('pfl-close').addEventListener('click', _pflClose);
+  document.getElementById('pfl-add').addEventListener('click', function () { _pflAddRow('', ''); _pflPreview(); });
+  document.getElementById('pfl-default').addEventListener('click', _pflLoadDefault);
+  document.getElementById('pfl-save').addEventListener('click', _pflSave);
+  document.getElementById('pfl-modal').addEventListener('click', function (e) {
+    if (e.target === document.getElementById('pfl-modal')) _pflClose();
+  });
+}
+
+function _pflClose() {
+  var m = document.getElementById('pfl-modal');
+  if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+}
+
+function _pflOpen(proposalId) {
+  _pflPropId = proposalId;
+  _pflEnsureModal();
+  var m = document.getElementById('pfl-modal');
+  m.classList.remove('hidden'); m.style.display = 'flex';
+  document.getElementById('pfl-rows').innerHTML = '<div class="spinner-ring"></div>';
+  google.script.run.withSuccessHandler(function (r) {
+    var p = (r && r.ok && r.data) ? r.data : null;
+    var boxes = [];
+    if (p && p.flow_json) { try { boxes = JSON.parse(p.flow_json) || []; } catch (e) {} }
+    document.getElementById('pfl-rows').innerHTML = '';
+    if (boxes.length) {
+      for (var i = 0; i < boxes.length; i++) _pflAddRow(boxes[i].title || '', boxes[i].sub || '');
+      _pflPreview();
+    } else {
+      _pflLoadDefault();
+    }
+  }).withFailureHandler(function (e) {
+    showAlert('Erro ao carregar: ' + (e.message || e), 'error');
+  }).Api_getProposal(proposalId);
+}
+
+function _pflLoadDefault() {
+  document.getElementById('pfl-rows').innerHTML = '<div class="spinner-ring"></div>';
+  google.script.run.withSuccessHandler(function (r) {
+    document.getElementById('pfl-rows').innerHTML = '';
+    var boxes = (r && r.ok && r.data) ? r.data : [];
+    for (var i = 0; i < boxes.length; i++) _pflAddRow(boxes[i].title, boxes[i].sub);
+    _pflPreview();
+  }).Api_propGetDefaultFlow(_pflPropId);
+}
+
+function _pflAddRow(title, sub) {
+  var row = document.createElement('div');
+  row.className = 'pfl-row';
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+  row.innerHTML =
+    '<input class="form-input pfl-title" type="text" placeholder="título da caixa" value="' + escapeHtml(title || '') + '" style="flex:1.1">' +
+    '<input class="form-input pfl-sub" type="text" placeholder="subtítulo (opcional)" value="' + escapeHtml(sub || '') + '" style="flex:1.4">' +
+    '<button class="btn btn-ghost btn-sm pfl-up" title="subir">↑</button>' +
+    '<button class="btn btn-ghost btn-sm pfl-down" title="descer">↓</button>' +
+    '<button class="btn btn-ghost btn-sm pfl-dup" title="duplicar">⎘</button>' +
+    '<button class="btn btn-ghost btn-sm pfl-del" title="excluir">🗑</button>';
+  row.querySelector('.pfl-up').addEventListener('click', function () {
+    if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
+    _pflPreview();
+  });
+  row.querySelector('.pfl-down').addEventListener('click', function () {
+    if (row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
+    _pflPreview();
+  });
+  row.querySelector('.pfl-dup').addEventListener('click', function () {
+    _pflAddRow(row.querySelector('.pfl-title').value, row.querySelector('.pfl-sub').value);
+    row.parentNode.insertBefore(row.parentNode.lastElementChild, row.nextElementSibling);
+    _pflPreview();
+  });
+  row.querySelector('.pfl-del').addEventListener('click', function () {
+    row.parentNode.removeChild(row); _pflPreview();
+  });
+  row.querySelector('.pfl-title').addEventListener('input', _pflPreview);
+  row.querySelector('.pfl-sub').addEventListener('input', _pflPreview);
+  document.getElementById('pfl-rows').appendChild(row);
+}
+
+function _pflCollect() {
+  var boxes = [];
+  var rows = document.querySelectorAll('#pfl-rows .pfl-row');
+  for (var i = 0; i < rows.length; i++) {
+    var t = rows[i].querySelector('.pfl-title').value.trim();
+    if (t) boxes.push({ title: t, sub: rows[i].querySelector('.pfl-sub').value.trim() });
+  }
+  return boxes;
+}
+
+function _pflPreview() {
+  var boxes = _pflCollect();
+  var html = '';
+  for (var i = 0; i < boxes.length; i++) {
+    if (i) html += '<span style="color:#1a56db;font-weight:800;padding:0 4px">→</span>';
+    html += '<span style="display:inline-block;border:1.5px solid #1a56db;background:#f3f7ff;border-radius:8px;padding:4px 8px;font-size:11px;text-align:center;vertical-align:middle">' +
+      '<b style="color:#14335f">' + escapeHtml(boxes[i].title) + '</b>' +
+      (boxes[i].sub ? '<br><span style="color:#64748b;font-size:10px">' + escapeHtml(boxes[i].sub) + '</span>' : '') + '</span>';
+  }
+  document.getElementById('pfl-preview').innerHTML = html ? '<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Prévia:</div>' + html : '';
+}
+
+function _pflSave() {
+  var boxes = _pflCollect();
+  var btn = document.getElementById('pfl-save');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  google.script.run.withSuccessHandler(function (res) {
+    btn.disabled = false; btn.textContent = 'Salvar fluxograma';
+    if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+    showAlert(boxes.length ? 'Fluxograma salvo — sai na próxima impressão da proposta.' : 'Fluxograma limpo — a proposta volta ao fluxo automático.', 'success');
+    _pflClose();
+  }).withFailureHandler(function (e) {
+    btn.disabled = false; btn.textContent = 'Salvar fluxograma';
+    showAlert('Falha: ' + (e.message || e), 'error');
+  }).Api_updateProposal(_pflPropId, { flow_json: boxes.length ? JSON.stringify(boxes) : '' });
+}
+
 </script>
