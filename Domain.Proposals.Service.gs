@@ -434,6 +434,26 @@ function propSvcSubstituirAnterior(novaProposalId) {
  * @param {string} proposalId
  * @return {{ok:boolean, html?:string, error?:string}}
  */
+
+/**
+ * Converte uma imagem em data URI (base64), com cache de 6h.
+ * Fallback: retorna a própria URL se a busca falhar (ex.: sem rede).
+ */
+function _propInlineImg(url) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'IMG64_' + Utilities.base64EncodeWebSafe(url).slice(0, 80);
+    var hit = cache.get(key);
+    if (hit) return hit;
+    var blob = UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getBlob();
+    var uri = 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+    if (uri.length < 95000) cache.put(key, uri, 21600); // limite do CacheService
+    return uri;
+  } catch (e) {
+    return url;
+  }
+}
+
 function propSvcGerarHTML(proposalId) {
   try {
     if (!proposalId) throw new Error('proposalId é obrigatório.');
@@ -461,10 +481,12 @@ function propSvcGerarHTML(proposalId) {
     var PRICE_NOTE = 'No preço total estabelecido nesta oferta estão incluídos os impostos e taxas previstos na legislação vigente, tais como ICMS, IPI, INSS, PIS, COFINS, ISS e quaisquer outros que possam vir a incidir, assim como aquisição de materiais e todas as outras despesas e/ou encargos perante autoridades administrativas, mão-de-obra, encargos sociais, seguros, perdas eventuais, transportes, equipamentos, ferramentas, combustíveis, despesas administrativas, assistência técnica, lucros, enfim, todos os custos necessários para a perfeita execução, bem como também eventuais riscos e indenizações a qualquer título.';
 
     INTRO       = INTRO.replace(/\[CLIENT\]/g, clientName);
+    var INTRO_COMMIT = 'Mais do que atender a uma demanda técnica, esta proposta foi estruturada para agregar valor ao processo produtivo da ' + clientName + ', oferecendo confiabilidade, eficiência e resultados consistentes. A Allegro Engenharia e Desenvolvimento reafirma seu compromisso em apoiar a empresa na implementação desta solução, fortalecendo a parceria e contribuindo para a excelência de suas operações.';
     CALIBRATION = CALIBRATION.replace(/\[CLIENT\]/g, clientName);
 
-    var LOGO_ALLEGRO  = 'https://allegro.eng.br/wp-content/uploads/2024/08/logo_allegro.png';
-    var LOGO_HYDRONIX = 'https://allegro.eng.br/wp-content/uploads/2024/08/LOGO-HYDRONIX-1.png';
+    var LOGO_ALLEGRO  = _propInlineImg('https://allegro.eng.br/wp-content/uploads/2024/08/logo_allegro.png');
+    var LOGO_HYDRONIX = _propInlineImg('https://allegro.eng.br/wp-content/uploads/2024/08/LOGO-HYDRONIX-1.png');
+    var MAPA_CLIENTES = 'https://allegro.eng.br/wp-content/uploads/2024/08/mapa-clientes-allegro-1007x1024.png';
 
     var css = [
       '@page { size: A4; margin: 16mm 14mm; }',
@@ -521,7 +543,40 @@ function propSvcGerarHTML(proposalId) {
       '.contact { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }',
       '.contact b { color: #14335f; font-size: 11pt; }',
       '.contact div { font-size: 9.5pt; color: #374151; }',
-      '.foot { margin-top: 26px; padding-top: 10px; border-top: 2px solid #1a56db; font-size: 8.5pt; color: #6b7280; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }'
+      '.foot { margin-top: 26px; padding-top: 10px; border-top: 2px solid #1a56db; font-size: 8.5pt; color: #6b7280; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }',
+      // capa
+      '.cover { min-height: 88vh; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; }',
+      '.cover .brand { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; }',
+      '.cover .brand img.lg { height: 56px; }',
+      '.cover .brand img.hx { height: 36px; }',
+      '.cover .mid { text-align: left; margin-top: 90px; }',
+      '.cover .kicker { color: #1a56db; font-weight: 700; letter-spacing: 2.5px; font-size: 10pt; text-transform: uppercase; }',
+      '.cover h1 { font-size: 30pt; color: #14335f; margin: 8px 0 4px; line-height: 1.15; }',
+      '.cover .for { font-size: 14pt; color: #374151; margin-top: 22px; }',
+      '.cover .for b { color: #14335f; font-size: 17pt; display: block; }',
+      '.cover .cv-meta { display: flex; gap: 28px; margin-top: 34px; }',
+      '.cover .cv-meta div b { display:block; font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }',
+      '.cover .cv-meta div span { font-size: 12pt; font-weight: 700; color: #111827; }',
+      '.cover .cv-foot { border-top: 3px solid #1a56db; padding-top: 10px; font-size: 8.5pt; color: #6b7280; }',
+      // sumário executivo
+      '.exec { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }',
+      '.exec .box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }',
+      '.exec .box.alert { background: #fff7ed; border-color: #fdba74; }',
+      '.exec .box h4 { margin: 0 0 6px; font-size: 9.5pt; text-transform: uppercase; letter-spacing: .8px; color: #14335f; }',
+      '.exec .box.alert h4 { color: #c2410c; }',
+      '.exec .box p, .exec .box li { font-size: 9.8pt; margin: 4px 0; }',
+      '.exec .box ul { margin: 2px 0 0 16px; padding: 0; }',
+      '.badges { display: flex; gap: 10px; margin: 12px 0 4px; }',
+      '.badge-i { flex: 1; background: #f3f7ff; border: 1px solid #dbe7ff; border-radius: 10px; padding: 10px 12px; text-align: center; font-size: 9pt; color: #14335f; font-weight: 600; }',
+      '.badge-i span { display: block; font-size: 14pt; margin-bottom: 2px; }',
+      // CTA / próximos passos
+      '.cta { background: #14335f; color: #fff; border-radius: 12px; padding: 16px 20px; margin: 12px 0; }',
+      '.cta h3 { margin: 0 0 8px; font-size: 12pt; letter-spacing: .5px; }',
+      '.cta ol { margin: 4px 0 8px 18px; padding: 0; }',
+      '.cta li { font-size: 10pt; line-height: 1.7; }',
+      '.cta .accept { background: #1a56db; border-radius: 8px; padding: 8px 12px; font-size: 10pt; font-weight: 600; }',
+      '.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 34px; }',
+      '.sign div { border-top: 1px solid #9ca3af; padding-top: 6px; font-size: 9pt; color: #374151; text-align: center; }'
     ].join('\n');
 
     // ── itens: separa equipamentos (com conteúdo) de linhas de serviço ──
@@ -540,6 +595,19 @@ function propSvcGerarHTML(proposalId) {
         qty: qty, unit_price: unitPrice, total: qty * unitPrice
       });
     }
+
+    var nSensores = 0;
+    var nomesEquip = [];
+    for (var es = 0; es < productRows.length; es++) {
+      if (!productRows[es].isService) {
+        nSensores += productRows[es].qty;
+        if (nomesEquip.indexOf(productRows[es].name) === -1) nomesEquip.push(productRows[es].name);
+      }
+    }
+    var execSolution = 'Fornecimento e instalação de ' +
+      (nSensores === 1 ? '1 equipamento Hydronix' : nSensores + ' equipamentos Hydronix') +
+      (nomesEquip.length ? ' (' + nomesEquip.slice(0, 3).join(', ') + ')' : '') +
+      ', integrados ao sistema de controle da planta, com comissionamento, calibração inicial e treinamento da equipe — entregues prontos para operar.';
 
     function _paras(text, cls) {
       return String(text || '').split('\n\n').map(function (par) {
@@ -621,12 +689,29 @@ function propSvcGerarHTML(proposalId) {
       '<div class="no-print" style="margin-bottom:16px">' +
       '<button onclick="window.print()" style="padding:9px 22px;background:#1a56db;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11pt;font-weight:600">🖨️ Imprimir / Salvar PDF</button>' +
       '</div>\n' +
+      // ───────── CAPA (primazia: a primeira impressão é o cliente, não nós)
+      '<div class="cover">' +
+        '<div class="brand">' +
+          '<img class="lg" src="' + LOGO_ALLEGRO + '" alt="Allegro Engenharia e Desenvolvimento">' +
+          '<div style="text-align:right"><img class="hx" src="' + LOGO_HYDRONIX + '" alt="Hydronix"><div style="font-size:8pt;color:#6b7280;letter-spacing:.5px">Authorized Reseller — Brasil</div></div>' +
+        '</div>' +
+        '<div class="mid">' +
+          '<div class="kicker">Proposta Técnica Comercial · ' + _propEsc(p.number) + '</div>' +
+          '<h1>Controle de umidade em tempo real,<br>direto no fluxo do seu processo</h1>' +
+          '<div class="for">Preparada para<b>' + _propEsc(clientName) + (p.location ? ' — ' + _propEsc(p.location) : '') + '</b></div>' +
+          '<div class="cv-meta">' +
+            '<div><b>Data</b><span>' + _propEsc(dateFormatted) + '</span></div>' +
+            '<div><b>Segmento</b><span>' + _propEsc(p.type) + '</span></div>' +
+            (p.validity_days ? '<div><b>Válida por</b><span>' + safeNumber(p.validity_days) + ' dias</span></div>' : '') +
+            (p.responsible ? '<div><b>A/C</b><span>' + _propEsc(p.responsible) + '</span></div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="cv-foot">Allegro Engenharia e Desenvolvimento · Distribuidor oficial Hydronix no Brasil · allegro.eng.br</div>' +
+      '</div>\n' +
       '<div class="hd">' +
         '<img class="logo" src="' + LOGO_ALLEGRO + '" alt="Allegro Engenharia e Desenvolvimento">' +
         '<div class="reseller"><img src="' + LOGO_HYDRONIX + '" alt="Hydronix"><span>Authorized Reseller — Brasil</span></div>' +
       '</div>\n' +
-      '<div class="title">Proposta Técnica Comercial</div>' +
-      '<div class="subtitle">Sistema de Medição de Umidade em Fluxo — Sensores Hydronix</div>\n' +
       '<div class="meta">' +
         '<div><b>Orçamento</b><span>' + _propEsc(p.number) + '</span></div>' +
         '<div><b>Data</b><span>' + _propEsc(dateFormatted) + '</span></div>' +
@@ -635,12 +720,31 @@ function propSvcGerarHTML(proposalId) {
         '<div><b>Local</b><span>' + _propEsc(p.location || '—') + '</span></div>' +
         '<div><b>A/C</b><span>' + _propEsc(p.responsible || '—') + '</span></div>' +
       '</div>\n' +
-      sec(1, 'Introdução') + _paras(INTRO) +
+      sec(1, 'Sumário Executivo') +
+      '<div class="exec">' +
+        '<div class="box alert"><h4>O custo invisível da umidade</h4>' +
+          '<p>Em grãos e rações, umidade fora do alvo cobra caro duas vezes: secar além do necessário consome energia e retira massa vendável; umidade alta gera risco de qualidade, reprocesso e penalidades comerciais. Sem medição contínua, esse custo não aparece em nenhuma fatura — fica diluído no rendimento e na conta de energia, todos os dias.</p></div>' +
+        '<div class="box"><h4>A solução proposta</h4>' +
+          '<p>' + _propEsc(execSolution) + '</p></div>' +
+        '<div class="box"><h4>O que muda na operação</h4><ul>' +
+          '<li>Desvio de umidade visível em tempo real (25 leituras/segundo) — correção no ato, não no laudo do dia seguinte;</li>' +
+          '<li>Padronização entre lotes e turnos, com histórico e relatórios exportáveis;</li>' +
+          '<li>Acesso remoto para leituras, calibração e suporte da Allegro sem mobilização.</li></ul></div>' +
+        '<div class="box"><h4>Investimento</h4>' +
+          '<p style="font-size:13pt;font-weight:800;color:#14335f;margin:2px 0">' + _propFmtCurrency(totalValue) + '</p>' +
+          '<p>Fornecimento completo: equipamentos, infraestrutura, instalação, start-up e treinamento — detalhado na seção 6.' + (p.validity_days ? ' Condições válidas por ' + safeNumber(p.validity_days) + ' dias.' : '') + '</p></div>' +
+      '</div>' +
+      '<div class="badges">' +
+        '<div class="badge-i"><span>🌍</span>Hydronix — referência mundial em medição de umidade por micro-ondas</div>' +
+        '<div class="badge-i"><span>🇧🇷</span>Allegro — distribuidor oficial, com instalações em todo o Brasil</div>' +
+        '<div class="badge-i"><span>🛡️</span>Garantia de 24 meses + suporte em português</div>' +
+      '</div>' +
+      _paras(INTRO_COMMIT) +
       sec(2, 'Descrição dos Produtos') + productsListHtml +
       sec(3, 'Escopo de Fornecimento') + scopeHtml +
       sec(4, 'Acompanhamento e Relatórios') + _paras(MONITORING) +
       sec(5, 'Calibração') + _paras(CALIBRATION) +
-      sec(6, 'Preços') + priceTableHtml + '<p class="price-note">' + _propEsc(PRICE_NOTE) + '</p>' +
+      sec(6, 'Investimento') + priceTableHtml + '<p class="price-note">' + _propEsc(PRICE_NOTE) + '</p>' +
       sec(7, 'Condições Comerciais') +
       '<div class="cond-grid">' +
         '<div class="cond"><b>Pagamento</b><span>' + _propEsc(p.payment_terms || '—') + '</span></div>' +
@@ -649,12 +753,25 @@ function propSvcGerarHTML(proposalId) {
       '</div>' +
       sec(8, 'Observações') + obsHtml +
       sec(9, 'Garantia') + '<p>' + _propEsc(WARRANTY) + '</p>' +
-      sec(10, 'Contatos') +
+      sec(10, 'Próximos Passos') +
+      '<div class="cta">' +
+        '<h3>Como avançamos a partir daqui</h3>' +
+        '<ol>' +
+          '<li><b>Aceite:</b> responda o e-mail desta proposta com "De acordo" (ou assine abaixo) — isso reserva equipamentos e agenda;</li>' +
+          '<li><b>Kick-off técnico:</b> em até 5 dias úteis alinhamos cronograma, pontos de instalação e responsabilidades;</li>' +
+          '<li><b>Instalação e start-up:</b> equipamentos entregues, instalados, calibrados e equipe treinada — operação assistida desde o primeiro dia.</li>' +
+        '</ol>' +
+        '<div class="accept">✔ Validade desta proposta: ' + (p.validity_days ? safeNumber(p.validity_days) + ' dias' : 'consultar') + ' — após o prazo, valores e prazos de entrega serão reconfirmados.</div>' +
+      '</div>' +
       '<div class="contact-grid">' +
         '<div class="contact"><b>Gema Fontana</b><div>Departamento Comercial</div>' +
         '<div>contato@allegro.eng.br · (45) 99946-0898</div></div>' +
         '<div class="contact"><b>Jonatan Miranda</b><div>Analista de Projetos</div>' +
         '<div>jonatan.miranda@allegro.eng.br · (41) 99155-5456</div></div>' +
+      '</div>' +
+      '<div class="sign">' +
+        '<div>Allegro Engenharia e Desenvolvimento<br>CNPJ / Responsável</div>' +
+        '<div>' + _propEsc(clientName) + '<br>De acordo — nome, cargo e data</div>' +
       '</div>' +
       '<div class="foot">' +
         '<span>Allegro Engenharia e Desenvolvimento — Rua Mal. Cândido Rondon, 3171 · Cancelli · Cascavel/PR · CEP 85811-080</span>' +
