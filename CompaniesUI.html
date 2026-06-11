@@ -189,6 +189,7 @@ function _detailViewHtml(c) {
       '<div><strong>Criado em</strong><br>' + formatDate(c.created_at || '') + '</div>' +
     '</div>' +
     '<div style="margin-top:20px;display:flex;gap:8px">' +
+      '<button class="btn btn-success btn-sm" onclick="_c360Open(\'' + escapeHtml(c.id) + '\')">🔎 Visão 360</button>' +
       '<button class="btn btn-primary btn-sm" onclick="_openEditForm(\'' + escapeHtml(c.id) + '\')">Editar</button>' +
       (isActive
         ? '<button class="btn btn-ghost btn-sm" onclick="_confirmDeactivate(\'' + escapeHtml(c.id) + '\')">Desativar</button>'
@@ -392,4 +393,75 @@ function _clientTypeOptions(selected) {
   }
   return html;
 }
+
+/* ===========================================================================
+   VISÃO 360 DA EMPRESA — tudo do cliente em um painel (prefixo _c360)
+   =========================================================================== */
+
+function _c360Open(companyId) {
+  var box = document.getElementById('co-detail-content');
+  var company = null;
+  for (var i = 0; i < _companies.length; i++) {
+    if (String(_companies[i].id) === String(companyId)) { company = _companies[i]; break; }
+  }
+  box.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<h3 style="margin:0">🔎 ' + escapeHtml(company ? company.name : companyId) + ' — Visão 360</h3>' +
+      '<button class="btn btn-ghost btn-sm" onclick="_openCompanyDetail(\'' + escapeHtml(companyId) + '\')">← voltar</button>' +
+    '</div>' +
+    '<div id="c360-opps"  style="margin-top:14px"><div class="form-label" style="font-weight:700">🎯 Oportunidades</div><div class="spinner-ring"></div></div>' +
+    '<div id="c360-props" style="margin-top:14px"><div class="form-label" style="font-weight:700">📄 Propostas</div><div class="spinner-ring"></div></div>' +
+    '<div id="c360-projs" style="margin-top:14px"><div class="form-label" style="font-weight:700">🏗️ Projetos</div><div class="spinner-ring"></div></div>' +
+    '<div id="c360-base"  style="margin-top:14px"><div class="form-label" style="font-weight:700">⚙️ Base instalada</div><div class="spinner-ring"></div></div>' +
+    '<div id="c360-tkts"  style="margin-top:14px"><div class="form-label" style="font-weight:700">🛠️ Chamados</div><div class="spinner-ring"></div></div>';
+
+  var fill = function (elId, rows, fmt, empty) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    var head = el.querySelector('.form-label').outerHTML;
+    if (!rows.length) { el.innerHTML = head + '<p style="color:#94a3b8;font-size:12px;margin:4px 0 0">' + empty + '</p>'; return; }
+    var html = '';
+    for (var i = 0; i < rows.length && i < 8; i++) html +=
+      '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">' + fmt(rows[i]) + '</div>';
+    if (rows.length > 8) html += '<p style="color:#94a3b8;font-size:11px">+ ' + (rows.length - 8) + ' anteriores…</p>';
+    el.innerHTML = head + html;
+  };
+
+  google.script.run.withSuccessHandler(function (r) {
+    fill('c360-opps', (r && r.ok && r.data) ? r.data : [], function (o) {
+      return '<span>' + escapeHtml(o.id + ' · ' + (o.product || '')) + '</span><span class="badge badge-blue">' + escapeHtml(o.status || '') + '</span>';
+    }, 'Nenhuma oportunidade.');
+  }).Api_getOpportunitiesByCompany(companyId);
+
+  google.script.run.withSuccessHandler(function (r) {
+    var all = (r && r.ok && r.data) ? r.data : [];
+    var mine = all.filter(function (p) { return String(p.client_id) === String(companyId); });
+    fill('c360-props', mine, function (p) {
+      return '<span>' + escapeHtml((p.number || p.id) + ' · ' + formatBRL(Number(p.total_value || 0))) + '</span><span class="badge badge-blue">' + escapeHtml(p.status || '') + '</span>';
+    }, 'Nenhuma proposta.');
+  }).Api_getProposals({});
+
+  google.script.run.withSuccessHandler(function (r) {
+    var all = (r && r.ok && r.data) ? r.data : [];
+    var mine = all.filter(function (p) { return String(p.company_id) === String(companyId); });
+    fill('c360-projs', mine, function (p) {
+      return '<span>' + escapeHtml(p.id + ' · ' + (p.title || '')) + '</span><span class="badge badge-yellow">' + escapeHtml(p.status || '') + '</span>';
+    }, 'Nenhum projeto.');
+  }).Api_projGetAll({});
+
+  google.script.run.withSuccessHandler(function (r) {
+    fill('c360-base', (r && r.ok && r.data) ? r.data : [], function (b) {
+      return '<span>' + escapeHtml((b.serial || b.id) + ' · ' + (b.product_code || '')) + '</span><span style="color:#64748b">garantia: ' + formatDate(b.warranty_hw_end || b.warranty_end || '') + '</span>';
+    }, 'Nenhum equipamento registrado.');
+  }).Api_biGetByCompany(companyId);
+
+  google.script.run.withSuccessHandler(function (r) {
+    var all = (r && r.ok && r.data) ? r.data : [];
+    var mine = all.filter(function (t) { return String(t.company_id) === String(companyId); });
+    fill('c360-tkts', mine, function (t) {
+      return '<span>' + escapeHtml(t.id + ' · ' + (t.tipo || '')) + '</span><span class="badge badge-red">' + escapeHtml(t.status || '') + '</span>';
+    }, 'Nenhum chamado.');
+  }).Api_tktGetAll({});
+}
+
 </script>
