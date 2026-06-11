@@ -9,7 +9,8 @@ var OPPORTUNITIES_HEADERS = [
   'client_type', 'status', 'product', 'max_temp', 'qty_sensors_xt',
   'qty_sensors_ht', 'qty_sensors_probe', 'installation_point',
   'automation_detail', 'hydro_view', 'infra_distance', 'tech_notes',
-  'notes', 'form_date', 'legacy_quote_number', 'import_source', 'created_at'
+  'notes', 'form_date', 'legacy_quote_number', 'import_source', 'created_at',
+  'points_json', 'pricing_summary', 'updated_at'
 ];
 
 var OPPORTUNITY_STATUSES = [
@@ -28,7 +29,7 @@ var OPPORTUNITY_STATUSES = [
 // ---------------------------------------------------------------------------
 function Api_getOpportunities() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     var rows = sheetToObjects(OPPORTUNITIES_SHEET);
     rows.sort(function (a, b) {
       var da = a.created_at || '';
@@ -47,7 +48,7 @@ function Api_getOpportunities() {
 // ---------------------------------------------------------------------------
 function Api_getOpportunitiesByCompany(companyId) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!companyId) throw new Error('companyId is required');
     var rows = sheetToObjects(OPPORTUNITIES_SHEET);
     var filtered = rows.filter(function (r) {
@@ -70,7 +71,7 @@ function Api_getOpportunitiesByCompany(companyId) {
 // ---------------------------------------------------------------------------
 function Api_getOpportunity(id) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!id) throw new Error('id is required');
     var rows = sheetToObjects(OPPORTUNITIES_SHEET);
     var opp = null;
@@ -90,7 +91,7 @@ function Api_getOpportunity(id) {
 // ---------------------------------------------------------------------------
 function Api_createOpportunity(data) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
     if (!data) throw new Error('data is required');
 
     var id = 'OPP-' + getAndIncrementCounter('OPPORTUNITY_COUNTER');
@@ -138,7 +139,7 @@ function Api_createOpportunity(data) {
 // ---------------------------------------------------------------------------
 function Api_updateOpportunityStatus(id, status, note) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL']);
     if (!id) throw new Error('id is required');
     if (!status) throw new Error('status is required');
 
@@ -167,7 +168,7 @@ function Api_updateOpportunityStatus(id, status, note) {
 // ---------------------------------------------------------------------------
 function Api_updateOpportunity(id, data) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
     if (!id) throw new Error('id is required');
     if (!data) throw new Error('data is required');
 
@@ -191,12 +192,162 @@ function Api_updateOpportunity(id, data) {
 }
 
 // ---------------------------------------------------------------------------
+// Api_oppSavePoints
+// Salva o levantamento técnico de pontos na oportunidade.
+// ---------------------------------------------------------------------------
+/**
+ * Salva o levantamento técnico de pontos na oportunidade.
+ * @param {string} oppId - ID da oportunidade.
+ * @param {Array}  points - Array de { descricao, produto_code, comprimento_m, fd }.
+ * @returns {{ ok: boolean, error?: string }}
+ */
+function Api_oppSavePoints(oppId, points) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
+    if (!oppId) throw new Error('oppId é obrigatório.');
+    if (!Array.isArray(points)) throw new Error('points deve ser um array.');
+    for (var i = 0; i < points.length; i++) {
+      if (!points[i].comprimento_m && points[i].comprimento_m !== 0) {
+        throw new Error('Ponto ' + (i + 1) + ': comprimento_m é obrigatório.');
+      }
+    }
+    updateRowById(OPPORTUNITIES_SHEET, oppId, {
+      points_json: JSON.stringify(points),
+      updated_at: nowISO()
+    });
+    appendAuditLog('OPP_POINTS_SAVE', 'OPPORTUNITIES', oppId, points.length + ' pontos salvos');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Api_oppGetPoints
+// Retorna os pontos de levantamento da oportunidade.
+// ---------------------------------------------------------------------------
+/**
+ * Retorna os pontos de levantamento técnico da oportunidade.
+ * @param {string} oppId - ID da oportunidade.
+ * @returns {{ ok: boolean, data?: Array, error?: string }}
+ */
+function Api_oppGetPoints(oppId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    if (!oppId) throw new Error('oppId é obrigatório.');
+    var rows = sheetToObjects(OPPORTUNITIES_SHEET);
+    var opp = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].id === oppId) { opp = rows[i]; break; }
+    }
+    if (!opp) return { ok: false, error: 'Oportunidade não encontrada.' };
+    var points = [];
+    try { points = JSON.parse(opp.points_json || '[]'); } catch (e) {}
+    return { ok: true, data: points };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Api_oppGerarProposta
+// Gera proposta a partir de uma oportunidade via motor de precificação.
+// ---------------------------------------------------------------------------
+/**
+ * Gera uma proposta a partir de uma oportunidade.
+ * Chama prcCalcProposta (motor de precificação, F1) e cria a proposta via
+ * propSvcCreate (Domain.Proposals.Service.gs, F2).
+ * @param {string} oppId  - ID da oportunidade.
+ * @param {Object} extras - Parâmetros logísticos: { distancia_km, dias_campo, n_pessoas, n_viagens }.
+ * @returns {{ ok: boolean, data?: { proposal: Object, pricing: Object }, error?: string }}
+ */
+function Api_oppGerarProposta(oppId, extras) {
+  try {
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
+    extras = extras || {};
+
+    // --- Carrega a oportunidade ---
+    var rows = sheetToObjects(OPPORTUNITIES_SHEET);
+    var opp = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].id === oppId) { opp = rows[i]; break; }
+    }
+    if (!opp) throw new Error('Oportunidade não encontrada: ' + oppId);
+
+    // --- Carrega os pontos ---
+    var points = [];
+    try { points = JSON.parse(opp.points_json || '[]'); } catch (e) {}
+    if (!points.length) {
+      throw new Error('Oportunidade sem levantamento de pontos. Use Api_oppSavePoints primeiro.');
+    }
+
+    // --- Agrupa produtos para a lista de materiais ---
+    var productGroups = {};
+    for (var j = 0; j < points.length; j++) {
+      var code = points[j].produto_code;
+      if (!productGroups[code]) {
+        productGroups[code] = { code: code, qty: 0 };
+      }
+      productGroups[code].qty += 1;
+    }
+    var items = [];
+    for (var k in productGroups) {
+      if (Object.prototype.hasOwnProperty.call(productGroups, k)) {
+        items.push(productGroups[k]);
+      }
+    }
+
+    // --- Monta input para o motor de precificação ---
+    var pricingInput = {
+      items: items,
+      points: points.map(function (p) {
+        return { descricao: p.descricao, comprimento_m: p.comprimento_m, fd: p.fd || 1.0 };
+      }),
+      n_sensores: points.length,
+      distancia_km: extras.distancia_km || 0,
+      dias_campo: extras.dias_campo || null,
+      n_pessoas: extras.n_pessoas || 2,
+      n_viagens: extras.n_viagens || 1
+    };
+
+    // --- Chama o motor de precificação (F1) ---
+    var pricingResult = prcCalcProposta(pricingInput);
+
+    // --- Cria a proposta (F2) ---
+    var proposalData = {
+      title: (opp.name || opp.title || 'Proposta') + ' — ' + (opp.company_name || ''),
+      company_id: opp.company_id,
+      opportunity_id: oppId,
+      pricing_json: JSON.stringify(pricingResult),
+      total_estimado: pricingResult.total_proposta_brl,
+      status: 'PROPOSTA_GERADA',
+      created_by: user.id
+    };
+    var proposal = propSvcCreate(proposalData);
+
+    // --- Atualiza oportunidade com resumo de precificação ---
+    var summary = 'R$' + pricingResult.total_proposta_brl.toFixed(2) +
+      ' (margem: ' + (pricingResult.margem_global * 100).toFixed(1) + '%)';
+    updateRowById(OPPORTUNITIES_SHEET, oppId, {
+      pricing_summary: summary,
+      updated_at: nowISO()
+    });
+    appendAuditLog('OPP_GERAR_PROPOSTA', 'OPPORTUNITIES', oppId,
+      'Proposta ' + proposal.id + ' gerada. ' + summary);
+
+    return { ok: true, data: { proposal: proposal, pricing: pricingResult } };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Api_getOpportunityStats
 // Returns total count, count by status, and total active (non-closed/cancelled).
 // ---------------------------------------------------------------------------
 function Api_getOpportunityStats() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     var rows = sheetToObjects(OPPORTUNITIES_SHEET);
 
     var byStatus = {};

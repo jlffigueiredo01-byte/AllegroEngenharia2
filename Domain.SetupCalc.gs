@@ -79,7 +79,7 @@ function getSetupCalcValue(key) {
 
 function Api_getSetupCalc() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
     var rows = sheetToObjects(SETUP_CALC_SHEET);
     var data = {};
     for (var i = 0; i < rows.length; i++) {
@@ -100,7 +100,7 @@ function Api_getSetupCalc() {
 
 function Api_setSetupCalcValue(key, value) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
     if (!key) throw new Error('key is required');
     // Protect DOLAR_VENDA formula
     if (key === 'DOLAR_VENDA') throw new Error('DOLAR_VENDA usa fórmula automática. Edite diretamente na planilha.');
@@ -120,10 +120,14 @@ function Api_setSetupCalcValue(key, value) {
   }
 }
 
+function setupSvcGetDollarRate() {
+  return safeNumber(getSetupCalcValue('DOLAR_VENDA'));
+}
+
 function Api_getDollarRate() {
   try {
-    requireAuth();
-    var rate = getSetupCalcValue('DOLAR_VENDA');
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    var rate = setupSvcGetDollarRate();
     return { ok: true, rate: rate };
   } catch (e) {
     return { ok: false, error: e.message };

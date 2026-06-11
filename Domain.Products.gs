@@ -94,7 +94,7 @@ function _getConfigValue(key) {
 
 function Api_getProducts() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     var rows = sheetToObjects(PRODUCTS_SHEET);
     var data = rows.filter(function(r) { return String(r.active).toUpperCase() === 'TRUE'; });
     return {ok: true, data: data};
@@ -109,7 +109,7 @@ function Api_getProducts() {
 
 function Api_getProductsByCategory(cat) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!cat) return {ok: false, error: 'category is required'};
     var rows = sheetToObjects(PRODUCTS_SHEET);
     var data = rows.filter(function(r) {
@@ -128,7 +128,7 @@ function Api_getProductsByCategory(cat) {
 
 function Api_getProduct(code) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!code) return {ok: false, error: 'code is required'};
     var rows = sheetToObjects(PRODUCTS_SHEET);
     var found = null;
@@ -151,7 +151,7 @@ function Api_getProduct(code) {
 
 function Api_searchProducts(q) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!q) return {ok: false, error: 'search query is required'};
     var needle = String(q).toUpperCase();
     var rows = sheetToObjects(PRODUCTS_SHEET);
@@ -181,7 +181,7 @@ var PRICE_FIELDS = [
 
 function Api_updateProductPrice(code, fields) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
     if (!code)   return {ok: false, error: 'code is required'};
     if (!fields) return {ok: false, error: 'fields are required'};
 
@@ -207,23 +207,8 @@ function Api_updateProductPrice(code, fields) {
     }
 
     updateRowById(PRODUCTS_SHEET, target.id, updates);
+    appendAuditLog('PRICE_UPDATE', 'PRODUCTS', code, JSON.stringify(updates));
     return {ok: true};
-  } catch (e) {
-    return {ok: false, error: e.message};
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Api_getDollarRate — reads DOLLAR_RATE from CONFIG sheet
-// ---------------------------------------------------------------------------
-
-function Api_getDollarRate() {
-  try {
-    requireAuth();
-    var raw = _getConfigValue('DOLLAR_RATE');
-    var rate = safeNumber(raw);
-    if (!rate) return {ok: false, error: 'DOLLAR_RATE not configured'};
-    return {ok: true, rate: rate};
   } catch (e) {
     return {ok: false, error: e.message};
   }
@@ -235,7 +220,7 @@ function Api_getDollarRate() {
 
 function Api_setDollarRate(rate) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
     var n = safeNumber(rate);
     if (!n || n <= 0) return {ok: false, error: 'rate must be a positive number'};
     setConfigValue('DOLLAR_RATE', n);

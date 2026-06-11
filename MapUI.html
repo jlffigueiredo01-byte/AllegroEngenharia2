@@ -1,0 +1,190 @@
+<div id="map-view" class="module-view" style="display:none">
+  <div class="module-header">
+    <h2>&#x1F5FA;&#xFE0F; Mapa de Clientes</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="loadMap()" class="btn btn-primary btn-sm">Atualizar</button>
+      <button onclick="Api_companiesGeocodeBatch_run()" class="btn btn-secondary btn-sm" id="btn-geocode">Geocodificar Pendentes</button>
+    </div>
+  </div>
+
+  <div id="map-filters" style="margin:8px 0;display:flex;gap:16px;flex-wrap:wrap">
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="filt-ativo" checked onchange="renderMapList()"> Ativo
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="filt-prospect" checked onchange="renderMapList()"> Prospect
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="filt-inativo" onchange="renderMapList()"> Inativo
+    </label>
+    <span style="margin-left:auto;font-size:13px;color:#64748b" id="map-count-label"></span>
+  </div>
+
+  <div id="map-container" style="width:100%;height:500px;background:#f1f5f9;border-radius:8px;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center">
+    <p style="color:#94a3b8;font-size:14px">Clique em <strong>Atualizar</strong> para carregar o mapa.</p>
+  </div>
+
+  <div id="map-list" style="margin-top:16px"></div>
+</div>
+
+<script>
+'use strict';
+
+var _mapCompanies = [];
+
+/** Carrega empresas do backend e renderiza. */
+function loadMap() {
+  var container = document.getElementById('map-container');
+  container.innerHTML = '<div class="spinner-ring" style="margin:0 auto"></div>';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        _mapCompanies = res.data || [];
+        renderMapList();
+        renderMapEmbed();
+      } else {
+        showToast('Erro ao carregar empresas: ' + (res ? res.error : 'resposta inválida'));
+        container.innerHTML = '<p style="color:#ef4444;padding:20px">Erro ao carregar dados.</p>';
+      }
+    })
+    .withFailureHandler(function(err) {
+      showToast('Erro ao carregar mapa: ' + err);
+      container.innerHTML = '<p style="color:#ef4444;padding:20px">Falha na comunicação com o servidor.</p>';
+    })
+    .Api_getCompanies();
+}
+
+/** Filtra empresas conforme checkboxes. */
+function _mapGetFiltered() {
+  var filtAtivo    = document.getElementById('filt-ativo')    ? document.getElementById('filt-ativo').checked    : true;
+  var filtProspect = document.getElementById('filt-prospect') ? document.getElementById('filt-prospect').checked : true;
+  var filtInativo  = document.getElementById('filt-inativo')  ? document.getElementById('filt-inativo').checked  : false;
+
+  return _mapCompanies.filter(function(c) {
+    var tipo = String(c.client_type || '').toLowerCase();
+    var ativo = String(c.active || '').toUpperCase() === 'TRUE' || c.active === true;
+
+    if (!ativo && !filtInativo) return false;
+    if (ativo) {
+      if (tipo === 'prospect' && !filtProspect) return false;
+      if (tipo !== 'prospect' && !filtAtivo) return false;
+    }
+    return true;
+  });
+}
+
+/** Renderiza tabela de clientes geocodificados. */
+function renderMapList() {
+  var filtered = _mapGetFiltered();
+  var comGeo   = filtered.filter(function(c) { return c.lat && c.lng; });
+  var semGeo   = filtered.filter(function(c) { return !c.lat || !c.lng; });
+
+  var label = document.getElementById('map-count-label');
+  if (label) {
+    label.textContent = comGeo.length + ' geocodificados · ' + semGeo.length + ' pendentes';
+  }
+
+  if (!filtered.length) {
+    document.getElementById('map-list').innerHTML = '<p style="color:#64748b;font-size:13px">Nenhuma empresa encontrada com os filtros selecionados.</p>';
+    return;
+  }
+
+  var html = '<h4 style="font-size:13px;font-weight:600;color:#475569;margin:0 0 8px">Clientes geocodificados (' + comGeo.length + ')</h4>';
+  if (comGeo.length) {
+    html += '<table class="data-table"><thead><tr><th>Empresa</th><th>Cidade</th><th>Tipo</th><th>Endere&ccedil;o</th><th>Dist&acirc;ncia</th><th>Tempo</th></tr></thead><tbody>';
+    comGeo.forEach(function(c) {
+      html += '<tr>'
+        + '<td>' + _esc(c.name) + '</td>'
+        + '<td>' + _esc(c.city) + '</td>'
+        + '<td>' + _esc(c.client_type) + '</td>'
+        + '<td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _esc(c.address) + '</td>'
+        + '<td>' + (c.distancia_base_km ? Number(c.distancia_base_km).toFixed(0) + ' km' : '&mdash;') + '</td>'
+        + '<td>' + (c.tempo_viagem_min  ? c.tempo_viagem_min + ' min' : '&mdash;') + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  if (semGeo.length) {
+    html += '<h4 style="font-size:13px;font-weight:600;color:#94a3b8;margin:16px 0 8px">Sem geocodifica&ccedil;&atilde;o (' + semGeo.length + ')</h4>';
+    html += '<table class="data-table"><thead><tr><th>Empresa</th><th>Cidade</th><th>Tipo</th><th>Endere&ccedil;o cadastrado</th></tr></thead><tbody>';
+    semGeo.forEach(function(c) {
+      html += '<tr>'
+        + '<td>' + _esc(c.name) + '</td>'
+        + '<td>' + _esc(c.city) + '</td>'
+        + '<td>' + _esc(c.client_type) + '</td>'
+        + '<td style="color:#94a3b8">' + (_esc(c.address) || '<em>sem endere&ccedil;o</em>') + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  document.getElementById('map-list').innerHTML = html;
+}
+
+/** Renderiza o mapa (iframe estático ou mensagem instrutiva). */
+function renderMapEmbed() {
+  var filtered = _mapGetFiltered();
+  var pins = filtered.filter(function(c) { return c.lat && c.lng; }).slice(0, 20);
+  var container = document.getElementById('map-container');
+
+  if (!pins.length) {
+    container.innerHTML = '<div style="text-align:center;padding:32px">'
+      + '<p style="color:#94a3b8;font-size:14px;margin:0 0 8px">Nenhum cliente geocodificado encontrado.</p>'
+      + '<p style="color:#cbd5e1;font-size:12px;margin:0">Use o bot&atilde;o <strong>Geocodificar Pendentes</strong> para processar os endere&ccedil;os.</p>'
+      + '</div>';
+    return;
+  }
+
+  // Mapa visual via Google Maps Static API — requer chave configurada no backend
+  // Como Apps Script não expõe a API Key ao frontend com segurança,
+  // exibimos link direto para Google Maps com os marcadores
+  var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' +
+    encodeURIComponent(pins[0].lat + ',' + pins[0].lng);
+
+  var html = '<div style="padding:24px;text-align:center">'
+    + '<p style="color:#475569;font-size:14px;margin:0 0 12px">'
+    + '<strong>' + pins.length + '</strong> cliente(s) geocodificado(s). '
+    + 'Visualiza&ccedil;&atilde;o visual dispon&iacute;vel ap&oacute;s configurar a Maps Embed API Key.</p>'
+    + '<a href="' + mapsUrl + '" target="_blank" class="btn btn-primary btn-sm">'
+    + '&#x1F5FA;&#xFE0F; Abrir no Google Maps</a>'
+    + '<p style="color:#94a3b8;font-size:12px;margin:12px 0 0">'
+    + 'Lista detalhada abaixo &darr;</p>'
+    + '</div>';
+
+  container.innerHTML = html;
+}
+
+/** Chama Api_companiesGeocodeBatch no backend (apenas DIRETOR_TECNICO). */
+function Api_companiesGeocodeBatch_run() {
+  var btn = document.getElementById('btn-geocode');
+  if (btn) { btn.disabled = true; btn.textContent = 'Processando...'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Geocodificar Pendentes'; }
+      if (res && res.ok) {
+        showToast('Geocodificadas: ' + (res.data ? res.data.geocodificadas : 0) + ' empresa(s).');
+        loadMap();
+      } else {
+        showToast('Erro: ' + (res ? res.error : 'falha desconhecida'));
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Geocodificar Pendentes'; }
+      showToast('Erro: ' + err);
+    })
+    .Api_companiesGeocodeBatch();
+}
+
+/** Escapa HTML básico. */
+function _esc(v) {
+  if (!v) return '';
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>

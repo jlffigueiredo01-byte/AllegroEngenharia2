@@ -16,23 +16,43 @@ function acCreate(fields) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    var id  = _nextCardId();
+    var id  = (fields.id && String(fields.id).trim()) ? String(fields.id).trim() : _nextCardId();
     var now = nowISO();
-    appendRowToSheet(AC_SHEET, {
+
+    // Defaults para campos base
+    var row = {
       id:           id,
-      title:        fields.title,
+      title:        fields.title        || '',
       message:      fields.message      || '',
       quote_id:     fields.quote_id     || '',
       pos_venda_id: fields.pos_venda_id || '',
-      urgent:       fields.urgent ? 'TRUE' : 'FALSE',
-      status:       AC_STATUS.OPEN,
+      urgent:       (fields.urgent === true || fields.urgent === 'TRUE') ? 'TRUE' : 'FALSE',
+      status:       fields.status       || AC_STATUS.ABERTO,
       assigned_to:  fields.assigned_to  || '',
-      created_by:   fields.created_by,
+      created_by:   fields.created_by   || '',
       created_at:   now,
       updated_at:   now,
-      last_member:  fields.created_by,
+      last_member:  fields.created_by   || '',
       last_note:    'Card criado'
-    }, AC_HEADERS);
+    };
+
+    // Merge de campos extras cujos nomes existam no cabeçalho REAL da aba
+    var sheet = ss().getSheetByName(AC_SHEET);
+    var realHeaders = sheet && sheet.getLastColumn() > 0
+      ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+      : AC_HEADERS;
+
+    var fieldKeys = Object.keys(fields);
+    for (var i = 0; i < fieldKeys.length; i++) {
+      var k = fieldKeys[i];
+      if (realHeaders.indexOf(k) !== -1 && !(k in row)) {
+        row[k] = fields[k];
+      } else if (realHeaders.indexOf(k) === -1 && !(k in row)) {
+        Logger.log('[acCreate] Campo ignorado (não existe na sheet): ' + k);
+      }
+    }
+
+    appendRowToSheet(AC_SHEET, row, realHeaders);
     return id;
   } finally {
     lock.releaseLock();
@@ -63,6 +83,42 @@ function acUpdateStatus(cardId, newStatus, member, note) {
       note:        note
     }, ACH_HEADERS);
     return { cardId: cardId, fromStatus: fromStatus, toStatus: newStatus };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Fecha um card gravando closed_by, closed_at e close_reason além do status.
+ * Usado pelo Workflow para autocomplete (§2.3 HOTFIX-01).
+ */
+function acCloseCard(cardId, closedBy, closeReason, member, note) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var card = acGetById(cardId);
+    if (!card) throw new Error('Card não encontrado: ' + cardId);
+    var now        = nowISO();
+    var fromStatus = card.status;
+    updateRowById(AC_SHEET, cardId, {
+      status:       AC_STATUS.CONCLUIDO,
+      updated_at:   now,
+      last_member:  member,
+      last_note:    note || 'Card fechado',
+      closed_by:    closedBy,
+      closed_at:    now,
+      close_reason: closeReason || ''
+    });
+    appendRowToSheet(ACH_SHEET, {
+      id:          _nextHistoryId(),
+      card_id:     cardId,
+      timestamp:   now,
+      from_status: fromStatus,
+      to_status:   AC_STATUS.CONCLUIDO,
+      member:      member,
+      note:        note || 'Card fechado'
+    }, ACH_HEADERS);
+    return { cardId: cardId, fromStatus: fromStatus, toStatus: AC_STATUS.CONCLUIDO };
   } finally {
     lock.releaseLock();
   }

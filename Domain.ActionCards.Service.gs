@@ -21,7 +21,7 @@ function _acSendUrgentEmail(card) {
   }
 }
 
-function svcCreateCard(data, user) {
+function acSvcCreateCard(data, user) {
   if (!data || !data.title || !data.title.trim()) throw new Error('Título é obrigatório.');
   var id = acCreate({
     title:        data.title.trim(),
@@ -42,7 +42,7 @@ function svcCreateCard(data, user) {
   return id;
 }
 
-function svcUpdateStatus(cardId, newStatus, member, note) {
+function acSvcUpdateStatus(cardId, newStatus, member, note) {
   if (!note || !note.trim()) throw new Error('Nota obrigatória ao mudar status.');
   if (!member)               throw new Error('Responsável obrigatório ao mudar status.');
   var card = acGetById(cardId);
@@ -60,7 +60,7 @@ function svcUpdateStatus(cardId, newStatus, member, note) {
   return result;
 }
 
-function svcEditCard(cardId, updates, member, note) {
+function acSvcEditCard(cardId, updates, member, note) {
   if (!member) throw new Error('Responsável obrigatório.');
   var allowed = ['title', 'message', 'quote_id', 'pos_venda_id', 'urgent', 'assigned_to'];
   var clean = {};
@@ -69,9 +69,9 @@ function svcEditCard(cardId, updates, member, note) {
   appendAuditLog('UPDATE', 'ACTION_CARD', cardId, 'Edição por ' + member);
 }
 
-function svcGetDashboardCards() {
+function acSvcGetDashboardCards() {
   return acGetAll()
-    .filter(function(c) { return c.status === 'OPEN' || c.status === 'IN_PROGRESS'; })
+    .filter(function(c) { return c.status === AC_STATUS.ABERTO || c.status === AC_STATUS.EM_ANDAMENTO; })
     .sort(function(a, b) { return String(b.updated_at).localeCompare(String(a.updated_at)); })
     .slice(0, 6);
 }

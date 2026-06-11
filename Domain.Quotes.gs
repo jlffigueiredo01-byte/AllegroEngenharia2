@@ -27,7 +27,7 @@ var QUOTE_STATUSES = [
 // ------------------------------------------------------------
 function Api_getQuotes() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     var rows = sheetToObjects(QUOTES_SHEET);
     rows.sort(function(a, b) {
       return (b.created_at || '').localeCompare(a.created_at || '');
@@ -43,7 +43,7 @@ function Api_getQuotes() {
 // ------------------------------------------------------------
 function Api_getQuotesByCompany(compId) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!compId) throw new Error('company_id is required');
     var rows = sheetToObjects(QUOTES_SHEET);
     var filtered = rows.filter(function(r) {
@@ -63,7 +63,7 @@ function Api_getQuotesByCompany(compId) {
 // ------------------------------------------------------------
 function Api_getQuote(id) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!id) throw new Error('id is required');
     var rows = sheetToObjects(QUOTES_SHEET);
     var quote = null;
@@ -85,7 +85,7 @@ function Api_getQuote(id) {
 // ------------------------------------------------------------
 function Api_createQuote(data) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
     if (!data) throw new Error('data is required');
     if (!data.company_id) throw new Error('company_id is required');
     if (!data.company_name) throw new Error('company_name is required');
@@ -131,7 +131,7 @@ function Api_createQuote(data) {
 // ------------------------------------------------------------
 function Api_updateQuoteStatus(id, status) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
     if (!id) throw new Error('id is required');
     if (!status) throw new Error('status is required');
     if (QUOTE_STATUSES.indexOf(status) === -1) {
@@ -153,7 +153,7 @@ function Api_updateQuoteStatus(id, status) {
 // ------------------------------------------------------------
 function Api_getQuoteStats() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
     var rows = sheetToObjects(QUOTES_SHEET);
 
     var byStatus = {};

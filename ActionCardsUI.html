@@ -10,17 +10,19 @@ var _acUsers = [];
 var _acDragId = null;
 
 var _AC_STATUS_LABELS = {
-  'OPEN':        'Aberto',
-  'IN_PROGRESS': 'Em andamento',
-  'FINISHED':    'Concluído',
-  'CANCELLED':   'Cancelado'
+  'ABERTO':        'Aberto',
+  'EM_ANDAMENTO':  'Em andamento',
+  'CONCLUIDO':     'Concluído',
+  'CANCELADO':     'Cancelado',
+  'SLA_ESTOURADO': 'SLA Estourado'
 };
 
 var _AC_TRANSITIONS = {
-  'OPEN':        ['IN_PROGRESS', 'CANCELLED'],
-  'IN_PROGRESS': ['OPEN', 'FINISHED', 'CANCELLED'],
-  'FINISHED':    [],
-  'CANCELLED':   []
+  'ABERTO':        ['EM_ANDAMENTO', 'CANCELADO'],
+  'EM_ANDAMENTO':  ['ABERTO', 'CONCLUIDO', 'CANCELADO'],
+  'CONCLUIDO':     [],
+  'CANCELADO':     [],
+  'SLA_ESTOURADO': ['EM_ANDAMENTO', 'CANCELADO']
 };
 
 /* ── Entrada principal ── */
@@ -72,7 +74,7 @@ function _renderWorkload() {
     var n = 0;
     for (var j = 0; j < _acCards.length; j++) {
       var c = _acCards[j];
-      if (c.assigned_to === u.id && (c.status === 'OPEN' || c.status === 'IN_PROGRESS')) n++;
+      if (c.assigned_to === u.id && (c.status === 'ABERTO' || c.status === 'EM_ANDAMENTO')) n++;
     }
     var bg    = n <= 2 ? '#dcfce7' : n <= 4 ? '#fef3c7' : '#fee2e2';
     var color = n <= 2 ? '#15803d' : n <= 4 ? '#b45309' : '#b91c1c';
@@ -91,14 +93,14 @@ function _renderKanban() {
   var open = [], inp = [], fin = [], can = [];
   for (var i = 0; i < _acCards.length; i++) {
     var c = _acCards[i];
-    if      (c.status === 'OPEN')        open.push(c);
-    else if (c.status === 'IN_PROGRESS') inp.push(c);
-    else if (c.status === 'FINISHED')    fin.push(c);
-    else if (c.status === 'CANCELLED')   can.push(c);
+    if      (c.status === 'ABERTO')       open.push(c);
+    else if (c.status === 'EM_ANDAMENTO') inp.push(c);
+    else if (c.status === 'CONCLUIDO')    fin.push(c);
+    else if (c.status === 'CANCELADO')    can.push(c);
   }
   el.innerHTML =
-    _acColumn('OPEN',        'Aberto',       open, '#1a56db', '#eff6ff') +
-    _acColumn('IN_PROGRESS', 'Em andamento', inp,  '#d97706', '#fffbeb') +
+    _acColumn('ABERTO',       'Aberto',       open, '#1a56db', '#eff6ff') +
+    _acColumn('EM_ANDAMENTO', 'Em andamento', inp,  '#d97706', '#fffbeb') +
     _acDoneColumn(fin, can);
   _acAttachDrop();
 }
@@ -124,8 +126,8 @@ function _acColumn(status, label, cards, border, headBg) {
 }
 
 function _acDoneColumn(fin, can) {
-  var finHtml = _acDoneSection('FINISHED', 'Concluído', fin, '#16a34a', '#f0fdf4', '#dcfce7', 'badge-green');
-  var canHtml = _acDoneSection('CANCELLED','Cancelado', can, '#dc2626', '#fef2f2', '#fee2e2', 'badge-red');
+  var finHtml = _acDoneSection('CONCLUIDO', 'Concluído', fin, '#16a34a', '#f0fdf4', '#dcfce7', 'badge-green');
+  var canHtml = _acDoneSection('CANCELADO', 'Cancelado', can, '#dc2626', '#fef2f2', '#fee2e2', 'badge-red');
   return '<div style="flex:1;min-width:200px;max-width:300px;display:flex;flex-direction:column;gap:12px;">' +
     finHtml + canHtml + '</div>';
 }
@@ -374,7 +376,7 @@ function _openDetailModal(cardId) {
   }
   if (!card) return;
   var sLabel  = _AC_STATUS_LABELS[card.status] || card.status;
-  var sBadge  = card.status === 'OPEN' ? 'badge-blue' : card.status === 'IN_PROGRESS' ? 'badge-yellow' : card.status === 'FINISHED' ? 'badge-green' : 'badge-red';
+  var sBadge  = card.status === 'ABERTO' ? 'badge-blue' : card.status === 'EM_ANDAMENTO' ? 'badge-yellow' : card.status === 'CONCLUIDO' ? 'badge-green' : 'badge-red';
   var assignee = '', creator = card.created_by || '';
   for (var j = 0; j < _acUsers.length; j++) {
     if (_acUsers[j].id === card.assigned_to) assignee = _acUsers[j].name;

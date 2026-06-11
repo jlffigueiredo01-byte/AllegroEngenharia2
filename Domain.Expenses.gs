@@ -6,6 +6,43 @@ function initExpensesSheet() {
   getOrCreateSheet(EXPENSES_SHEET, EXPENSES_COLS);
 }
 
+// ---------------------------------------------------------------------------
+// _expenseSvcCreate — helper interno para criação de despesa sem envelopamento Api
+// Usado por Domain.Frota.Service e outros domínios que precisam espelhar despesas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Cria uma entrada de despesa diretamente (sem envelope Api).
+ * Centraliza o acesso à sheet EXPENSES para uso interno entre domínios.
+ *
+ * @param {string} createdBy     - ID do usuário ou 'SYSTEM'.
+ * @param {string} date          - Data (YYYY-MM-DD).
+ * @param {string} estabelecimento - Nome do estabelecimento.
+ * @param {string} categoria     - Categoria da despesa.
+ * @param {number} total         - Valor total em R$.
+ * @param {string} [descricao]   - Descrição opcional.
+ * @returns {string} ID da despesa criada.
+ */
+function _expenseSvcCreate(createdBy, date, estabelecimento, categoria, total, descricao) {
+  var id  = 'EXP-' + getAndIncrementCounter('EXPENSE_COUNTER');
+  var now = nowISO();
+  appendRowToSheet(EXPENSES_SHEET, {
+    id:              id,
+    data:            date || '',
+    estabelecimento: estabelecimento || '',
+    categoria:       categoria || 'Outros',
+    total:           safeNumber(total),
+    descricao:       descricao || '',
+    itens_json:      '[]',
+    status:          'ATIVO',
+    criado_por:      createdBy || 'SYSTEM',
+    criado_em:       now,
+    atualizado_em:   now
+  }, EXPENSES_COLS);
+  appendAuditLog('CREATE', 'EXPENSE', id, estabelecimento + ' R$' + total);
+  return id;
+}
+
 /* ── Chamada Claude Haiku (imagem comprimida no cliente) ── */
 function _callClaudeOCR(imageBase64, mimeType) {
   var apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
@@ -55,7 +92,7 @@ function _callClaudeOCR(imageBase64, mimeType) {
 
 function Api_ocrReceipt(imageBase64, mimeType) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!imageBase64) throw new Error('Imagem não fornecida.');
     var data = _callClaudeOCR(imageBase64, mimeType || 'image/jpeg');
     return { ok: true, data: data };
@@ -66,7 +103,7 @@ function Api_ocrReceipt(imageBase64, mimeType) {
 
 function Api_saveExpense(data) {
   try {
-    var user = requireAuth();
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!data || !data.estabelecimento) throw new Error('Estabelecimento obrigatório.');
     if (!data.total || isNaN(data.total)) throw new Error('Valor total obrigatório.');
 
@@ -96,8 +133,12 @@ function Api_saveExpense(data) {
 
 function Api_getExpenses() {
   try {
-    requireAuth();
-    var rows = sheetToObjects(EXPENSES_SHEET).filter(function(r) { return r.status !== 'DELETED'; });
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    var allRows = sheetToObjects(EXPENSES_SHEET).filter(function(r) { return r.status !== 'DELETED'; });
+    // TECNICO vê somente as próprias despesas
+    var rows = (user.role === 'TECNICO')
+      ? allRows.filter(function(r) { return r.criado_por === user.id; })
+      : allRows;
     return { ok: true, data: rows };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -105,5 +146,10 @@ function Api_getExpenses() {
 }
 
 function Api_getExpenseCategories() {
-  return { ok: true, data: EXPENSE_CATEGORIES };
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    return { ok: true, data: EXPENSE_CATEGORIES };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }

@@ -25,7 +25,7 @@ var _CHATBOT_SYSTEM_PROMPT = 'Você é o assistente ALLEGRO, um assistente intel
  */
 function Api_chatMessage(message, context) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
 
     if (!message || typeof message !== 'string' || message.trim() === '') {
       return { ok: false, error: 'Mensagem não pode ser vazia.' };

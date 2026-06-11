@@ -1,12 +1,11 @@
 let _ss = null;
 
-const SPREADSHEET_ID = '1hT3VR09UvMM4CMM-15jiE0YBDZZi8-3-5CvMjd70SEM';
-
 function ss() {
   if (!_ss) {
     _ss = SpreadsheetApp.getActiveSpreadsheet();
     if (!_ss) {
-      const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || SPREADSHEET_ID;
+      const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+      if (!id) throw new Error('SPREADSHEET_ID não configurado nas Script Properties.');
       _ss = SpreadsheetApp.openById(id);
     }
   }

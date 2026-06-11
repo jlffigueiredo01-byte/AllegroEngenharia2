@@ -8,129 +8,109 @@
 /* ── Estado global ──────────────────────────────────────────── */
 var ALLEGRO = {
   currentUser: null,
-  activeSection: null,
-  users: []
+  activeSection: null
 };
 
 /* ── Inicialização ──────────────────────────────────────────── */
 window.onload = function () {
-  loadUsers();
+  initAuth();
 };
 
 /* ══════════════════════════════════════════════════════════════
-   LOGIN
+   AUTENTICAÇÃO AUTOMÁTICA POR E-MAIL
 ══════════════════════════════════════════════════════════════ */
 
 /**
- * Carrega usuários do backend e renderiza os cards de seleção.
+ * Inicia o fluxo de autenticação automática.
+ * Chama o backend para obter o usuário logado via Session.getActiveUser().
  */
-function loadUsers() {
+function initAuth() {
   google.script.run
-    .withSuccessHandler(function (users) {
-      ALLEGRO.users = users || [];
-      renderUserCards(ALLEGRO.users);
-    })
-    .withFailureHandler(function (err) {
-      var grid = document.getElementById('user-cards-grid');
-      grid.innerHTML = '';
-      showLoginError('Não foi possível carregar os usuários. Recarregue a página.');
-      console.error('loadUsers error:', err);
-    })
-    .Api_getUsers();
+    .withSuccessHandler(onAuthSuccess)
+    .withFailureHandler(onAuthError)
+    .Api_getCurrentUserInfo();
 }
 
 /**
- * Renderiza os cards de usuário na tela de login.
+ * Callback de sucesso da autenticação.
+ * @param {Object} result  Objeto retornado pelo backend.
+ *                         Esperado: { ok: true, data: userObject }
+ *                         ou { ok: false, error: 'NOT_AUTHORIZED', email: '...' }
  */
-function renderUserCards(users) {
-  var grid = document.getElementById('user-cards-grid');
-  grid.innerHTML = '';
-
-  if (!users || users.length === 0) {
-    grid.innerHTML =
-      '<div style="grid-column:1/-1;text-align:center;padding:32px 0;color:#64748b;font-size:13px;">' +
-      '  Nenhum usuário encontrado.' +
-      '</div>';
+function onAuthSuccess(result) {
+  if (!result) {
+    onAuthError({ message: 'Resposta inválida do servidor.' });
     return;
   }
 
-  users.forEach(function (u) {
-    var card = document.createElement('div');
-    card.className = 'user-card';
-    card.setAttribute('data-user-id', u.id);
-    card.setAttribute('tabindex', '0');
-    card.setAttribute('role', 'button');
-    card.setAttribute('aria-label', 'Entrar como ' + u.name);
-    card.onclick = function () { doLogin(u.id); };
-    card.onkeypress = function (e) { if (e.key === 'Enter' || e.key === ' ') doLogin(u.id); };
+  if (result.ok && result.data) {
+    ALLEGRO.currentUser = result.data;
+    enterApp(result.data);
+    return;
+  }
 
-    var initials = getInitials(u.name);
-    var roleBadge = getRoleBadge(u.role);
-    var roleLabel = u.role || 'Usuário';
-
-    card.innerHTML =
-      '<div class="user-card-avatar">' + initials + '</div>' +
-      '<div class="user-card-name">' + escapeHtml(u.name) + '</div>' +
-      '<div class="user-card-role">' + escapeHtml(roleLabel) + '</div>' +
-      '<span class="user-card-badge ' + roleBadge.cls + '">' + roleBadge.label + '</span>';
-
-    grid.appendChild(card);
-  });
+  /* Usuário autenticado no Google mas não cadastrado no sistema */
+  var email = result.email || '';
+  showAuthUnauthorized(email);
 }
 
 /**
- * Executa o login com o userId selecionado.
+ * Callback de falha da autenticação (erro de rede ou exceção no backend).
  */
-function doLogin(userId) {
-  if (!userId) {
-    showLoginError('Selecione um usuário para continuar.');
+function onAuthError(err) {
+  var msg = (err && err.message) ? err.message : 'Erro ao verificar acesso. Recarregue a página.';
+
+  /* Trata erros de "não autorizado" lançados como exceção pelo backend */
+  var lowerMsg = msg.toLowerCase();
+  if (lowerMsg.indexOf('não autorizado') !== -1 ||
+      lowerMsg.indexOf('nao autorizado') !== -1 ||
+      lowerMsg.indexOf('not authorized') !== -1 ||
+      lowerMsg.indexOf('não cadastrado') !== -1) {
+    showAuthUnauthorized('');
     return;
   }
 
-  hideLoginError();
+  showAuthGenericError(msg);
+}
 
-  // Marca o card como selecionado e desabilita todos
-  var allCards = document.querySelectorAll('.user-card');
-  allCards.forEach(function (c) {
-    c.classList.remove('selected');
-    c.style.pointerEvents = 'none';
-    c.style.opacity = '0.6';
-  });
-  var selectedCard = document.querySelector('[data-user-id="' + userId + '"]');
-  if (selectedCard) {
-    selectedCard.classList.add('selected', 'loading-in');
-    selectedCard.style.opacity = '1';
+/**
+ * Exibe a tela de acesso não autorizado.
+ * @param {string} email  E-mail do usuário sem cadastro (pode ser vazio).
+ */
+function showAuthUnauthorized(email) {
+  document.getElementById('auth-checking').classList.add('hidden');
+  document.getElementById('auth-error').classList.add('hidden');
+
+  var msgEl = document.getElementById('auth-unauth-msg');
+  if (msgEl) {
+    if (email) {
+      msgEl.innerHTML =
+        'O e-mail <strong>' + escapeHtml(email) + '</strong> ' +
+        'n&atilde;o est&aacute; cadastrado no SGA &mdash; Sistema de Gest&atilde;o Allegro.<br>' +
+        'Contate o administrador.';
+    } else {
+      msgEl.innerHTML =
+        'Seu usu&aacute;rio n&atilde;o est&aacute; cadastrado no SGA &mdash; Sistema de Gest&atilde;o Allegro.<br>' +
+        'Contate o administrador.';
+    }
   }
 
-  setLoading(true);
+  document.getElementById('auth-unauthorized').classList.remove('hidden');
+}
 
-  google.script.run
-    .withSuccessHandler(function (user) {
-      setLoading(false);
+/**
+ * Exibe mensagem de erro genérico na tela de login.
+ */
+function showAuthGenericError(msg) {
+  document.getElementById('auth-checking').classList.add('hidden');
+  document.getElementById('auth-unauthorized').classList.add('hidden');
 
-      if (!user) {
-        allCards.forEach(function (c) {
-          c.classList.remove('selected', 'loading-in');
-          c.style.pointerEvents = '';
-          c.style.opacity = '';
-        });
-        showLoginError('Usuário inválido ou inativo. Tente novamente.');
-        return;
-      }
-
-      ALLEGRO.currentUser = user;
-      enterApp(user);
-    })
-    .withFailureHandler(function (err) {
-      setLoading(false);
-      allCards.forEach(function (c) {
-        c.classList.remove('selected', 'loading-in');
-        c.style.pointerEvents = '';
-        c.style.opacity = '';
-      });
-      showLoginError(err.message || 'Erro ao realizar login. Tente novamente.');
-    })
-    .Api_loginUser(userId);
+  var errEl = document.getElementById('login-error');
+  if (errEl) {
+    errEl.textContent = msg;
+    errEl.classList.remove('hidden');
+  }
+  document.getElementById('auth-error').classList.remove('hidden');
 }
 
 /**
@@ -159,6 +139,35 @@ function enterApp(user) {
   // Mostra o app shell
   document.getElementById('app-shell').classList.remove('hidden');
 
+  // Carrega metadados do sistema (nome, sigla, env) via API
+  google.script.run
+    .withSuccessHandler(function(meta) {
+      if (!meta || !meta.ok) return;
+      var sn   = meta.system_name      || 'SGA';
+      var sfn  = meta.system_full_name || 'Sistema de Gestão Allegro';
+      // Atualiza título do documento
+      document.title = sn + ' — ' + sfn;
+      // Atualiza branding visível
+      var els = {
+        'sidebar-brand-name':    sn,
+        'sidebar-brand-tagline': sfn,
+        'topbar-title':          sn,
+        'login-title':           sn,
+        'login-subtitle':        sfn + ' · Allegro Engenharia'
+      };
+      Object.keys(els).forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = els[id];
+      });
+      // Banner DEV
+      if ((meta.env || '').toUpperCase() === 'DEV') {
+        var banner = document.getElementById('dev-banner');
+        if (banner) banner.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function() { /* falha silenciosa — defaults já estão no HTML */ })
+    .Api_getSystemMeta();
+
   // Navega para o dashboard por padrão
   showSection('dashboard');
 
@@ -166,7 +175,7 @@ function enterApp(user) {
 }
 
 /**
- * Realiza logout e retorna para a tela de login.
+ * Realiza logout e retorna para a tela de autenticação.
  */
 function doLogout() {
   setLoading(true);
@@ -180,19 +189,17 @@ function doLogout() {
       // Limpa área de conteúdo
       document.getElementById('section-content').innerHTML = '';
 
-      // Esconde app, mostra login
+      // Esconde app, exibe tela de login no estado "verificando"
       document.getElementById('app-shell').classList.add('hidden');
+      document.getElementById('auth-checking').classList.remove('hidden');
+      document.getElementById('auth-unauthorized').classList.add('hidden');
+      document.getElementById('auth-error').classList.add('hidden');
       document.getElementById('login-screen').classList.remove('hidden');
 
-      // Re-habilita cards
-      var allCards = document.querySelectorAll('.user-card');
-      allCards.forEach(function (c) {
-        c.classList.remove('selected', 'loading-in');
-        c.style.pointerEvents = '';
-        c.style.opacity = '';
-      });
-
       showAlert('Sessão encerrada com sucesso.', 'info');
+
+      // Re-autentica automaticamente
+      initAuth();
     })
     .withFailureHandler(function (err) {
       setLoading(false);
@@ -232,6 +239,7 @@ function showSection(section) {
     case 'quotes':        renderQuotes(area);        break;
     case 'expenses':      renderExpenses(area);      break;
     case 'actioncards':   renderActionCards(area);   break;
+    case 'map':           renderMap(area);            break;
     case 'config':        renderConfig(area);        break;
     default:
       area.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div>' +
@@ -373,6 +381,22 @@ function renderQuotes(area) {
   );
 }
 
+function renderMap(area) {
+  var mapView = document.getElementById('map-view');
+  if (!mapView) {
+    area.innerHTML =
+      '<div class="empty-state"><div class="empty-icon">🗺️</div>' +
+      '<div class="empty-title">Módulo de Mapa não carregado</div>' +
+      '<div class="empty-desc">Verifique se MapUI.html está incluído no Index.html.</div></div>';
+    return;
+  }
+  // Move o map-view para a área de conteúdo e torna visível
+  area.innerHTML = '';
+  mapView.style.display = '';
+  area.appendChild(mapView);
+  loadMap();
+}
+
 function renderConfig(area) {
   if (!ALLEGRO.currentUser) return;
   var isAdmin = ALLEGRO.currentUser.role === 'GERAL' || ALLEGRO.currentUser.role === 'ADMIN';
@@ -507,6 +531,11 @@ function showGlobalError(msg) {
   showAlert(typeof msg === 'object' ? (msg.message || 'Erro desconhecido') : msg, 'error', 7000);
 }
 
+/* Alias usado por módulos como MapUI */
+function showToast(msg, type) {
+  showAlert(msg, type || 'info');
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    LOADING GLOBAL
@@ -522,22 +551,6 @@ function setLoading(active) {
   else        { el.classList.add('hidden'); }
 }
 
-
-/* ══════════════════════════════════════════════════════════════
-   HELPERS DE LOGIN
-══════════════════════════════════════════════════════════════ */
-
-function showLoginError(msg) {
-  var el = document.getElementById('login-error');
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.remove('hidden');
-}
-
-function hideLoginError() {
-  var el = document.getElementById('login-error');
-  if (el) el.classList.add('hidden');
-}
 
 
 /* ══════════════════════════════════════════════════════════════

@@ -15,7 +15,7 @@ function onOpen() {
 function showSidebar() {
   const html = HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle('Allegro Business System')
+    .setTitle('SGA — Sistema de Gestão Allegro')
     .setWidth(420);
   SpreadsheetApp.getUi().showSidebar(html);
 }
@@ -27,14 +27,15 @@ function include(filename) {
 function doGet(e) {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle('Allegro Business System')
+    .setTitle('SGA — Sistema de Gestão Allegro')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function setupSheets() {
   initCoreSheets();
-  try { SpreadsheetApp.getUi().alert('Abas criadas com sucesso!'); } catch(e) { Logger.log('setupSheets ok'); }
+  initResiliencia();
+  try { SpreadsheetApp.getUi().alert('Abas e triggers de resiliência configurados!'); } catch(e) { Logger.log('setupSheets ok'); }
 }
 
 function menuRunFullImport() {

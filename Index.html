@@ -4,7 +4,7 @@
   <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ALLEGRO Business System</title>
+  <title>SGA — Sistema de Gestão Allegro</title>
   <?!= include('Styles'); ?>
 </head>
 <body>
@@ -25,7 +25,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- ═══════════════════════════════════════════════════════
-       TELA DE LOGIN
+       TELA DE CARREGAMENTO INICIAL (autenticação automática)
   ═══════════════════════════════════════════════════════ -->
   <div id="login-screen" class="login-screen">
     <div class="login-card">
@@ -33,27 +33,53 @@
         <div class="login-logo">
           <span class="logo-icon">⬡</span>
         </div>
-        <h1 class="login-title">ALLEGRO</h1>
-        <p class="login-subtitle">Business System · Allegro Engenharia</p>
+        <h1 class="login-title" id="login-title">SGA</h1>
+        <p class="login-subtitle" id="login-subtitle">Sistema de Gestão Allegro · Allegro Engenharia</p>
       </div>
 
-      <div class="login-body">
-        <p class="login-prompt">Selecione seu perfil para continuar</p>
-
-        <div id="user-cards-grid" class="user-cards-grid">
-          <!-- Cards de usuário gerados via JS -->
-          <div class="user-card-skeleton"></div>
-          <div class="user-card-skeleton"></div>
-          <div class="user-card-skeleton"></div>
+      <!-- Estado: verificando sessão -->
+      <div id="auth-checking" class="login-body">
+        <div style="text-align:center;padding:24px 0">
+          <div class="spinner-ring" style="margin:0 auto 16px"></div>
+          <p style="color:#64748b;font-size:14px;margin:0">Verificando acesso...</p>
         </div>
+      </div>
 
-        <div id="login-error" class="login-error hidden"></div>
+      <!-- Estado: acesso não autorizado -->
+      <div id="auth-unauthorized" class="login-body hidden">
+        <div style="text-align:center;padding:8px 0 24px">
+          <div style="
+            width:64px;height:64px;border-radius:50%;
+            background:#fee2e2;display:flex;align-items:center;
+            justify-content:center;margin:0 auto 16px;font-size:28px">
+            🔒
+          </div>
+          <h2 style="font-size:17px;font-weight:700;color:#991b1b;margin:0 0 8px">
+            Acesso não autorizado
+          </h2>
+          <p id="auth-unauth-msg" style="
+            font-size:13px;color:#64748b;margin:0;
+            line-height:1.6;padding:0 8px">
+          </p>
+        </div>
+      </div>
+
+      <!-- Estado: erro genérico -->
+      <div id="auth-error" class="login-body hidden">
+        <div id="login-error" class="login-error"></div>
       </div>
 
       <div class="login-footer">
         <span class="login-version">v2.0 · Hydronix Partner</span>
       </div>
     </div>
+  </div>
+
+  <!-- ── Banner DEV (oculto em PROD; exibido pelo JS quando ENV=DEV) ── -->
+  <div id="dev-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;
+    background:#fbbf24;color:#78350f;text-align:center;font-size:12px;font-weight:700;
+    padding:5px;letter-spacing:.04em;">
+    SGA — AMBIENTE DE TESTE
   </div>
 
   <!-- ═══════════════════════════════════════════════════════
@@ -68,8 +94,8 @@
           <span>⬡</span>
         </div>
         <div class="sidebar-brand-text">
-          <span class="sidebar-brand-name">ALLEGRO</span>
-          <span class="sidebar-brand-tagline">Business System</span>
+          <span class="sidebar-brand-name" id="sidebar-brand-name">SGA</span>
+          <span class="sidebar-brand-tagline" id="sidebar-brand-tagline">Sistema de Gestão Allegro</span>
         </div>
       </div>
 
@@ -105,6 +131,11 @@
 
         <div class="nav-divider"></div>
 
+        <a class="nav-item" data-section="map" onclick="showSection('map')">
+          <span class="nav-icon">🗺️</span>
+          <span class="nav-label">Mapa</span>
+        </a>
+
         <a class="nav-item nav-item-admin hidden" id="nav-config" data-section="config" onclick="showSection('config')">
           <span class="nav-icon">⚙️</span>
           <span class="nav-label">Configurações</span>
@@ -129,7 +160,7 @@
     <div class="topbar" id="topbar">
       <div class="topbar-brand">
         <span class="topbar-logo">⬡</span>
-        <span class="topbar-title">ALLEGRO</span>
+        <span class="topbar-title" id="topbar-title">SGA</span>
       </div>
       <div class="topbar-nav" id="topbar-nav">
         <button class="topbar-nav-btn" data-section="dashboard" onclick="showSection('dashboard')" title="Dashboard">◈</button>
@@ -139,6 +170,7 @@
         <button class="topbar-nav-btn" data-section="quotes" onclick="showSection('quotes')" title="Propostas">📄</button>
         <button class="topbar-nav-btn" data-section="expenses" onclick="showSection('expenses')" title="Despesas">💰</button>
         <button class="topbar-nav-btn" data-section="actioncards" onclick="showSection('actioncards')" title="Action Cards">🗂</button>
+        <button class="topbar-nav-btn" data-section="map" onclick="showSection('map')" title="Mapa">🗺️</button>
         <button class="topbar-nav-btn nav-item-admin hidden" id="topbar-config" data-section="config" onclick="showSection('config')" title="Configurações">⚙️</button>
       </div>
       <button class="topbar-logout" onclick="doLogout()" title="Sair">↪</button>
@@ -161,6 +193,7 @@
   <?!= include('QuotesUI'); ?>
   <?!= include('ConfigUI'); ?>
   <?!= include('ProposalBuilderUI'); ?>
+  <?!= include('MapUI'); ?>
   <?!= include('HelpSystem'); ?>
   <?!= include('ChatBotWidget'); ?>
 </body>

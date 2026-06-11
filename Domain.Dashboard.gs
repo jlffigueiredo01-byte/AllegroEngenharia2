@@ -10,7 +10,7 @@
  */
 function Api_getDashboardStats() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
 
     // Load all sheets
     var companies     = sheetToObjects('COMPANIES');
@@ -57,15 +57,15 @@ function Api_getDashboardStats() {
     });
 
     // --- Action Cards ---
-    var openStatuses       = ['OPEN', 'IN_PROGRESS'];
+    var openStatuses       = ['ABERTO', 'EM_ANDAMENTO'];
     var actionOpen         = 0;
     var actionInProgress   = 0;
     var actionUrgent       = 0;
 
     actionCards.forEach(function(r) {
-      var s = (r.status || '').toUpperCase();
-      if (s === 'OPEN')        actionOpen++;
-      if (s === 'IN_PROGRESS') actionInProgress++;
+      var s = r.status || '';
+      if (s === 'ABERTO')       actionOpen++;
+      if (s === 'EM_ANDAMENTO') actionInProgress++;
 
       var isUrgent = r.urgent === 'TRUE' || r.urgent === true;
       if (isUrgent && openStatuses.indexOf(s) !== -1) {

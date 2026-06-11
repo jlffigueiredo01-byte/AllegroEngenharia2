@@ -1,7 +1,7 @@
 // Domain.ConfigPanel — Configuration Panel API
-// Accessible only to GERAL / ADMIN roles
+// Accessible only to DIRETOR_TECNICO
 
-var ADMIN_ROLES = ['GERAL', 'ADMIN'];
+var ADMIN_ROLES = ['DIRETOR_TECNICO'];
 
 // ---------------------------------------------------------------------------
 // Users management (Config Panel variants — do NOT conflict with Domain.Users)

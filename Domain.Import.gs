@@ -307,16 +307,16 @@ function runFullImport() {
 // ── APIs (chamadas pelo frontend) ──────────────────────────────────────────
 
 function Api_runFullImport() {
-  requireRole(['GERAL']);
+  requireRole(['DIRETOR_TECNICO']);
   return runFullImport();
 }
 
 function Api_importFormulario() {
-  requireRole(['GERAL']);
+  requireRole(['DIRETOR_TECNICO']);
   return importFormulario();
 }
 
 function Api_importOrganizacaoPropostas() {
-  requireRole(['GERAL']);
+  requireRole(['DIRETOR_TECNICO']);
   return importOrganizacaoPropostas();
 }

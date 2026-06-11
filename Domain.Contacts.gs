@@ -60,7 +60,7 @@ function _getAllContacts_() {
  */
 function Api_getContacts() {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     var rows = _getAllContacts_();
     var companyMap = _buildCompanyMap_();
     var active = [];
@@ -82,7 +82,7 @@ function Api_getContacts() {
  */
 function Api_getContactsByCompany(companyId) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!companyId) throw new Error('companyId is required');
     var rows = _getAllContacts_();
     var companyMap = _buildCompanyMap_();
@@ -109,7 +109,7 @@ function Api_getContactsByCompany(companyId) {
  */
 function Api_getContact(id) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     if (!id) throw new Error('id is required');
     var rows = _getAllContacts_();
     var companyMap = _buildCompanyMap_();
@@ -131,7 +131,7 @@ function Api_getContact(id) {
  */
 function Api_createContact(data) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
     if (!data || !data.name) throw new Error('name is required');
 
     var id  = 'CNT-' + getAndIncrementCounter('CONTACT_COUNTER');
@@ -166,7 +166,7 @@ function Api_createContact(data) {
  */
 function Api_updateContact(id, data) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
     if (!id)   throw new Error('id is required');
     if (!data) throw new Error('data is required');
 
@@ -195,7 +195,7 @@ function Api_updateContact(id, data) {
  */
 function Api_deactivateContact(id) {
   try {
-    requireAuth();
+    requireRole(['DIRETOR_TECNICO']);
     if (!id) throw new Error('id is required');
 
     updateRowById(CONTACTS_SHEET, id, { active: 'FALSE' });
