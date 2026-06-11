@@ -7,7 +7,9 @@ var PRODUCTS_SHEET = 'PRODUCTS';
 var PRODUCTS_HEADERS = [
   'code', 'description', 'ncm', 'category',
   'table_price_usd', 'purchase_price_usd', 'purchase_price_brl',
-  'selling_price_usd', 'selling_price_brl', 'active'
+  'selling_price_usd', 'selling_price_brl', 'active',
+  'long_description', // descritivo comercial PT-BR que entra na proposta (editável)
+  'datasheet_url'     // link do folder/manual no hydronix.com (opcional)
 ];
 
 // ---------------------------------------------------------------------------
@@ -16,6 +18,8 @@ var PRODUCTS_HEADERS = [
 
 function initProductsSheet() {
   getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
+  _prodEnsureColumns();
+  seedProductDescriptions();
   var existing = sheetToObjects(PRODUCTS_SHEET);
   if (existing.length > 0) return; // already seeded
 
@@ -227,5 +231,55 @@ function Api_setDollarRate(rate) {
     return {ok: true};
   } catch (e) {
     return {ok: false, error: e.message};
+  }
+}
+
+
+/**
+ * Garante as colunas novas em aba PRODUCTS pré-existente. Idempotente.
+ */
+function _prodEnsureColumns() {
+  try {
+    var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
+    var need = ['long_description', 'datasheet_url'];
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var i = 0; i < need.length; i++) {
+      if (headers.indexOf(need[i]) === -1) {
+        sh.getRange(1, sh.getLastColumn() + 1).setValue(need[i]);
+        headers.push(need[i]);
+      }
+    }
+  } catch (e) {
+    Logger.log('_prodEnsureColumns: ' + e.message);
+  }
+}
+
+/**
+ * Copia os descritivos padrão (Domain.ProductsContent.gs) para a aba PRODUCTS
+ * onde long_description estiver VAZIA. Não sobrescreve edições do time.
+ * Idempotente — roda dentro do setupAll/initProductsSheet.
+ */
+function seedProductDescriptions() {
+  try {
+    if (typeof HYDRONIX_PRODUCTS_CONTENT === 'undefined') return;
+    var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
+    var values = sh.getDataRange().getValues();
+    if (values.length < 2) return;
+    var headers = values[0];
+    var codeCol = headers.indexOf('code');
+    var descCol = headers.indexOf('long_description');
+    if (codeCol === -1 || descCol === -1) return;
+    var filled = 0;
+    for (var r = 1; r < values.length; r++) {
+      var code = String(values[r][codeCol]).trim();
+      var atual = String(values[r][descCol] || '').trim();
+      if (!atual && HYDRONIX_PRODUCTS_CONTENT[code]) {
+        sh.getRange(r + 1, descCol + 1).setValue(HYDRONIX_PRODUCTS_CONTENT[code]);
+        filled++;
+      }
+    }
+    if (filled) Logger.log('[Products] ' + filled + ' descritivos preenchidos.');
+  } catch (e) {
+    Logger.log('seedProductDescriptions: ' + e.message);
   }
 }

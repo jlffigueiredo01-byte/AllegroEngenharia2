@@ -813,9 +813,21 @@ function _opmAddItemRow(code, qty) {
   row.className = 'opm-item-row';
   row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px';
   row.innerHTML =
-    '<select class="form-input opm-item-code" style="flex:1">' + _opmProductOptions(code) + '</select>' +
-    '<input class="form-input opm-item-qty" type="number" min="1" value="' + (qty || 1) + '" style="width:70px" title="Qtde">' +
-    '<button class="btn btn-ghost btn-sm opm-row-del" title="remover">\uD83D\uDDD1</button>';
+    '<div style="display:flex;gap:8px;align-items:center">' +
+      '<select class="form-input opm-item-code" style="flex:1">' + _opmProductOptions(code) + '</select>' +
+      '<input class="form-input opm-item-qty" type="number" min="1" value="' + (qty || 1) + '" style="width:70px" title="Qtde">' +
+      '<button class="btn btn-ghost btn-sm opm-row-del" title="remover">\uD83D\uDDD1</button>' +
+    '</div>' +
+    '<div class="opm-item-desc" style="font-size:11px;color:#64748b;margin:2px 0 0 4px"></div>';
+  row.style.cssText = 'display:block;margin-bottom:8px';
+  var updateDesc = function () {
+    var sel = row.querySelector('.opm-item-code').value;
+    var prod = null;
+    for (var pi = 0; pi < _opmProducts.length; pi++) { if (_opmProducts[pi].code === sel) { prod = _opmProducts[pi]; break; } }
+    row.querySelector('.opm-item-desc').textContent = (prod && prod.long_description) ? prod.long_description : '';
+  };
+  row.querySelector('.opm-item-code').addEventListener('change', updateDesc);
+  updateDesc();
   row.querySelector('.opm-row-del').addEventListener('click', function () { row.parentNode.removeChild(row); });
   document.getElementById('opm-items').appendChild(row);
 }

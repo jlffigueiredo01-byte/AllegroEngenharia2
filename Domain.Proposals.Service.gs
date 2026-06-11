@@ -490,13 +490,14 @@ function propSvcGerarHTML(proposalId) {
     ].join('\n');
 
     var productRows = [];
+    var _pdMap = _propBuildDescMap();
     for (var i = 0; i < items.length; i++) {
       var item      = items[i];
-      var desc      = _propGetProductDescription(item);
+      var desc      = _propGetProductDescription(item, _pdMap);
       var qty       = safeNumber(item.qty || item.quantity);
       var unitPrice = safeNumber(item.unit_price || item.unitPrice || item.price);
       productRows.push({
-        name:       item.name || item.product_name || '',
+        name:       item.name || item.product_name || item.description || item.code || '',
         desc:       desc,
         ncm:        item.ncm || '',
         qty:        qty,
@@ -712,8 +713,30 @@ function _propFormatDateDMY(value) {
   }
 }
 
-function _propGetProductDescription(item) {
+/**
+ * Mapa code -> {long_description, datasheet_url} lido UMA vez da aba PRODUCTS.
+ */
+function _propBuildDescMap() {
+  var map = {};
+  try {
+    var rows = sheetToObjects(PRODUCTS_SHEET);
+    for (var i = 0; i < rows.length; i++) {
+      map[String(rows[i].code).trim().toUpperCase()] = {
+        long_description: rows[i].long_description || '',
+        datasheet_url:    rows[i].datasheet_url || ''
+      };
+    }
+  } catch (e) { /* aba indisponível: cai no dicionário */ }
+  return map;
+}
+
+function _propGetProductDescription(item, pdMap) {
   var name = item.code || item.name || item.product_name || '';
+  var key0 = String(name).trim().toUpperCase();
+  // 1ª fonte: coluna long_description da aba PRODUCTS (editável pelo time)
+  if (pdMap && pdMap[key0] && pdMap[key0].long_description) {
+    return pdMap[key0].long_description;
+  }
   try {
     if (typeof HYDRONIX_PRODUCTS_CONTENT !== 'undefined' && HYDRONIX_PRODUCTS_CONTENT) {
       var key = name.trim().toUpperCase();
