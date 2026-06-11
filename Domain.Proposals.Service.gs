@@ -484,6 +484,14 @@ function propSvcGerarHTML(proposalId) {
     var INTRO_COMMIT = 'Mais do que atender a uma demanda técnica, esta proposta foi estruturada para agregar valor ao processo produtivo da ' + clientName + ', oferecendo confiabilidade, eficiência e resultados consistentes. A Allegro Engenharia e Desenvolvimento reafirma seu compromisso em apoiar a empresa na implementação desta solução, fortalecendo a parceria e contribuindo para a excelência de suas operações.';
     CALIBRATION = CALIBRATION.replace(/\[CLIENT\]/g, clientName);
 
+    var companyCnpj = '';
+    try {
+      var cfgRows = sheetToObjects('CONFIG');
+      for (var cf = 0; cf < cfgRows.length; cf++) {
+        if (cfgRows[cf].key === 'COMPANY_CNPJ') { companyCnpj = cfgRows[cf].value || ''; break; }
+      }
+    } catch (eCfg) { /* CONFIG indisponível */ }
+
     var LOGO_ALLEGRO  = _propInlineImg('https://allegro.eng.br/wp-content/uploads/2024/08/logo_allegro.png');
     var LOGO_HYDRONIX = _propInlineImg('https://allegro.eng.br/wp-content/uploads/2024/08/LOGO-HYDRONIX-1.png');
     var MAPA_CLIENTES = 'https://allegro.eng.br/wp-content/uploads/2024/08/mapa-clientes-allegro-1007x1024.png';
@@ -576,7 +584,12 @@ function propSvcGerarHTML(proposalId) {
       '.cta li { font-size: 10pt; line-height: 1.7; }',
       '.cta .accept { background: #1a56db; border-radius: 8px; padding: 8px 12px; font-size: 10pt; font-weight: 600; }',
       '.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 34px; }',
-      '.sign div { border-top: 1px solid #9ca3af; padding-top: 6px; font-size: 9pt; color: #374151; text-align: center; }'
+      '.sign div { border-top: 1px solid #9ca3af; padding-top: 6px; font-size: 9pt; color: #374151; text-align: center; }',
+      '.flow { display: flex; align-items: stretch; gap: 0; margin: 12px 0; page-break-inside: avoid; }',
+      '.flow .fbox { flex: 1; border: 1.5px solid #1a56db; border-radius: 10px; padding: 10px 8px; text-align: center; background: #f3f7ff; }',
+      '.flow .fbox b { display: block; font-size: 9.5pt; color: #14335f; }',
+      '.flow .fbox span { font-size: 8pt; color: #6b7280; }',
+      '.flow .farr { align-self: center; padding: 0 6px; color: #1a56db; font-weight: 800; font-size: 13pt; }'
     ].join('\n');
 
     // ── itens: separa equipamentos (com conteúdo) de linhas de serviço ──
@@ -590,7 +603,7 @@ function propSvcGerarHTML(proposalId) {
       var isService = String(item.code || '').indexOf('SERV') === 0 ||
                       String(item.code || '').indexOf('MO-') === 0;
       productRows.push({
-        content: content, isService: isService,
+        content: content, isService: isService, code: item.code || '',
         name: content.name, ncm: item.ncm || '',
         qty: qty, unit_price: unitPrice, total: qty * unitPrice
       });
@@ -655,7 +668,9 @@ function propSvcGerarHTML(proposalId) {
     for (var k = 0; k < productRows.length; k++) {
       var pr2 = productRows[k];
       priceRowsHtml +=
-        '<tr' + (pr2.isService ? ' class="srv"' : '') + '><td>' + _propEsc(pr2.name) + '</td>' +
+        '<tr' + (pr2.isService ? ' class="srv"' : '') + '>' +
+        '<td style="white-space:nowrap"><code style="font-size:9pt">' + _propEsc(pr2.code || '') + '</code></td>' +
+        '<td>' + _propEsc(pr2.name) + '</td>' +
         '<td>' + _propEsc(pr2.ncm) + '</td>' +
         '<td style="text-align:center">' + pr2.qty + '</td>' +
         '<td style="text-align:right">' + _propFmtCurrency(pr2.unit_price) + '</td>' +
@@ -664,19 +679,36 @@ function propSvcGerarHTML(proposalId) {
     var startupValue = safeNumber(p.startup_value);
     var totalValue   = safeNumber(p.total_value);
     if (startupValue > 0) {
-      priceRowsHtml += '<tr class="srv"><td colspan="4">Start-up — Comissionamento e Treinamento</td>' +
+      priceRowsHtml += '<tr class="srv"><td colspan="5">Start-up — Comissionamento e Treinamento</td>' +
         '<td style="text-align:right">' + _propFmtCurrency(startupValue) + '</td></tr>';
     }
     var priceTableHtml =
       '<table class="price-table"><thead><tr>' +
-      '<th>Produto / Serviço</th><th>NCM</th><th style="text-align:center">Qtd.</th>' +
+      '<th>Código</th><th>Produto / Serviço</th><th>NCM</th><th style="text-align:center">Qtd.</th>' +
       '<th style="text-align:right">Preço Unit.</th><th style="text-align:right">Total</th>' +
       '</tr></thead><tbody>' + priceRowsHtml +
-      '<tr class="total"><td colspan="4">VALOR TOTAL DA PROPOSTA</td>' +
+      '<tr class="total"><td colspan="5">VALOR TOTAL DA PROPOSTA</td>' +
       '<td style="text-align:right">' + _propFmtCurrency(totalValue) + '</td></tr>' +
       '</tbody></table>';
 
-    var scopeHtml = p.scope_text ? _paras(p.scope_text) : '<p>—</p>';
+    // Fluxograma da solução: caixas conforme o que a proposta contém
+    var temDisplay = false, temInterface = false;
+    for (var fx = 0; fx < productRows.length; fx++) {
+      var fc = String(productRows[fx].code || '');
+      if (fc.indexOf('HV') === 0 || fc.indexOf('HH') === 0 || fc.indexOf('PH') === 0) temDisplay = true;
+      if (fc.indexOf('SIM') === 0 || fc.indexOf('095') === 0 || fc.indexOf('097') === 0) temInterface = true;
+    }
+    var farr = '<div class="farr">→</div>';
+    var flowHtml =
+      '<div class="flow">' +
+        '<div class="fbox"><b>Sensor(es) Hydronix</b><span>medição em fluxo, no processo</span></div>' + farr +
+        (temInterface ? '<div class="fbox"><b>Cabeamento / Interface</b><span>sinal digital blindado</span></div>' + farr : '') +
+        (temDisplay ? '<div class="fbox"><b>Hydro-View / Hydro-Hub</b><span>visualização e calibração</span></div>' + farr : '') +
+        '<div class="fbox"><b>CLP / Supervisório do cliente</b><span>integração 4–20 mA · RS485 · fieldbus</span></div>' + farr +
+        '<div class="fbox"><b>Relatórios e acesso remoto</b><span>Hydro-Com · histórico · suporte Allegro</span></div>' +
+      '</div>';
+
+    var scopeHtml = (p.scope_text ? _paras(p.scope_text) : '<p>—</p>') + flowHtml;
     var obsHtml   = p.observations ? '<p>' + _propEsc(p.observations).replace(/\n/g, '<br>') + '</p>' : '<p>—</p>';
 
     function sec(n, t) { return '<div class="sec"><div class="n">' + n + '</div><h2>' + t + '</h2></div>'; }
@@ -770,11 +802,11 @@ function propSvcGerarHTML(proposalId) {
         '<div>jonatan.miranda@allegro.eng.br · (41) 99155-5456</div></div>' +
       '</div>' +
       '<div class="sign">' +
-        '<div>Allegro Engenharia e Desenvolvimento<br>CNPJ / Responsável</div>' +
+        '<div>Allegro Engenharia e Desenvolvimento' + (companyCnpj ? '<br>CNPJ ' + _propEsc(companyCnpj) : '<br>CNPJ / Responsável') + '</div>' +
         '<div>' + _propEsc(clientName) + '<br>De acordo — nome, cargo e data</div>' +
       '</div>' +
       '<div class="foot">' +
-        '<span>Allegro Engenharia e Desenvolvimento — Rua Mal. Cândido Rondon, 3171 · Cancelli · Cascavel/PR · CEP 85811-080</span>' +
+        '<span>Allegro Engenharia e Desenvolvimento' + (companyCnpj ? ' · CNPJ ' + _propEsc(companyCnpj) : '') + ' — Rua Mal. Cândido Rondon, 3171 · Cancelli · Cascavel/PR · CEP 85811-080</span>' +
         '<span>allegro.eng.br · (45) 3037-5900</span>' +
       '</div>\n' +
       '</body>\n</html>';
