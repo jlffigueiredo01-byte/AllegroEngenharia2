@@ -82,7 +82,8 @@ var PROPOSALS_NEW_COLS = [
   'sent_at',        // timestamp quando passou para ENVIADA
   'closed_at',      // timestamp quando passou para FECHADA/RECUSADA
   'motivo_perda',   // obrigatório ao entrar em RECUSADA
-  'alcada_nivel'    // 'SIMPLIFICADA' ou 'COMPLETA'
+  'alcada_nivel',   // 'SIMPLIFICADA' ou 'COMPLETA'
+  'import_origem'   // 'IMPORT_LEGADO' quando veio da base histórica
 ];
 
 /**

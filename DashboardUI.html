@@ -27,9 +27,12 @@ function renderDashboard(area) {
         '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">Funil de propostas</div>' +
           '<div class="card-subtitle" style="font-size:12px;color:#98a2b3">quantidade e valor por etapa — barras proporcionais ao R$</div></div>' +
           '<div class="card-body" id="dsh-funil"><div class="spinner-ring" style="margin:16px auto"></div></div></div>' +
-        '<div class="card"><div class="card-header"><div class="card-title">Últimos 6 meses</div>' +
+        '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">Últimos 6 meses</div>' +
           '<div class="card-subtitle" style="font-size:12px;color:#98a2b3">barras: propostas criadas · linha: R$ fechado</div></div>' +
           '<div class="card-body" id="dsh-serie"></div></div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">🗺️ Atuação por estado</div>' +
+          '<div class="card-subtitle" style="font-size:12px;color:#98a2b3">cor = R$ fechado · passe o mouse para empresas e propostas</div></div>' +
+          '<div class="card-body"><div id="dsh-mapa" style="width:100%;min-height:330px"></div></div></div>' +
       '</div>' +
       '<div>' +
         '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">🔥 Precisa de você</div></div>' +
@@ -123,6 +126,9 @@ function _dshRender(d) {
   document.getElementById('dsh-need').innerHTML = need ||
     '<div style="padding:14px 0;color:#027a48;font-size:13px">✓ Tudo em dia — nenhuma pendência crítica.</div>';
 
+  // ── Mapa do Brasil (Google GeoChart)
+  _dshMapa(d.por_estado || {});
+
   // ── Atividade
   var act = '';
   for (var a = 0; a < d.atividade.length; a++) {
@@ -170,5 +176,50 @@ function _dshSerieSvg(serie) {
   }
   svg += '</svg>';
   return svg;
+}
+
+/* ── Mapa do Brasil: Google GeoChart por UF ── */
+var _dshChartsReady = false;
+
+function _dshMapa(porEstado) {
+  var el = document.getElementById('dsh-mapa');
+  if (!el) return;
+  var ufs = [];
+  for (var uf in porEstado) ufs.push(uf);
+  if (!ufs.length) {
+    el.innerHTML = '<p style="color:#98a2b3;font-size:12px;padding:20px 0;text-align:center">Cadastre empresas com estado (UF) — ou rode a importação da base — e o mapa acende sozinho.</p>';
+    return;
+  }
+  var desenhar = function () {
+    var rows = [['Estado', 'R$ fechado', 'Detalhe']];
+    for (var i = 0; i < ufs.length; i++) {
+      var e = porEstado[ufs[i]];
+      rows.push(['BR-' + ufs[i],
+        Math.round(e.valor_fechado),
+        e.empresas + ' empresa' + (e.empresas === 1 ? '' : 's') + ' · ' + e.propostas + ' proposta' + (e.propostas === 1 ? '' : 's')]);
+    }
+    var data = google.visualization.arrayToDataTable(rows);
+    var chart = new google.visualization.GeoChart(el);
+    chart.draw(data, {
+      region: 'BR',
+      displayMode: 'regions',
+      resolution: 'provinces',
+      colorAxis: { colors: ['#dbe7ff', '#1a56db', '#14335f'] },
+      backgroundColor: 'transparent',
+      datalessRegionColor: '#f1f5f9',
+      legend: { textStyle: { color: '#667085', fontSize: 11 } }
+    });
+  };
+  if (_dshChartsReady) { desenhar(); return; }
+  var boot = function () {
+    google.charts.load('current', { packages: ['geochart'] });
+    google.charts.setOnLoadCallback(function () { _dshChartsReady = true; desenhar(); });
+  };
+  if (window.google && window.google.charts) { boot(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://www.gstatic.com/charts/loader.js';
+  s.onload = boot;
+  s.onerror = function () { el.innerHTML = '<p style="color:#98a2b3;font-size:12px">Não foi possível carregar o componente de mapa (sem acesso a gstatic.com).</p>'; };
+  document.head.appendChild(s);
 }
 </script>

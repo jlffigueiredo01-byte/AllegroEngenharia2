@@ -194,7 +194,7 @@ function Api_dashV2() {
       if (st === 'RECUSADA') nRec++;
       var created = String(p.created_at || '').slice(0, 7);
       if (seis[created]) seis[created].criadas++;
-      if (st === 'ENVIADA') {
+      if (st === 'ENVIADA' && !p.import_origem) {
         var upd = new Date(p.updated_at || p.sent_at || p.created_at);
         var dias = Math.floor((hoje - upd) / 86400000);
         if (!isNaN(dias) && dias >= 7) {
@@ -246,6 +246,24 @@ function Api_dashV2() {
       });
     }
 
+    // ── Atuação por estado (mapa do Brasil)
+    var companies = sheetToObjects(COMPANIES_SHEET);
+    var ufByCompany = {};
+    var porEstado = {};
+    for (var ce = 0; ce < companies.length; ce++) {
+      var ufC = String(companies[ce].state || '').trim().toUpperCase();
+      ufByCompany[String(companies[ce].id)] = ufC;
+      if (!ufC || ufC === 'PY') continue; // PY fica fora do mapa BR
+      if (!porEstado[ufC]) porEstado[ufC] = { empresas: 0, propostas: 0, valor_fechado: 0 };
+      porEstado[ufC].empresas++;
+    }
+    for (var pe = 0; pe < props.length; pe++) {
+      var ufP = ufByCompany[String(props[pe].client_id)] || '';
+      if (!ufP || ufP === 'PY' || !porEstado[ufP]) continue;
+      porEstado[ufP].propostas++;
+      if (props[pe].status === 'FECHADA') porEstado[ufP].valor_fechado += Number(props[pe].total_value || 0);
+    }
+
     var serie = [];
     for (var sk in seis) serie.push(seis[sk]);
 
@@ -265,7 +283,8 @@ function Api_dashV2() {
       urgentes: cardsUrgentes.slice(0, 6),
       paradas: paradas.slice(0, 6),
       garantias: garantias,
-      atividade: atividade
+      atividade: atividade,
+      por_estado: porEstado
     }};
   } catch (e2) {
     return { ok: false, error: e2.message };
