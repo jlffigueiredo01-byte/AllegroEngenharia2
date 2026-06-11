@@ -1,0 +1,149 @@
+<script>
+// =============================================================================
+// AgendaUI.html — SGA (Sistema de Gestão Allegro)
+// Agenda integrada ao Google Calendar (Domain.Agenda). Prefixo _ag. ES5.
+// =============================================================================
+
+var _agEvents = [];
+
+function renderAgenda(area) {
+  area.innerHTML =
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">📅 Agenda</h1>' +
+        '<p class="page-subtitle">Eventos criados aqui vão direto para o Google Calendar, com convite aos participantes.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary" id="ag-btn-new">+ Novo evento</button>' +
+    '</div>' +
+    '<div id="ag-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
+    '<div id="ag-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+  document.getElementById('ag-btn-new').addEventListener('click', _agShowForm);
+  _agLoad();
+}
+
+function _agLoad() {
+  google.script.run.withSuccessHandler(function (r) {
+    _agEvents = (r && r.ok && r.data) ? r.data : [];
+    _agRenderList();
+  }).withFailureHandler(function (e) {
+    var w = document.getElementById('ag-list-wrap');
+    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+  }).Api_agendaGetProximos(30);
+}
+
+var _AG_TYPE_LABELS = {
+  VISITA_COMERCIAL: '🤝 Visita comercial', REUNIAO_TECNICA: '🔧 Reunião técnica',
+  KICKOFF: '🚀 Kick-off', FOLLOW_UP: '📞 Follow-up', CALIBRACAO: '🎯 Calibração',
+  MANUTENCAO_PREVENTIVA: '🛠️ Manutenção preventiva', TREINAMENTO: '🎓 Treinamento', OUTRO: '📌 Outro'
+};
+
+function _agRenderList() {
+  var w = document.getElementById('ag-list-wrap');
+  if (!w) return;
+  if (!_agEvents.length) {
+    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
+      '<div class="empty-icon">📅</div><div class="empty-title">Nada nos próximos 30 dias</div>' +
+      '<div class="empty-desc">Crie o primeiro evento — ele aparece também no seu Google Calendar.</div></div></div></div>';
+    return;
+  }
+  // agrupa por dia
+  var groups = {};
+  var order = [];
+  for (var i = 0; i < _agEvents.length; i++) {
+    var ev = _agEvents[i];
+    var day = formatDate(ev.start_at);
+    if (!groups[day]) { groups[day] = []; order.push(day); }
+    groups[day].push(ev);
+  }
+  var html = '';
+  for (var g = 0; g < order.length; g++) {
+    var day = order[g];
+    html += '<div style="font-weight:700;color:#334155;margin:14px 4px 6px">' + day + '</div>';
+    var list = groups[day];
+    for (var k = 0; k < list.length; k++) {
+      var e = list[k];
+      var hora = '';
+      try {
+        var d = new Date(e.start_at);
+        if (!isNaN(d.getTime())) hora = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      } catch (ex) {}
+      html += '<div class="card" style="margin-bottom:6px"><div class="card-body" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<div><b>' + (hora ? hora + ' · ' : '') + escapeHtml(e.title || '') + '</b>' +
+          (e.description ? '<div style="font-size:12px;color:#64748b">' + escapeHtml(e.description) + '</div>' : '') +
+          (e.attendees ? '<div style="font-size:11px;color:#94a3b8">👥 ' + escapeHtml(e.attendees) + '</div>' : '') +
+        '</div>' +
+        '<span class="badge badge-blue">' + escapeHtml(_AG_TYPE_LABELS[e.event_type] || e.event_type || '') + '</span>' +
+      '</div></div>';
+    }
+  }
+  w.innerHTML = html;
+}
+
+function _agShowForm() {
+  var w = document.getElementById('ag-form-wrap');
+  w.classList.remove('hidden');
+  var today = new Date();
+  var iso = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+  var typeOpts = '';
+  for (var t in _AG_TYPE_LABELS) typeOpts += '<option value="' + t + '">' + _AG_TYPE_LABELS[t] + '</option>';
+  w.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">Novo evento</div></div>' +
+    '<div class="card-body">' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        '<label style="font-size:12px;flex:1;min-width:220px">Título *<br><input class="form-input" id="ag-title" placeholder="ex.: Levantamento Cimentos X"></label>' +
+        '<label style="font-size:12px;width:210px">Tipo<br><select class="form-input" id="ag-type">' + typeOpts + '</select></label>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+        '<label style="font-size:12px;width:160px">Data *<br><input class="form-input" id="ag-date" type="date" value="' + iso + '"></label>' +
+        '<label style="font-size:12px;width:120px">Início *<br><input class="form-input" id="ag-time" type="time" value="09:00"></label>' +
+        '<label style="font-size:12px;width:130px">Duração<br><select class="form-input" id="ag-dur">' +
+          '<option value="30">30 min</option><option value="60" selected>1 h</option>' +
+          '<option value="120">2 h</option><option value="240">4 h</option><option value="480">Dia todo</option></select></label>' +
+        '<label style="font-size:12px;flex:1;min-width:220px">Convidados (e-mails, separados por ;)<br><input class="form-input" id="ag-att" placeholder="cliente@empresa.com; jonatan@..."></label>' +
+      '</div>' +
+      '<textarea class="form-input" id="ag-desc" rows="2" placeholder="pauta / observações" style="margin-top:8px"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="btn btn-primary" id="ag-save">Criar evento + convites</button>' +
+        '<button class="btn btn-ghost" id="ag-cancel">Cancelar</button>' +
+      '</div>' +
+    '</div></div>';
+  document.getElementById('ag-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
+  document.getElementById('ag-save').addEventListener('click', _agSave);
+}
+
+function _agSave() {
+  var title = document.getElementById('ag-title').value;
+  var date  = document.getElementById('ag-date').value;
+  var time  = document.getElementById('ag-time').value;
+  if (!title.trim() || !date || !time) { showAlert('Título, data e hora são obrigatórios.', 'warning'); return; }
+  var startAt = date + 'T' + time + ':00';
+  var durMin  = parseInt(document.getElementById('ag-dur').value, 10) || 60;
+  var endAt   = new Date(new Date(startAt).getTime() + durMin * 60000).toISOString();
+  var attendees = (document.getElementById('ag-att').value || '').split(';')
+    .map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+
+  var btn = document.getElementById('ag-save');
+  btn.disabled = true; btn.textContent = 'Criando...';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      btn.disabled = false; btn.textContent = 'Criar evento + convites';
+      if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+      showAlert('Evento criado no Google Calendar' + (attendees.length ? ' — convites enviados!' : '!'), 'success');
+      var w = document.getElementById('ag-form-wrap');
+      w.classList.add('hidden'); w.innerHTML = '';
+      _agLoad();
+    })
+    .withFailureHandler(function (e) {
+      btn.disabled = false; btn.textContent = 'Criar evento + convites';
+      showAlert('Falha: ' + (e.message || e), 'error');
+    })
+    .Api_agendaCriarEvento({
+      title:       title,
+      event_type:  document.getElementById('ag-type').value,
+      start_at:    startAt,
+      end_at:      endAt,
+      attendees:   attendees,
+      description: document.getElementById('ag-desc').value
+    });
+}
+</script>

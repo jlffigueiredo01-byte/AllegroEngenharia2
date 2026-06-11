@@ -243,6 +243,8 @@ function showSection(section) {
     case 'visao360':      renderVisao360(area);       break;
     case 'projetos':      renderProjetos(area);       break;
     case 'compras':       renderCompras(area);        break;
+    case 'fornecedores':  renderFornecedores(area);   break;
+    case 'agenda':        renderAgenda(area);         break;
     case 'config':        renderConfig(area);        break;
     default:
       area.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div>' +

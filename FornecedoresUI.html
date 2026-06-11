@@ -1,0 +1,158 @@
+<script>
+// =============================================================================
+// FornecedoresUI.html — SGA (Sistema de Gestão Allegro)
+// Cadastro mestre de fornecedores (spec C.0). Prefixo _sup. ES5.
+// =============================================================================
+
+var _supList = [];
+
+function renderFornecedores(area) {
+  area.innerHTML =
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">🏭 Fornecedores</h1>' +
+        '<p class="page-subtitle">Cadastro mestre: idioma define o PO (PT/EN); e-mail de PO recebe os pedidos.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary" id="sup-btn-new">+ Novo fornecedor</button>' +
+    '</div>' +
+    '<div id="sup-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
+    '<div id="sup-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+  document.getElementById('sup-btn-new').addEventListener('click', function () { _supShowForm(null); });
+  _supLoad();
+}
+
+function _supLoad() {
+  google.script.run.withSuccessHandler(function (r) {
+    _supList = (r && r.ok && r.data) ? r.data : [];
+    _supRenderList();
+  }).withFailureHandler(function (e) {
+    var w = document.getElementById('sup-list-wrap');
+    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+  }).Api_supplierGetAll();
+}
+
+function _supRenderList() {
+  var w = document.getElementById('sup-list-wrap');
+  if (!w) return;
+  if (!_supList.length) {
+    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
+      '<div class="empty-icon">🏭</div><div class="empty-title">Nenhum fornecedor</div>' +
+      '<div class="empty-desc">Cadastre a Hydronix e os fornecedores nacionais de infraestrutura.</div></div></div></div>';
+    return;
+  }
+  var rows = '';
+  for (var i = 0; i < _supList.length; i++) {
+    var s = _supList[i];
+    var ativo = String(s.active).toUpperCase() !== 'FALSE';
+    rows += '<tr' + (ativo ? '' : ' style="opacity:.5"') + '>' +
+      '<td><code style="font-size:11px">' + escapeHtml(s.id) + '</code></td>' +
+      '<td><b>' + escapeHtml(s.name || '') + '</b>' +
+        (s.country ? ' <span style="color:#94a3b8;font-size:11px">· ' + escapeHtml(s.country) + '</span>' : '') + '</td>' +
+      '<td style="text-align:center"><span class="badge ' + (s.language === 'EN' ? 'badge-blue' : 'badge-gray') + '">' + escapeHtml(s.language || 'PT') + '</span></td>' +
+      '<td style="text-align:center">' + escapeHtml(s.currency || '') + '</td>' +
+      '<td style="font-size:12px">' + escapeHtml(s.po_email || s.contact_email || '') + '</td>' +
+      '<td style="font-size:12px">' + escapeHtml(s.payment_terms || '') + '</td>' +
+      '<td style="text-align:center">' + (s.lead_time_days || '') + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm sup-edit" data-id="' + escapeHtml(s.id) + '">Editar</button></td>' +
+    '</tr>';
+  }
+  w.innerHTML =
+    '<div class="card"><div class="table-wrap"><table class="data-table">' +
+      '<thead><tr><th>ID</th><th>Fornecedor</th><th>Idioma</th><th>Moeda</th><th>E-mail PO</th><th>Cond. pagto</th><th>Lead (d)</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div>';
+  var btns = w.querySelectorAll('.sup-edit');
+  for (var b = 0; b < btns.length; b++) {
+    btns[b].addEventListener('click', function () { _supShowForm(this.getAttribute('data-id')); });
+  }
+}
+
+function _supField(label, id, value, ph, width) {
+  return '<label style="font-size:12px;' + (width ? 'width:' + width : 'flex:1;min-width:170px') + '">' + label + '<br>' +
+    '<input class="form-input" id="' + id + '" value="' + escapeHtml(value || '') + '" placeholder="' + (ph || '') + '"></label>';
+}
+
+function _supShowForm(id) {
+  var s = null;
+  if (id) {
+    for (var i = 0; i < _supList.length; i++) { if (_supList[i].id === id) { s = _supList[i]; break; } }
+  }
+  s = s || {};
+  var w = document.getElementById('sup-form-wrap');
+  w.classList.remove('hidden');
+  w.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">' + (id ? 'Editar ' + escapeHtml(id) : 'Novo fornecedor') + '</div></div>' +
+    '<div class="card-body">' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        _supField('Nome *', 'sup-name', s.name, 'Hydronix Ltd') +
+        _supField('CNPJ (nacionais)', 'sup-cnpj', s.cnpj, '', '160px') +
+        _supField('País', 'sup-country', s.country, 'England', '140px') +
+        '<label style="font-size:12px;width:110px">Idioma do PO<br><select class="form-input" id="sup-lang">' +
+          '<option value="PT"' + (s.language !== 'EN' ? ' selected' : '') + '>PT</option>' +
+          '<option value="EN"' + (s.language === 'EN' ? ' selected' : '') + '>EN</option></select></label>' +
+        '<label style="font-size:12px;width:110px">Moeda<br><select class="form-input" id="sup-currency">' +
+          '<option' + (s.currency === 'BRL' ? ' selected' : '') + '>BRL</option>' +
+          '<option' + (s.currency === 'USD' || !s.currency ? ' selected' : '') + '>USD</option>' +
+          '<option' + (s.currency === 'GBP' ? ' selected' : '') + '>GBP</option>' +
+          '<option' + (s.currency === 'EUR' ? ' selected' : '') + '>EUR</option></select></label>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+        _supField('Contato', 'sup-cname', s.contact_name, '') +
+        _supField('E-mail do contato', 'sup-cemail', s.contact_email, '') +
+        _supField('Telefone', 'sup-cphone', s.contact_phone, '', '150px') +
+        _supField('E-mail que recebe POs', 'sup-poemail', s.po_email, 'orders@...') +
+      '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+        _supField('Condições de pagamento', 'sup-terms', s.payment_terms, 'ex.: 30% proforma / 70% embarque') +
+        _supField('Incoterm padrão', 'sup-incoterm', s.incoterm_default, 'ex.: FCA, CIF', '140px') +
+        _supField('Lead time (dias)', 'sup-lead', s.lead_time_days, '45', '120px') +
+        '<label style="font-size:12px;width:90px">Ativo<br><select class="form-input" id="sup-active">' +
+          '<option value="TRUE"' + (String(s.active).toUpperCase() !== 'FALSE' ? ' selected' : '') + '>Sim</option>' +
+          '<option value="FALSE"' + (String(s.active).toUpperCase() === 'FALSE' ? ' selected' : '') + '>Não</option></select></label>' +
+      '</div>' +
+      '<textarea class="form-input" id="sup-notes" rows="2" placeholder="notas" style="margin-top:8px">' + escapeHtml(s.notes || '') + '</textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="btn btn-primary" id="sup-save">' + (id ? 'Salvar alterações' : 'Cadastrar') + '</button>' +
+        '<button class="btn btn-ghost" id="sup-cancel">Cancelar</button>' +
+      '</div>' +
+    '</div></div>';
+
+  document.getElementById('sup-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
+  document.getElementById('sup-save').addEventListener('click', function () { _supSave(id); });
+}
+
+function _supSave(id) {
+  var data = {
+    name:             document.getElementById('sup-name').value,
+    cnpj:             document.getElementById('sup-cnpj').value,
+    country:          document.getElementById('sup-country').value,
+    language:         document.getElementById('sup-lang').value,
+    currency:         document.getElementById('sup-currency').value,
+    contact_name:     document.getElementById('sup-cname').value,
+    contact_email:    document.getElementById('sup-cemail').value,
+    contact_phone:    document.getElementById('sup-cphone').value,
+    po_email:         document.getElementById('sup-poemail').value,
+    payment_terms:    document.getElementById('sup-terms').value,
+    incoterm_default: document.getElementById('sup-incoterm').value,
+    lead_time_days:   document.getElementById('sup-lead').value,
+    active:           document.getElementById('sup-active').value,
+    notes:            document.getElementById('sup-notes').value
+  };
+  if (!data.name.trim()) { showAlert('Nome é obrigatório.', 'warning'); return; }
+  var btn = document.getElementById('sup-save');
+  btn.disabled = true;
+  var done = function (res) {
+    btn.disabled = false;
+    if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+    showAlert(id ? 'Fornecedor atualizado!' : 'Fornecedor cadastrado!', 'success');
+    var w = document.getElementById('sup-form-wrap');
+    w.classList.add('hidden'); w.innerHTML = '';
+    _supLoad();
+  };
+  var fail = function (e) { btn.disabled = false; showAlert('Falha: ' + (e.message || e), 'error'); };
+  if (id) {
+    google.script.run.withSuccessHandler(done).withFailureHandler(fail).Api_supplierUpdate(id, data);
+  } else {
+    google.script.run.withSuccessHandler(done).withFailureHandler(fail).Api_supplierCreate(data);
+  }
+}
+</script>
