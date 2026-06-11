@@ -337,7 +337,7 @@ function renderDashboard(area) {
     .Api_getDashboardStats();
 }
 
-function renderCompanies(area) {
+function _legacyrenderCompanies(area) {
   area.innerHTML = buildModulePlaceholder(
     '🏢', '#dbeafe', '#1e40af',
     'Empresas',
@@ -348,7 +348,7 @@ function renderCompanies(area) {
   );
 }
 
-function renderContacts(area) {
+function _legacyrenderContacts(area) {
   area.innerHTML = buildModulePlaceholder(
     '👤', '#ede9fe', '#5b21b6',
     'Contatos',
@@ -359,7 +359,7 @@ function renderContacts(area) {
   );
 }
 
-function renderOpportunities(area) {
+function _legacyrenderOpportunities(area) {
   area.innerHTML = buildModulePlaceholder(
     '🎯', '#fef3c7', '#92400e',
     'Oportunidades',
@@ -370,7 +370,7 @@ function renderOpportunities(area) {
   );
 }
 
-function renderQuotes(area) {
+function _legacyrenderQuotes(area) {
   area.innerHTML = buildModulePlaceholder(
     '📄', '#d1fae5', '#065f46',
     'Propostas',
@@ -397,7 +397,7 @@ function renderMap(area) {
   loadMap();
 }
 
-function renderConfig(area) {
+function _legacyrenderConfig(area) {
   if (!ALLEGRO.currentUser) return;
   var isAdmin = ALLEGRO.currentUser.role === 'GERAL' || ALLEGRO.currentUser.role === 'ADMIN';
   if (!isAdmin) {
@@ -616,9 +616,28 @@ function formatBRL(value) {
  */
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  var parts = String(dateStr).split('-');
-  if (parts.length !== 3) return dateStr;
-  return parts[2] + '/' + parts[1] + '/' + parts[0];
+  // Aceita Date (serializado pelo google.script.run), ISO completo e YYYY-MM-DD
+  if (Object.prototype.toString.call(dateStr) === '[object Date]') {
+    return _fmtDMY(dateStr);
+  }
+  var s = String(dateStr);
+  if (s.indexOf('T') > 0) {            // ISO 8601
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return _fmtDMY(d);
+  }
+  var parts = s.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return parts[2].substring(0, 2) + '/' + parts[1] + '/' + parts[0];
+  }
+  var d2 = new Date(s);                // "Wed Jun 11 2026 ..." e afins
+  if (!isNaN(d2.getTime())) return _fmtDMY(d2);
+  return s;
+}
+
+function _fmtDMY(d) {
+  var dd = ('0' + d.getDate()).slice(-2);
+  var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+  return dd + '/' + mm + '/' + d.getFullYear();
 }
 
 
@@ -681,6 +700,9 @@ function renderExpensesList(list) {
       '<td><span class="badge badge-blue" style="font-size:11px">' + escapeHtml(e.categoria) + '</span></td>' +
       '<td style="font-weight:600;color:#16a34a">' + formatBRL(Number(e.total)) + '</td>' +
       '<td style="color:#64748b;font-size:12px">' + escapeHtml(e.criado_por) + '</td>' +
+      '<td>' + (e.foto_file_id
+        ? '<a href="https://drive.google.com/file/d/' + escapeHtml(e.foto_file_id) + '/view" target="_blank" title="Ver comprovante">\uD83D\uDCCE</a>'
+        : '') + '</td>' +
     '</tr>';
   }).join('');
   wrap.innerHTML =
@@ -919,7 +941,11 @@ function saveExpense() {
       if (btn) btn.disabled = false;
       showAlert('Falha ao salvar: ' + (err.message || 'erro desconhecido'), 'error');
     })
-    .Api_saveExpense({ data: data, estabelecimento: est, categoria: cat, total: total, descricao: desc, itens: [] });
+    .Api_saveExpense({
+      data: data, estabelecimento: est, categoria: cat, total: total,
+      descricao: desc, itens: [],
+      imageBase64: _ocrBase64 || '', imageMime: _ocrMime || 'image/jpeg'
+    });
 }
 
 function cancelExpenseUpload() {

@@ -99,7 +99,7 @@ function _buildOpportunitiesHTML() {
     '</div>' +
 
     _buildNewOppModal() +
-    _buildDetailModal()
+    _op_buildDetailModal()
   );
 }
 
@@ -260,7 +260,7 @@ function _buildNewOppModal() {
 // ---------------------------------------------------------------------------
 // Detail Modal
 // ---------------------------------------------------------------------------
-function _buildDetailModal() {
+function _op_buildDetailModal() {
   var statusOptions = '';
   for (var i = 0; i < _OPP_STATUSES.length; i++) {
     statusOptions += '<option value="' + escapeHtml(_OPP_STATUSES[i]) + '">' + escapeHtml(_OPP_STATUSES[i]) + '</option>';
@@ -360,7 +360,7 @@ function _bindOpportunitiesEvents(area) {
   var btnNew = document.getElementById('opp-btn-new');
   if (btnNew) {
     btnNew.addEventListener('click', function () {
-      _openNewModal();
+      _op_openNewModal();
     });
   }
 
@@ -368,7 +368,7 @@ function _bindOpportunitiesEvents(area) {
   var btnCancel = document.getElementById('opp-modal-new-cancel');
   if (btnCancel) {
     btnCancel.addEventListener('click', function () {
-      _closeNewModal();
+      _op_closeNewModal();
     });
   }
 
@@ -384,7 +384,7 @@ function _bindOpportunitiesEvents(area) {
   var btnDetailClose = document.getElementById('opp-modal-detail-close');
   if (btnDetailClose) {
     btnDetailClose.addEventListener('click', function () {
-      _closeDetailModal();
+      _op_closeDetailModal();
     });
   }
 
@@ -400,7 +400,7 @@ function _bindOpportunitiesEvents(area) {
   var newModal = document.getElementById('opp-modal-new');
   if (newModal) {
     newModal.addEventListener('click', function (e) {
-      if (e.target === newModal) _closeNewModal();
+      if (e.target === newModal) _op_closeNewModal();
     });
   }
 
@@ -408,7 +408,7 @@ function _bindOpportunitiesEvents(area) {
   var detailModal = document.getElementById('opp-modal-detail');
   if (detailModal) {
     detailModal.addEventListener('click', function (e) {
-      if (e.target === detailModal) _closeDetailModal();
+      if (e.target === detailModal) _op_closeDetailModal();
     });
   }
 
@@ -421,7 +421,7 @@ function _bindTableEvents() {
     (function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-id');
-        _openDetailModal(id);
+        _op_openDetailModal(id);
       });
     })(viewBtns[i]);
   }
@@ -432,7 +432,7 @@ function _bindTableEvents() {
 // ---------------------------------------------------------------------------
 var _currentDetailId = null;
 
-function _openNewModal() {
+function _op_openNewModal() {
   var modal = document.getElementById('opp-modal-new');
   if (!modal) return;
   modal.classList.remove('hidden');
@@ -475,7 +475,7 @@ function _openNewModal() {
   }
 }
 
-function _closeNewModal() {
+function _op_closeNewModal() {
   var modal = document.getElementById('opp-modal-new');
   if (!modal) return;
   modal.classList.add('hidden');
@@ -516,7 +516,7 @@ function _submitNewOpp() {
         return;
       }
       showAlert('Oportunidade criada com sucesso!', 'success');
-      _closeNewModal();
+      _op_closeNewModal();
       // Reload list
       google.script.run
         .withSuccessHandler(function (r2) {
@@ -537,7 +537,7 @@ function _submitNewOpp() {
 // ---------------------------------------------------------------------------
 // Detail Modal
 // ---------------------------------------------------------------------------
-function _openDetailModal(id) {
+function _op_openDetailModal(id) {
   _currentDetailId = id;
   var modal = document.getElementById('opp-modal-detail');
   if (!modal) return;
@@ -611,7 +611,7 @@ function _buildDetailBody(opp) {
   return html;
 }
 
-function _closeDetailModal() {
+function _op_closeDetailModal() {
   _currentDetailId = null;
   var modal = document.getElementById('opp-modal-detail');
   if (!modal) return;
@@ -655,7 +655,7 @@ function _submitStatusChange() {
       }
 
       // Refresh detail body with updated data
-      _openDetailModal(id);
+      _op_openDetailModal(id);
       _refreshTable();
 
       if (note) note.value = '';
