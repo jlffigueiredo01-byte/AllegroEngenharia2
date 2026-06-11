@@ -321,6 +321,9 @@ function _renderProposalsTable() {
       '    <button class="btn btn-ghost btn-sm" style="margin-right:4px;" data-pb-view="' + escapeHtml(p.id) + '">Ver</button>',
       '    <button class="btn btn-ghost btn-sm" data-pb-print="' + escapeHtml(p.id) + '">🖨️</button>',
       '    <button class="btn btn-ghost btn-sm" data-pb-flow="' + escapeHtml(p.id) + '" title="Editar fluxograma da solução">🧩</button>',
+      '    <button class="btn btn-ghost btn-sm" data-pb-edit="' + escapeHtml(p.id) + '" title="Editar proposta (itens, textos, condições)">✏️</button>',
+      '    <button class="btn btn-ghost btn-sm" data-pb-stage="' + escapeHtml(p.id) + '" title="Avançar etapa do funil">➡️</button>',
+      (p.status === 'ENVIADA' ? '    <button class="btn btn-ghost btn-sm" data-pb-rev="' + escapeHtml(p.id) + '" title="Criar nova revisão (Rn+1)">📄+</button>' : ''),
       '  </td>',
       '</tr>'
     ].join('');
@@ -345,6 +348,18 @@ function _renderProposalsTable() {
 
   // Bind "Ver" and print buttons
   var viewBtns  = wrap.querySelectorAll('[data-pb-view]');
+  var editBtns = wrap.querySelectorAll('[data-pb-edit]');
+  for (var eb = 0; eb < editBtns.length; eb++) {
+    editBtns[eb].addEventListener('click', function () { _pedOpen(this.getAttribute('data-pb-edit')); });
+  }
+  var stageBtns = wrap.querySelectorAll('[data-pb-stage]');
+  for (var sb = 0; sb < stageBtns.length; sb++) {
+    stageBtns[sb].addEventListener('click', function () { _pstOpen(this.getAttribute('data-pb-stage')); });
+  }
+  var revBtns = wrap.querySelectorAll('[data-pb-rev]');
+  for (var rb = 0; rb < revBtns.length; rb++) {
+    revBtns[rb].addEventListener('click', function () { _pedCriarRevisao(this.getAttribute('data-pb-rev')); });
+  }
   var flowBtns = wrap.querySelectorAll('[data-pb-flow]');
   for (var fb = 0; fb < flowBtns.length; fb++) {
     flowBtns[fb].addEventListener('click', function () {
@@ -1593,6 +1608,264 @@ function _pflSave() {
     btn.disabled = false; btn.textContent = 'Salvar fluxograma';
     showAlert('Falha: ' + (e.message || e), 'error');
   }).Api_updateProposal(_pflPropId, { flow_json: boxes.length ? JSON.stringify(boxes) : '' });
+}
+
+
+/* ===========================================================================
+   EDITOR COMPLETO DA PROPOSTA (prefixo _ped)
+   Autonomia total enquanto em elaboração/revisão; o servidor trava a partir
+   de APROVADA_ENVIO (imutável — mudanças = nova revisão Rn+1).
+   =========================================================================== */
+
+var _pedPropId = null;
+var _pedProducts = [];
+
+function _pedEnsureModal() {
+  if (document.getElementById('ped-modal')) return;
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="modal-backdrop hidden" id="ped-modal" style="z-index:1140">' +
+      '<div class="modal" style="max-width:920px;width:96%;max-height:94vh;overflow:auto">' +
+        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title" id="ped-title">✏️ Editar proposta</div>' +
+          '<button class="btn btn-ghost btn-sm" id="ped-close">✕</button>' +
+        '</div><div class="card-body" id="ped-body"></div></div>' +
+      '</div></div>');
+  document.getElementById('ped-close').addEventListener('click', _pedClose);
+  document.getElementById('ped-modal').addEventListener('click', function (e) {
+    if (e.target === document.getElementById('ped-modal')) _pedClose();
+  });
+}
+
+function _pedClose() {
+  var m = document.getElementById('ped-modal');
+  if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+}
+
+function _pedOpen(proposalId) {
+  _pedPropId = proposalId;
+  _pedEnsureModal();
+  var m = document.getElementById('ped-modal');
+  m.classList.remove('hidden'); m.style.display = 'flex';
+  document.getElementById('ped-body').innerHTML = '<div class="spinner-ring" style="margin:20px auto"></div>';
+
+  var build = function (p) {
+    var travados = ['APROVADA_ENVIO', 'ENVIADA', 'FECHADA', 'RECUSADA', 'SUBSTITUIDA', 'CANCELADA'];
+    var locked = travados.indexOf(p.status) !== -1;
+    document.getElementById('ped-title').textContent = '✏️ ' + (p.number || p.id) + ' · ' + (p.revision_num || 'R0') + ' — ' + p.status;
+    var b = document.getElementById('ped-body');
+    b.innerHTML =
+      (locked ? '<div style="background:#fef3c7;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">🔒 Proposta <b>' + escapeHtml(p.status) + '</b> é imutável (rastreabilidade). Para alterar, crie uma <b>nova revisão</b>' + (p.status === 'ENVIADA' ? ' com o botão 📄+ na lista' : '') + '.</div>' : '') +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        '<label style="font-size:12px;flex:1;min-width:160px">Local<br><input class="form-input" id="ped-location" value="' + escapeHtml(p.location || '') + '"></label>' +
+        '<label style="font-size:12px;flex:1;min-width:160px">A/C (responsável no cliente)<br><input class="form-input" id="ped-resp" value="' + escapeHtml(p.responsible || '') + '"></label>' +
+        '<label style="font-size:12px;width:130px">Entrega (dias úteis)<br><input class="form-input" id="ped-delivery" type="number" min="0" value="' + (p.delivery_days || '') + '"></label>' +
+        '<label style="font-size:12px;width:130px">Validade (dias)<br><input class="form-input" id="ped-validity" type="number" min="0" value="' + (p.validity_days || '') + '"></label>' +
+      '</div>' +
+      '<label style="font-size:12px;display:block;margin-top:8px">Condições de pagamento<br><input class="form-input" id="ped-payment" value="' + escapeHtml(p.payment_terms || '') + '"></label>' +
+
+      '<div class="form-label" style="font-weight:700;margin:14px 0 4px">Itens</div>' +
+      '<div id="ped-items"></div>' +
+      '<button class="btn btn-ghost btn-sm" id="ped-add-item"' + (locked ? ' disabled' : '') + '>+ item</button>' +
+      '<div style="display:flex;gap:14px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
+        '<label style="font-size:12px">Start-up (R$)<br><input class="form-input" id="ped-startup" type="number" min="0" step="0.01" value="' + (p.startup_value || 0) + '" style="width:140px"></label>' +
+        '<div style="margin-left:auto;font-weight:800;color:#14335f" id="ped-total"></div>' +
+      '</div>' +
+
+      '<label style="font-size:12px;display:block;margin-top:12px">Escopo de fornecimento<br><textarea class="form-input" id="ped-scope" rows="5">' + escapeHtml(p.scope_text || '') + '</textarea></label>' +
+      '<label style="font-size:12px;display:block;margin-top:8px">Observações<br><textarea class="form-input" id="ped-obs" rows="3">' + escapeHtml(p.observations || '') + '</textarea></label>' +
+
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+        '<button class="btn btn-ghost btn-sm" id="ped-flow">🧩 Fluxograma</button>' +
+        '<button class="btn btn-ghost btn-sm" id="ped-print">🖨️ Visualizar</button>' +
+        '<button class="btn btn-primary" id="ped-save" style="margin-left:auto"' + (locked ? ' disabled' : '') + '>Salvar alterações</button>' +
+      '</div>';
+
+    var itens = [];
+    try { itens = JSON.parse(p.items_json || '[]') || []; } catch (e) {}
+    for (var i = 0; i < itens.length; i++) _pedAddItemRow(itens[i], locked);
+    _pedRecalc();
+
+    document.getElementById('ped-add-item').addEventListener('click', function () { _pedAddItemRow(null, false); });
+    document.getElementById('ped-startup').addEventListener('input', _pedRecalc);
+    document.getElementById('ped-flow').addEventListener('click', function () { _pflOpen(_pedPropId); });
+    document.getElementById('ped-print').addEventListener('click', function () { _printProposal(_pedPropId); });
+    document.getElementById('ped-save').addEventListener('click', _pedSave);
+  };
+
+  var load = function () {
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok || !r.data) { showAlert('Erro ao carregar proposta.', 'error'); _pedClose(); return; }
+      build(r.data);
+    }).Api_getProposal(proposalId);
+  };
+
+  if (_pedProducts.length) { load(); return; }
+  google.script.run.withSuccessHandler(function (r) {
+    _pedProducts = (r && r.ok && r.data) ? r.data : [];
+    load();
+  }).withFailureHandler(load).Api_getProducts();
+}
+
+function _pedProductOptions(code) {
+  var html = '<option value="">— código —</option>';
+  for (var i = 0; i < _pedProducts.length; i++) {
+    html += '<option value="' + escapeHtml(_pedProducts[i].code) + '"' + (_pedProducts[i].code === code ? ' selected' : '') + '>' + escapeHtml(_pedProducts[i].code) + '</option>';
+  }
+  return html;
+}
+
+function _pedAddItemRow(item, locked) {
+  item = item || { code: '', description: '', ncm: '', qty: 1, unit_price: 0 };
+  var row = document.createElement('div');
+  row.className = 'ped-item-row';
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+  row.innerHTML =
+    '<select class="form-input ped-it-code" style="width:140px"' + (locked ? ' disabled' : '') + '>' + _pedProductOptions(item.code) + '</select>' +
+    '<input class="form-input ped-it-desc" value="' + escapeHtml(item.description || '') + '" placeholder="descrição" style="flex:1"' + (locked ? ' disabled' : '') + '>' +
+    '<input class="form-input ped-it-qty" type="number" min="1" value="' + (item.qty || 1) + '" style="width:64px" title="qtde"' + (locked ? ' disabled' : '') + '>' +
+    '<input class="form-input ped-it-price" type="number" min="0" step="0.01" value="' + (item.unit_price || 0) + '" style="width:120px" title="preço unit. R$"' + (locked ? ' disabled' : '') + '>' +
+    '<button class="btn btn-ghost btn-sm ped-it-dup" title="duplicar"' + (locked ? ' disabled' : '') + '>⎘</button>' +
+    '<button class="btn btn-ghost btn-sm ped-it-del" title="excluir"' + (locked ? ' disabled' : '') + '>🗑</button>';
+  row.querySelector('.ped-it-code').addEventListener('change', function () {
+    var prod = null;
+    for (var i = 0; i < _pedProducts.length; i++) { if (_pedProducts[i].code === this.value) { prod = _pedProducts[i]; break; } }
+    if (prod) {
+      row.querySelector('.ped-it-desc').value = prod.description || '';
+      if (!parseFloat(row.querySelector('.ped-it-price').value)) {
+        row.querySelector('.ped-it-price').value = prod.selling_price_brl || 0;
+      }
+      _pedRecalc();
+    }
+  });
+  row.querySelector('.ped-it-qty').addEventListener('input', _pedRecalc);
+  row.querySelector('.ped-it-price').addEventListener('input', _pedRecalc);
+  row.querySelector('.ped-it-dup').addEventListener('click', function () { _pedAddItemRow(_pedRowToItem(row), false); _pedRecalc(); });
+  row.querySelector('.ped-it-del').addEventListener('click', function () { row.parentNode.removeChild(row); _pedRecalc(); });
+  document.getElementById('ped-items').appendChild(row);
+}
+
+function _pedRowToItem(row) {
+  var code = row.querySelector('.ped-it-code').value;
+  var prod = null;
+  for (var i = 0; i < _pedProducts.length; i++) { if (_pedProducts[i].code === code) { prod = _pedProducts[i]; break; } }
+  var qty = parseFloat(row.querySelector('.ped-it-qty').value) || 1;
+  var up  = parseFloat(row.querySelector('.ped-it-price').value) || 0;
+  return {
+    code: code,
+    description: row.querySelector('.ped-it-desc').value,
+    ncm: prod ? (prod.ncm || '') : '',
+    qty: qty, unit_price: up, total: Math.round(qty * up * 100) / 100
+  };
+}
+
+function _pedCollectItems() {
+  var items = [];
+  var rows = document.querySelectorAll('#ped-items .ped-item-row');
+  for (var i = 0; i < rows.length; i++) {
+    var it = _pedRowToItem(rows[i]);
+    if (it.code || it.description) items.push(it);
+  }
+  return items;
+}
+
+function _pedRecalc() {
+  var items = _pedCollectItems();
+  var total = 0;
+  for (var i = 0; i < items.length; i++) total += items[i].total;
+  total += parseFloat(document.getElementById('ped-startup').value) || 0;
+  document.getElementById('ped-total').textContent = 'TOTAL: ' + formatBRL(total);
+}
+
+function _pedSave() {
+  var items = _pedCollectItems();
+  var startup = parseFloat(document.getElementById('ped-startup').value) || 0;
+  var total = startup;
+  for (var i = 0; i < items.length; i++) total += items[i].total;
+  var btn = document.getElementById('ped-save');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  google.script.run.withSuccessHandler(function (res) {
+    btn.disabled = false; btn.textContent = 'Salvar alterações';
+    if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+    showAlert('Proposta atualizada!', 'success');
+    _pedClose();
+    if (typeof _loadProposals === 'function') _loadProposals();
+    else if (typeof renderQuotes === 'function') { var area = document.getElementById('content-area'); if (area) renderQuotes(area); }
+  }).withFailureHandler(function (e) {
+    btn.disabled = false; btn.textContent = 'Salvar alterações';
+    showAlert('Falha: ' + (e.message || e), 'error');
+  }).Api_updateProposal(_pedPropId, {
+    location:      document.getElementById('ped-location').value,
+    responsible:   document.getElementById('ped-resp').value,
+    delivery_days: document.getElementById('ped-delivery').value,
+    validity_days: document.getElementById('ped-validity').value,
+    payment_terms: document.getElementById('ped-payment').value,
+    scope_text:    document.getElementById('ped-scope').value,
+    observations:  document.getElementById('ped-obs').value,
+    items_json:    JSON.stringify(items),
+    startup_value: startup,
+    total_value:   Math.round(total * 100) / 100
+  });
+}
+
+function _pedCriarRevisao(proposalId) {
+  if (!confirm('Criar nova revisão (Rn+1)?\\n\\nA proposta atual ficará SUBSTITUIDA (preservada para rastreabilidade) e a revisão nascerá editável.')) return;
+  google.script.run.withSuccessHandler(function (res) {
+    if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+    var nova = res.data || {};
+    showAlert('Revisão ' + (nova.revision_num || '') + ' criada (' + (nova.number || nova.id) + ') — edite e siga o fluxo de revisão.', 'success');
+    if (typeof _loadProposals === 'function') _loadProposals();
+    _pedOpen(nova.id);
+  }).withFailureHandler(function (e) {
+    showAlert('Falha: ' + (e.message || e), 'error');
+  }).Api_propCriarRevisao(proposalId);
+}
+
+/* ===========================================================================
+   ETAPAS DO FUNIL (prefixo _pst) — avanço de status com as regras do servidor
+   =========================================================================== */
+
+var _PST_NEXT = {
+  'DEMANDA':         ['LEVANTAMENTO', 'PROPOSTA_GERADA'],
+  'LEVANTAMENTO':    ['PROPOSTA_GERADA'],
+  'PROPOSTA_GERADA': ['EM_REVISAO'],
+  'EM_REVISAO':      ['APROVADA_ENVIO'],
+  'APROVADA_ENVIO':  ['ENVIADA'],
+  'ENVIADA':         ['FECHADA', 'RECUSADA']
+};
+var _PST_LABEL = {
+  'LEVANTAMENTO': '📐 Levantamento técnico', 'PROPOSTA_GERADA': '📄 Proposta gerada',
+  'EM_REVISAO': '🔍 Enviar para revisão (Financeiro)', 'APROVADA_ENVIO': '✅ Aprovar para envio',
+  'ENVIADA': '📧 Marcar como ENVIADA ao cliente', 'FECHADA': '🏆 FECHADA — negócio ganho!',
+  'RECUSADA': '❌ Recusada (informar motivo)'
+};
+
+function _pstOpen(proposalId) {
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok || !r.data) { showAlert('Erro ao carregar.', 'error'); return; }
+    var p = r.data;
+    var nexts = _PST_NEXT[p.status] || [];
+    if (!nexts.length) { showAlert('Status ' + p.status + ' é terminal — sem próximas etapas.' + (p.status === 'ENVIADA' ? '' : ' Use 📄+ para revisar uma ENVIADA.'), 'info'); return; }
+    var msg = 'Proposta ' + (p.number || p.id) + ' está em: ' + p.status + '\\n\\nEscolha a próxima etapa:\\n';
+    for (var i = 0; i < nexts.length; i++) msg += (i + 1) + ') ' + _PST_LABEL[nexts[i]] + '\\n';
+    var escolha = prompt(msg, '1');
+    if (!escolha) return;
+    var alvo = nexts[parseInt(escolha, 10) - 1];
+    if (!alvo) { showAlert('Opção inválida.', 'warning'); return; }
+    var opcoes = {};
+    if (alvo === 'RECUSADA') {
+      var motivo = prompt('Motivo da perda (obrigatório para aprendizado do funil):');
+      if (!motivo) return;
+      opcoes.motivo_perda = motivo;
+    }
+    if (alvo === 'FECHADA' && !confirm('Confirmar FECHADA?\\nIsso registra o aceite comercial, cria o PROJETO e libera a geração de PO.')) return;
+    google.script.run.withSuccessHandler(function (res) {
+      if (!res || !res.ok) { showAlert('⛔ ' + (res ? res.error : '?'), 'error'); return; }
+      showAlert('Proposta avançou para ' + alvo + '!', 'success');
+      if (typeof _loadProposals === 'function') _loadProposals();
+    }).withFailureHandler(function (e) {
+      showAlert('Falha: ' + (e.message || e), 'error');
+    }).Api_propUpdateStatus(proposalId, alvo, opcoes);
+  }).Api_getProposal(proposalId);
 }
 
 </script>

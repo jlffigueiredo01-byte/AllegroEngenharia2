@@ -231,6 +231,17 @@ function Api_updateProposal(id, updates) {
     if (!id)      throw new Error('id é obrigatório.');
     if (!updates) throw new Error('updates é obrigatório.');
 
+    // Imutabilidade (VALIDACAO_V3): conteúdo só muda enquanto a proposta
+    // está em elaboração/revisão. Depois de aprovada para envio, o documento
+    // é histórico — mudanças exigem NOVA REVISÃO (Rn+1).
+    var _atual = propRepoGetById(id);
+    if (_atual) {
+      var _travados = ['APROVADA_ENVIO', 'ENVIADA', 'FECHADA', 'RECUSADA', 'SUBSTITUIDA', 'CANCELADA'];
+      if (_travados.indexOf(_atual.status) !== -1) {
+        throw new Error('Proposta ' + _atual.status + ' é imutável. Crie uma nova revisão (Rn+1) para alterar.');
+      }
+    }
+
     var ALLOWED = [
       'scope_text', 'items_json', 'startup_value',
       'payment_terms', 'delivery_days', 'validity_days',

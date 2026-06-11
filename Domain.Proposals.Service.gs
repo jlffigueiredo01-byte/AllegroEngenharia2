@@ -498,7 +498,7 @@ function propSvcGerarHTML(proposalId) {
 
     var css = [
       '@page { size: A4; margin: 16mm 14mm; }',
-      '@media print { body { margin: 0; } .no-print { display: none; } .prod-card, .price-table, .cond-grid { page-break-inside: avoid; } img { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
+      '@media print { body { margin: 0; } .no-print { display: none; } .prod-card, .price-table, .cond-grid, .flow, .cta, .exec .box, .badges, .contact-grid, .meta { page-break-inside: avoid; } .sec { page-break-after: avoid; page-break-inside: avoid; } img { -webkit-print-color-adjust: exact; print-color-adjust: exact; } p { orphans: 3; widows: 3; } }',
       '* { box-sizing: border-box; }',
       'body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1f2937; margin: 1.4cm; line-height: 1.55; }',
       // header
