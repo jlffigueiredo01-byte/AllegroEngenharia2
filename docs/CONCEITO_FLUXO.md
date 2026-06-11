@@ -45,3 +45,22 @@ despesas, timeline unificada) e tudo que pode ser criado dele (oportunidade,
 proposta via motor, action card, chamado, PO de proposta fechada) — sempre
 nascendo já vinculado. Um endpoint único (`Api_c360`) entrega o workspace em uma
 chamada.
+
+
+## Princípio da Interligação Total (vinculante — pedido do João, 12/06/2026)
+
+Inspiração TIA Portal: **nada nasce solto, nada morre isolado.** Toda
+funcionalidade nova DEVE responder este checklist antes de ser considerada
+pronta:
+
+1. **Vínculo de origem** — a entidade carrega o id da mãe? (despesa→chamado,
+   proposta→oportunidade, PO→proposta...)
+2. **Efeito colateral integrado** — criar/alterar aqui atualiza o que lá?
+   (despesa em chamado = custo no chamado; proposta fechada = projeto + PO)
+3. **Visão 360** — aparece no workspace do cliente?
+4. **Dashboard** — alimenta algum KPI/alerta?
+5. **Timeline** — o evento fica registrado?
+
+Exemplo canônico: despesa vinculada a chamado vira custo do chamado, entra na
+Visão 360 do cliente, soma no endgate de cobrança e aparece na timeline — uma
+digitação, cinco efeitos.

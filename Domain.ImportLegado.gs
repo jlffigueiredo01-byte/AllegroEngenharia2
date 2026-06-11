@@ -35,6 +35,9 @@ function importarBaseLegada() {
     _impImportarOrganizacao(mapaEmpresas, rel);
     _impImportarFormulario(mapaEmpresas, rel);
   } finally {
+    _impFlushEmpresas();
+    _impFlushEnriquecimento();
+    _impFlushCounters();
     lock.releaseLock();
   }
 
@@ -67,13 +70,29 @@ function _impCarregarEmpresasExistentes() {
   return mapa;
 }
 
+var _impCounters = null;
+
+/** Contadores em memória durante a importação; persistidos uma vez no fim. */
 function _impNextId(counterKey, prefix) {
-  var n = parseInt(getConfigValue(counterKey) || '0', 10) + 1;
-  setConfigValue(counterKey, String(n));
-  return prefix + ('00000' + n).slice(-5);
+  if (!_impCounters) _impCounters = {};
+  if (_impCounters[counterKey] === undefined) {
+    _impCounters[counterKey] = parseInt(getConfigValue(counterKey) || '0', 10);
+  }
+  _impCounters[counterKey]++;
+  return prefix + ('00000' + _impCounters[counterKey]).slice(-5);
+}
+
+function _impFlushCounters() {
+  if (!_impCounters) return;
+  for (var k in _impCounters) setConfigValue(k, String(_impCounters[k]));
+  _impCounters = null;
 }
 
 /** Cria empresa (ou devolve a existente). UF inválida fica vazia. */
+var _impEmpresaBuffer = [];
+var _impEmpresaHeaders = null;
+var _impEmpresaNovas = {}; // id -> índice no buffer (p/ enriquecer em memória)
+
 function _impEmpresa(mapa, nome, uf, cidade, clientType, rel) {
   var key = _impNorm(nome);
   if (!key) return null;
@@ -83,26 +102,51 @@ function _impEmpresa(mapa, nome, uf, cidade, clientType, rel) {
   var ufLimpa = String(uf || '').trim().toUpperCase();
   if (UFS.indexOf(ufLimpa) === -1 || ufLimpa.length !== 2) ufLimpa = '';
 
+  if (!_impEmpresaHeaders) {
+    var sh = getOrCreateSheet(COMPANIES_SHEET, COMPANIES_HEADERS);
+    _impEmpresaHeaders = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  }
   var id = _impNextId('COMPANY_COUNTER', 'EMP-');
-  var sh = getOrCreateSheet(COMPANIES_SHEET, COMPANIES_HEADERS);
-  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  var row = [];
   var vals = {
     id: id, name: String(nome).trim(), state: ufLimpa, city: String(cidade || '').trim(),
     client_type: clientType || '', active: 'TRUE', normalized_name: key,
     legacy_name: String(nome).trim(), import_source: IMP_TAG, created_at: nowISO()
   };
-  for (var h = 0; h < headers.length; h++) row.push(vals[headers[h]] !== undefined ? vals[headers[h]] : '');
-  sh.appendRow(row);
+  var row = [];
+  for (var h = 0; h < _impEmpresaHeaders.length; h++) row.push(vals[_impEmpresaHeaders[h]] !== undefined ? vals[_impEmpresaHeaders[h]] : '');
+  _impEmpresaNovas[id] = _impEmpresaBuffer.length;
+  _impEmpresaBuffer.push(row);
   mapa[key] = id;
   rel.empresas_criadas++;
   return id;
 }
 
-/** "R$ 302.995,50" → 302995.50 */
+function _impFlushEmpresas() {
+  if (!_impEmpresaBuffer.length) return;
+  var sh = getOrCreateSheet(COMPANIES_SHEET, COMPANIES_HEADERS);
+  sh.getRange(sh.getLastRow() + 1, 1, _impEmpresaBuffer.length, _impEmpresaHeaders.length)
+    .setValues(_impEmpresaBuffer);
+  _impEmpresaBuffer = [];
+  _impEmpresaNovas = {};
+}
+
+/**
+ * Valor monetário em qualquer formato que o Sheets entregue:
+ * - número JS (célula convertida): usa direto — NUNCA reprocessar;
+ * - "R$ 302.995,50" (string pt-BR): limpa milhar '.' e troca ',' por '.';
+ * - "302995.5" (string en): parseFloat direto.
+ */
 function _impParseBRL(txt) {
-  var s = String(txt || '').replace(/[^0-9.,-]/g, '').replace(/\./g, '').replace(',', '.');
-  var n = parseFloat(s);
+  if (typeof txt === 'number') return isNaN(txt) ? 0 : txt;
+  var s = String(txt || '').trim();
+  if (!s) return 0;
+  var limpo = s.replace(/[^0-9.,-]/g, '');
+  var n;
+  if (limpo.indexOf(',') !== -1) {
+    n = parseFloat(limpo.replace(/\./g, '').replace(',', '.')); // pt-BR
+  } else {
+    n = parseFloat(limpo); // en ou inteiro puro
+  }
   return isNaN(n) ? 0 : n;
 }
 
@@ -271,20 +315,115 @@ function _impImportarFormulario(mapaEmpresas, rel) {
   }
 }
 
-/** Preenche state/city da empresa apenas se estiverem vazios. */
+var _impCompanySheetCache = null; // { values, idCol, stCol, ciCol, dirty: [] }
+
+/** Preenche state/city apenas se vazios — em memória; escrita em lote no fim. */
 function _impEnriquecerEmpresa(companyId, uf, cidade) {
   if (!uf && !cidade) return;
+  // empresa criada NESTA importação: edita o buffer, sem tocar a planilha
+  if (_impEmpresaNovas[companyId] !== undefined && _impEmpresaHeaders) {
+    var row = _impEmpresaBuffer[_impEmpresaNovas[companyId]];
+    var st = _impEmpresaHeaders.indexOf('state'), ci = _impEmpresaHeaders.indexOf('city');
+    if (uf && st > -1 && !String(row[st] || '').trim()) row[st] = uf;
+    if (cidade && ci > -1 && !String(row[ci] || '').trim()) row[ci] = cidade;
+    return;
+  }
+  // empresa pré-existente: cache único da aba + marcação de células sujas
   try {
-    var sh = getOrCreateSheet(COMPANIES_SHEET, COMPANIES_HEADERS);
-    var values = sh.getDataRange().getValues();
-    var headers = values[0];
-    var idCol = headers.indexOf('id'), stCol = headers.indexOf('state'), ciCol = headers.indexOf('city');
-    for (var r = 1; r < values.length; r++) {
-      if (String(values[r][idCol]) === String(companyId)) {
-        if (uf && stCol > -1 && !String(values[r][stCol]).trim()) sh.getRange(r + 1, stCol + 1).setValue(uf);
-        if (cidade && ciCol > -1 && !String(values[r][ciCol]).trim()) sh.getRange(r + 1, ciCol + 1).setValue(cidade);
-        return;
+    if (!_impCompanySheetCache) {
+      var sh = getOrCreateSheet(COMPANIES_SHEET, COMPANIES_HEADERS);
+      var values = sh.getDataRange().getValues();
+      var headers = values[0];
+      _impCompanySheetCache = {
+        sh: sh, values: values,
+        idCol: headers.indexOf('id'), stCol: headers.indexOf('state'), ciCol: headers.indexOf('city'),
+        rowById: {}, dirty: []
+      };
+      for (var r = 1; r < values.length; r++) {
+        _impCompanySheetCache.rowById[String(values[r][_impCompanySheetCache.idCol])] = r;
       }
     }
-  } catch (e) { /* enriquecimento é best-effort */ }
+    var c = _impCompanySheetCache;
+    var ri = c.rowById[String(companyId)];
+    if (ri === undefined) return;
+    if (uf && c.stCol > -1 && !String(c.values[ri][c.stCol] || '').trim()) {
+      c.values[ri][c.stCol] = uf;
+      c.dirty.push({ r: ri + 1, col: c.stCol + 1, v: uf });
+    }
+    if (cidade && c.ciCol > -1 && !String(c.values[ri][c.ciCol] || '').trim()) {
+      c.values[ri][c.ciCol] = cidade;
+      c.dirty.push({ r: ri + 1, col: c.ciCol + 1, v: cidade });
+    }
+  } catch (e) { /* best-effort */ }
+}
+
+function _impFlushEnriquecimento() {
+  if (!_impCompanySheetCache || !_impCompanySheetCache.dirty.length) return;
+  var c = _impCompanySheetCache;
+  for (var i = 0; i < c.dirty.length; i++) {
+    c.sh.getRange(c.dirty[i].r, c.dirty[i].col).setValue(c.dirty[i].v);
+  }
+  _impCompanySheetCache = null;
+}
+
+
+/**
+ * REPARO da primeira importação (rodar UMA vez após o setupAll):
+ * 1. Garante a coluna import_origem (initProposalsAddColumns);
+ * 2. Relê a aba ORGANIZACAO e recalcula o valor CORRETO de cada proposta
+ *    importada (corrige a inflação 10× causada por células numéricas);
+ * 3. Marca import_origem = IMPORT_LEGADO em todas (tira o histórico do
+ *    alerta de follow-up do dashboard).
+ * Escreve as duas colunas em LOTE (rápido). Idempotente.
+ */
+function corrigirImportacao() {
+  if (typeof initProposalsAddColumns === 'function') initProposalsAddColumns();
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var shRaw = ss.getSheetByName(IMP_SHEET_ORG);
+  if (!shRaw) throw new Error('Aba ' + IMP_SHEET_ORG + ' não encontrada.');
+  var raw = shRaw.getDataRange().getValues();
+
+  // número legado -> valor correto
+  var valorPorNumero = {};
+  for (var r = 2; r < raw.length; r++) {
+    var numero = String(raw[r][1] || '').trim();
+    if (numero) valorPorNumero[numero] = _impParseBRL(raw[r][5]);
+  }
+
+  var sh = getOrCreateSheet(PROPOSALS_SHEET, PROPOSALS_LEGACY_HEADERS);
+  var values = sh.getDataRange().getValues();
+  var headers = values[0];
+  var numCol = headers.indexOf('number');
+  var valCol = headers.indexOf('total_value');
+  var origCol = headers.indexOf('import_origem');
+  var byCol = headers.indexOf('created_by');
+  if (origCol === -1) throw new Error('Coluna import_origem ausente — rode setupAll primeiro.');
+
+  var corrigidas = 0, marcadas = 0;
+  for (var i = 1; i < values.length; i++) {
+    var numero2 = String(values[i][numCol] || '').trim();
+    var ehImport = valorPorNumero[numero2] !== undefined &&
+                   (String(values[i][byCol]) === 'IMPORT' || String(values[i][origCol]) === IMP_TAG);
+    if (!ehImport) continue;
+    var certo = valorPorNumero[numero2];
+    if (Number(values[i][valCol]) !== certo) { values[i][valCol] = certo; corrigidas++; }
+    if (String(values[i][origCol]) !== IMP_TAG) { values[i][origCol] = IMP_TAG; marcadas++; }
+  }
+
+  // escrita em lote: só as duas colunas, coluna inteira de uma vez
+  var n = values.length - 1;
+  if (n > 0) {
+    var colVal = [], colOrig = [];
+    for (var k = 1; k < values.length; k++) {
+      colVal.push([values[k][valCol]]);
+      colOrig.push([values[k][origCol]]);
+    }
+    sh.getRange(2, valCol + 1, n, 1).setValues(colVal);
+    sh.getRange(2, origCol + 1, n, 1).setValues(colOrig);
+  }
+
+  var msg = 'REPARO CONCLUÍDO • valores corrigidos: ' + corrigidas + ' • import_origem marcadas: ' + marcadas;
+  Logger.log(msg);
+  return { corrigidas: corrigidas, marcadas: marcadas };
 }

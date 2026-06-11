@@ -191,12 +191,16 @@ function _dshMapa(porEstado) {
     return;
   }
   var desenhar = function () {
-    var rows = [['Estado', 'R$ fechado', 'Detalhe']];
+    // GeoChart em modo regions aceita exatamente 2 colunas; o detalhe entra
+    // como VALOR FORMATADO {v, f}, que é o que o tooltip exibe.
+    var rows = [['Estado', 'R$ fechado']];
     for (var i = 0; i < ufs.length; i++) {
       var e = porEstado[ufs[i]];
-      rows.push(['BR-' + ufs[i],
-        Math.round(e.valor_fechado),
-        e.empresas + ' empresa' + (e.empresas === 1 ? '' : 's') + ' · ' + e.propostas + ' proposta' + (e.propostas === 1 ? '' : 's')]);
+      rows.push(['BR-' + ufs[i], {
+        v: Math.round(e.valor_fechado),
+        f: _dshCompact(e.valor_fechado) + ' · ' + e.empresas + ' empresa' + (e.empresas === 1 ? '' : 's') +
+           ' · ' + e.propostas + ' proposta' + (e.propostas === 1 ? '' : 's')
+      }]);
     }
     var data = google.visualization.arrayToDataTable(rows);
     var chart = new google.visualization.GeoChart(el);
