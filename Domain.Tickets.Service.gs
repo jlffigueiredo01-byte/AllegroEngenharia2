@@ -387,7 +387,7 @@ function tktSvcGetEmRiscoSla() {
 /* ───────────────── Interações do chamado (8D-lite) ───────────────── */
 
 /** Registra uma interação no chamado. Retorna o registro criado. */
-function _tktAddUpdate(ticketId, tipo, texto, anexoUrl, anexoName) {
+function _tktAddUpdate(ticketId, tipo, texto, anexoUrl, anexoName, valor) {
   var sh = getOrCreateSheet(TICKET_UPDATES_SHEET, TICKET_UPDATES_HEADERS);
   var user = requireAuth();
   var rec = {
@@ -399,7 +399,8 @@ function _tktAddUpdate(ticketId, tipo, texto, anexoUrl, anexoName) {
     tipo:       tipo,
     texto:      texto || '',
     anexo_url:  anexoUrl || '',
-    anexo_name: anexoName || ''
+    anexo_name: anexoName || '',
+    valor:      valor || ''
   };
   var row = [];
   for (var i = 0; i < TICKET_UPDATES_HEADERS.length; i++) row.push(rec[TICKET_UPDATES_HEADERS[i]]);
@@ -463,4 +464,84 @@ function tktSvcGetDetail(ticketId) {
   var comps = sheetToObjects(COMPANIES_SHEET).filter(function (c) { return String(c.id) === String(t.company_id); });
   if (comps.length) company = { id: comps[0].id, name: comps[0].name, city: comps[0].city, state: comps[0].state };
   return { ticket: t, updates: updates, company: company };
+}
+
+
+/* ───────────────── Custos e classificação de origem ───────────────── */
+
+/** Lança um custo no chamado e atualiza o total. */
+function tktSvcLancarCusto(ticketId, descricao, valor) {
+  var v = Number(valor);
+  if (!descricao || !String(descricao).trim()) throw new Error('Descrição do custo é obrigatória.');
+  if (isNaN(v) || v <= 0) throw new Error('Valor inválido.');
+  var rows = sheetToObjects(TICKETS_SHEET).filter(function (r) { return r.id === ticketId; });
+  if (!rows.length) throw new Error('Chamado não encontrado: ' + ticketId);
+
+  var rec = _tktAddUpdate(ticketId, 'CUSTO', String(descricao).trim(), '', '', v);
+
+  // total = soma de todos os updates CUSTO (fonte única, recomputada)
+  var updates = sheetToObjects(TICKET_UPDATES_SHEET);
+  var total = 0;
+  for (var i = 0; i < updates.length; i++) {
+    if (String(updates[i].ticket_id) === String(ticketId) && updates[i].tipo === 'CUSTO') {
+      total += Number(updates[i].valor || 0);
+    }
+  }
+  updateRowById(TICKETS_SHEET, ticketId, { custo_total: Math.round(total * 100) / 100, updated_at: nowISO() });
+  rec.custo_total = total;
+  return rec;
+}
+
+/**
+ * Endgate do chamado: classifica a origem do erro, define quem paga os
+ * custos e fecha. Origem é OBRIGATÓRIA — chamado não fecha sem saber
+ * de onde o problema veio (disciplina 8D).
+ * @param {string} ticketId
+ * @param {string} origemErro   CLIENTE | HYDRONIX | ALLEGRO | NAO_IDENTIFICADO
+ * @param {string} cobrancaDe   HYDRONIX | CLIENTE | ALLEGRO
+ * @param {string} [licao]      lição aprendida (vira update 📚)
+ */
+function tktSvcClassificarEFechar(ticketId, origemErro, cobrancaDe, licao) {
+  if (!TICKET_ORIGEM_ERRO[origemErro]) {
+    throw new Error('Origem do erro inválida. Use: CLIENTE, HYDRONIX, ALLEGRO ou NAO_IDENTIFICADO.');
+  }
+  var rows = sheetToObjects(TICKETS_SHEET).filter(function (r) { return r.id === ticketId; });
+  var t = rows[0];
+  if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
+
+  var custo = Number(t.custo_total || 0);
+  var cobranca = cobrancaDe || 'ALLEGRO';
+  if (['HYDRONIX', 'CLIENTE', 'ALLEGRO'].indexOf(cobranca) === -1) cobranca = 'ALLEGRO';
+  var cobrancaStatus = custo > 0
+    ? (cobranca === 'ALLEGRO' ? 'ABSORVIDO' : 'PENDENTE')
+    : 'ABSORVIDO';
+
+  updateRowById(TICKETS_SHEET, ticketId, {
+    origem_erro:     origemErro,
+    cobranca_de:     cobranca,
+    cobranca_status: cobrancaStatus,
+    updated_at:      nowISO()
+  });
+
+  var labels = { CLIENTE: 'Cliente', HYDRONIX: 'Hydronix (fabricante)', ALLEGRO: 'Allegro (interno)', NAO_IDENTIFICADO: 'Não identificado' };
+  _tktAddUpdate(ticketId, 'SISTEMA',
+    '🏁 Classificação: origem = ' + labels[origemErro] +
+    (custo > 0 ? ' · custos R$ ' + custo.toFixed(2) + ' → ' +
+      (cobranca === 'ALLEGRO' ? 'absorvidos pela Allegro' : 'a cobrar de ' + labels[cobranca]) : ' · sem custos lançados'));
+  if (licao && String(licao).trim()) {
+    _tktAddUpdate(ticketId, 'COMENTARIO', '📚 Lição aprendida: ' + String(licao).trim());
+  }
+  return tktSvcFechar(ticketId);
+}
+
+/** Marca a cobrança do chamado como realizada (Financeiro). */
+function tktSvcMarcarCobrado(ticketId) {
+  var rows = sheetToObjects(TICKETS_SHEET).filter(function (r) { return r.id === ticketId; });
+  var t = rows[0];
+  if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
+  if (t.cobranca_status !== 'PENDENTE') throw new Error('Este chamado não tem cobrança pendente.');
+  updateRowById(TICKETS_SHEET, ticketId, { cobranca_status: 'COBRADO', updated_at: nowISO() });
+  _tktAddUpdate(ticketId, 'SISTEMA', '💸 Cobrança de R$ ' + Number(t.custo_total || 0).toFixed(2) +
+    ' (' + t.cobranca_de + ') marcada como realizada.');
+  return { id: ticketId, cobranca_status: 'COBRADO' };
 }

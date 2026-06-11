@@ -177,3 +177,28 @@ function Api_tktResolver(ticketId, resolutionNotes, rootCause) {
     return { ok: true, data: r };
   } catch (e) { return { ok: false, error: e.message }; }
 }
+
+
+/** Lança um custo de resolução no chamado. */
+function Api_tktLancarCusto(ticketId, descricao, valor) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    return { ok: true, data: tktSvcLancarCusto(ticketId, descricao, valor) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/** Endgate: classifica origem do erro + quem paga e fecha o chamado. */
+function Api_tktClassificarEFechar(ticketId, origemErro, cobrancaDe, licao) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
+    return { ok: true, data: tktSvcClassificarEFechar(ticketId, origemErro, cobrancaDe, licao) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/** Financeiro: marca a cobrança pendente como realizada. */
+function Api_tktMarcarCobrado(ticketId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
+    return { ok: true, data: tktSvcMarcarCobrado(ticketId) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}

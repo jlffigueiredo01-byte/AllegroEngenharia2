@@ -30,6 +30,10 @@ var TICKETS_HEADERS = [
   'resolution_notes',
   'root_cause',
   'drive_folder_id',      // pasta no Drive para anexos (criada preguiçosamente)
+  'origem_erro',          // CLIENTE | HYDRONIX | ALLEGRO | NAO_IDENTIFICADO (endgate do fechamento)
+  'cobranca_de',          // quem paga os custos: HYDRONIX | CLIENTE | ALLEGRO (absorvido)
+  'cobranca_status',      // PENDENTE | COBRADO | ABSORVIDO
+  'custo_total',          // soma dos lançamentos de custo (updates tipo CUSTO)
   'created_at',
   'updated_at'
 ];
@@ -85,11 +89,44 @@ function initTicketsSheet() {
 var TICKET_UPDATES_SHEET = 'TICKET_UPDATES';
 var TICKET_UPDATES_HEADERS = [
   'id', 'ticket_id', 'timestamp', 'user_id', 'user_name',
-  'tipo',        // COMENTARIO | STATUS | ANEXO | SISTEMA
+  'tipo',        // COMENTARIO | STATUS | ANEXO | SISTEMA | CUSTO
   'texto',
-  'anexo_url', 'anexo_name'
+  'anexo_url', 'anexo_name',
+  'valor'        // R$ do lançamento quando tipo = CUSTO
 ];
 
 function initTicketUpdatesSheet() {
   getOrCreateSheet(TICKET_UPDATES_SHEET, TICKET_UPDATES_HEADERS);
+  _tktEnsureColumns();
+}
+
+
+/** Origens de erro (adaptação do PPI/MPI/SPI/CPI da indústria). */
+var TICKET_ORIGEM_ERRO = {
+  CLIENTE:          'CLIENTE',          // mau uso, infraestrutura, operação (≈ CPI)
+  HYDRONIX:         'HYDRONIX',         // defeito de fabricação — garantia do fabricante (≈ SPI)
+  ALLEGRO:          'ALLEGRO',          // erro nosso: especificação, instalação, configuração (≈ MPI)
+  NAO_IDENTIFICADO: 'NAO_IDENTIFICADO'  // sem defeito confirmado / inconclusivo
+};
+
+/** Garante as colunas novas em abas pré-existentes. Idempotente. */
+function _tktEnsureColumns() {
+  try {
+    var defs = [
+      { sheet: TICKETS_SHEET, headers: TICKETS_HEADERS,
+        need: ['origem_erro', 'cobranca_de', 'cobranca_status', 'custo_total'] },
+      { sheet: TICKET_UPDATES_SHEET, headers: TICKET_UPDATES_HEADERS, need: ['valor'] }
+    ];
+    for (var d = 0; d < defs.length; d++) {
+      var sh = getOrCreateSheet(defs[d].sheet, defs[d].headers);
+      var hs = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      for (var i = 0; i < defs[d].need.length; i++) {
+        if (hs.indexOf(defs[d].need[i]) === -1) {
+          sh.getRange(1, sh.getLastColumn() + 1).setValue(defs[d].need[i]);
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('_tktEnsureColumns: ' + e.message);
+  }
 }

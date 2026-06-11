@@ -26,6 +26,7 @@ function renderChamados(area) {
         '<option value="AGUARDANDO_CLIENTE">Aguardando cliente</option>' +
         '<option value="RESOLVIDO">Resolvidos</option>' +
         '<option value="FECHADO">Fechados</option>' +
+        '<option value="A_COBRAR">💸 Com cobrança pendente</option>' +
         '<option value="TODOS">Todos</option>' +
       '</select>' +
     '</div>' +
@@ -72,6 +73,7 @@ function _tktRenderList() {
   var lista = _tktList.filter(function (t) {
     if (_tktFiltroStatus === 'TODOS') return true;
     if (_tktFiltroStatus === 'ABERTOS') return ABERTOS[t.status];
+    if (_tktFiltroStatus === 'A_COBRAR') return t.cobranca_status === 'PENDENTE';
     return t.status === _tktFiltroStatus;
   });
   if (!lista.length) {
@@ -90,12 +92,17 @@ function _tktRenderList() {
       '<td style="text-align:center"><span class="badge ' + (t.priority === 'CRITICA' || t.priority === 'ALTA' ? 'badge-red' : 'badge-gray') + '">' + escapeHtml(t.priority || '') + '</span></td>' +
       '<td style="text-align:center"><span class="badge ' + _tktBadge(t.status) + '">' + escapeHtml(t.status || '') + '</span></td>' +
       '<td style="text-align:center">' + _tktSlaInfo(t) + '</td>' +
+      '<td style="text-align:right;font-size:12px">' +
+        (Number(t.custo_total) > 0 ? formatBRL(Number(t.custo_total)) : '') +
+        (t.cobranca_status === 'PENDENTE' ? ' <span class="badge badge-red" style="font-size:10px">a cobrar</span>' : '') +
+        (t.cobranca_status === 'COBRADO' ? ' <span class="badge badge-green" style="font-size:10px">✓</span>' : '') +
+      '</td>' +
       '<td style="font-size:11px;color:#98a2b3">' + formatDate(t.opened_at || t.created_at) + '</td>' +
     '</tr>';
   }
   w.innerHTML =
     '<div class="card"><div class="table-wrap"><table class="data-table">' +
-      '<thead><tr><th>ID</th><th>Cliente</th><th>Título</th><th>Prior.</th><th>Status</th><th>SLA</th><th>Aberto em</th></tr></thead>' +
+      '<thead><tr><th>ID</th><th>Cliente</th><th>Título</th><th>Prior.</th><th>Status</th><th>SLA</th><th>Custo</th><th>Aberto em</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div></div>';
   var trs = w.querySelectorAll('.tkt-row');
   for (var b = 0; b < trs.length; b++) {
@@ -164,7 +171,7 @@ function _tktRenderDetail(d) {
   }
   for (var i = 0; i < d.updates.length; i++) {
     var u = d.updates[i];
-    var icon = u.tipo === 'ANEXO' ? '📎' : (u.tipo === 'STATUS' ? '🔁' : '💬');
+    var icon = u.tipo === 'ANEXO' ? '📎' : (u.tipo === 'STATUS' ? '🔁' : (u.tipo === 'CUSTO' ? '💸' : (u.tipo === 'SISTEMA' ? '🏁' : '💬')));
     feed += '<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px">' +
       '<span>' + icon + '</span>' +
       '<div style="flex:1">' +
@@ -172,6 +179,7 @@ function _tktRenderDetail(d) {
           ? '<a href="' + escapeHtml(u.anexo_url) + '" target="_blank">' + escapeHtml(u.anexo_name || 'anexo') + '</a> '
           : '') +
         escapeHtml(u.texto || '') +
+        (u.tipo === 'CUSTO' && u.valor ? ' <b style="color:#b42318">' + formatBRL(Number(u.valor)) + '</b>' : '') +
         '<div style="color:#98a2b3;font-size:11px">' + formatDate(u.timestamp) + ' · ' + escapeHtml(u.user_name || '') + '</div>' +
       '</div></div>';
   }
@@ -187,6 +195,10 @@ function _tktRenderDetail(d) {
       '<div style="display:flex;gap:6px;align-items:center">' +
         '<span class="badge ' + (t.priority === 'CRITICA' || t.priority === 'ALTA' ? 'badge-red' : 'badge-gray') + '">' + escapeHtml(t.priority || '') + '</span>' +
         '<span class="badge ' + _tktBadge(t.status) + '">' + escapeHtml(t.status) + '</span>' +
+        (Number(t.custo_total) > 0 ? '<span class="badge badge-yellow" title="custos lançados">💸 ' + formatBRL(Number(t.custo_total)) + '</span>' : '') +
+        (t.cobranca_status === 'PENDENTE' ? '<span class="badge badge-red">a cobrar: ' + escapeHtml(t.cobranca_de) + '</span>' : '') +
+        (t.cobranca_status === 'COBRADO' ? '<span class="badge badge-green">cobrado ✓</span>' : '') +
+        (t.origem_erro ? '<span class="badge badge-gray" title="origem do erro">' + escapeHtml(t.origem_erro) + '</span>' : '') +
         _tktSlaInfo(t) +
       '</div>' +
     '</div>' +
@@ -220,8 +232,13 @@ function _tktRenderFlowButtons(t) {
     btns.push({ label: '▶ Retomar atendimento', cls: 'btn-primary', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
     btns.push({ label: '✅ Resolver (solução + causa raiz)', cls: 'btn-success', fn: _tktResolver });
   } else if (t.status === 'RESOLVIDO') {
-    btns.push({ label: '🔒 Fechar com lição aprendida', cls: 'btn-primary', fn: _tktFechar });
+    btns.push({ label: '🔒 Fechar (origem do erro + cobrança)', cls: 'btn-primary', fn: function () { _tktFechar(t); } });
     btns.push({ label: '↩ Reabrir atendimento', cls: 'btn-ghost', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
+  } else if (t.status === 'FECHADO' && t.cobranca_status === 'PENDENTE') {
+    btns.push({ label: '✔ Marcar cobrança realizada (' + formatBRL(Number(t.custo_total || 0)) + ' de ' + t.cobranca_de + ')', cls: 'btn-success', fn: _tktMarcarCobrado });
+  }
+  if (t.status === 'EM_ATENDIMENTO' || t.status === 'AGUARDANDO_CLIENTE' || t.status === 'RESOLVIDO') {
+    btns.push({ label: '💸 Lançar custo', cls: 'btn-ghost', fn: _tktLancarCusto });
   }
   var html = '';
   for (var i = 0; i < btns.length; i++) {
@@ -272,23 +289,67 @@ function _tktResolver() {
   .Api_tktResolver(_tktDetailId, solucao, causa || '');
 }
 
-function _tktFechar() {
+function _tktFechar(t) {
+  // ENDGATE (8D): origem do erro é obrigatória para fechar
+  var origem = prompt(
+    'ONDE O ERRO SURGIU? (obrigatório)\n\n' +
+    '1) Cliente — mau uso, infraestrutura, operação\n' +
+    '2) Hydronix — defeito de fabricação (garantia)\n' +
+    '3) Allegro — especificação, instalação, configuração\n' +
+    '4) Não identificado / sem defeito confirmado', '1');
+  if (!origem) { _tktBusy(false); return; }
+  var ORIG = { '1': 'CLIENTE', '2': 'HYDRONIX', '3': 'ALLEGRO', '4': 'NAO_IDENTIFICADO' };
+  var origemErro = ORIG[String(origem).trim()];
+  if (!origemErro) { showAlert('Opção inválida.', 'warning'); _tktBusy(false); return; }
+
+  var cobranca = 'ALLEGRO';
+  var custo = Number((t && t.custo_total) || 0);
+  if (custo > 0) {
+    var sugestao = origemErro === 'HYDRONIX' ? '1' : (origemErro === 'CLIENTE' ? '2' : '3');
+    var quem = prompt(
+      'Custos lançados: ' + formatBRL(custo) + '\nQUEM PAGA?\n\n' +
+      '1) Hydronix — repassar ao fabricante\n' +
+      '2) Cliente — faturar\n' +
+      '3) Allegro — absorver', sugestao);
+    if (!quem) { _tktBusy(false); return; }
+    var COBR = { '1': 'HYDRONIX', '2': 'CLIENTE', '3': 'ALLEGRO' };
+    cobranca = COBR[String(quem).trim()] || 'ALLEGRO';
+  }
+
   var licao = prompt('Lição aprendida (7D/8D — o que evita a reincidência?). Opcional:');
   if (licao === null) { _tktBusy(false); return; }
-  var fechar = function () {
-    google.script.run.withSuccessHandler(function (r) {
-      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); _tktBusy(false); return; }
-      showAlert('Chamado fechado 🔒', 'success');
-      _tktRefresh();
-    }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); _tktBusy(false); })
-    .Api_tktFechar(_tktDetailId);
-  };
-  if (licao && licao.trim()) {
-    google.script.run.withSuccessHandler(fechar).withFailureHandler(fechar)
-      .Api_tktComentar(_tktDetailId, '📚 Lição aprendida: ' + licao.trim());
-  } else {
-    fechar();
-  }
+
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); _tktBusy(false); return; }
+    showAlert('Chamado fechado 🔒' + (custo > 0 && cobranca !== 'ALLEGRO' ? ' — cobrança pendente registrada para o Financeiro.' : ''), 'success');
+    _tktRefresh();
+  }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); _tktBusy(false); })
+  .Api_tktClassificarEFechar(_tktDetailId, origemErro, cobranca, licao || '');
+}
+
+function _tktLancarCusto() {
+  var desc = prompt('Descrição do custo (peça, deslocamento, horas técnicas...):');
+  if (!desc || !desc.trim()) { _tktBusy(false); return; }
+  var val = prompt('Valor (R$):');
+  if (!val) { _tktBusy(false); return; }
+  var v = parseFloat(String(val).replace(/\./g, '').replace(',', '.'));
+  if (isNaN(v) || v <= 0) { showAlert('Valor inválido.', 'warning'); _tktBusy(false); return; }
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); _tktBusy(false); return; }
+    showAlert('Custo lançado 💸', 'success');
+    _tktRefresh();
+  }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); _tktBusy(false); })
+  .Api_tktLancarCusto(_tktDetailId, desc.trim(), v);
+}
+
+function _tktMarcarCobrado() {
+  if (!confirm('Confirmar que a cobrança foi realizada (NF emitida / reembolso recebido)?')) { _tktBusy(false); return; }
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); _tktBusy(false); return; }
+    showAlert('Cobrança registrada como realizada ✓', 'success');
+    _tktRefresh();
+  }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); _tktBusy(false); })
+  .Api_tktMarcarCobrado(_tktDetailId);
 }
 
 function _tktComentar() {
