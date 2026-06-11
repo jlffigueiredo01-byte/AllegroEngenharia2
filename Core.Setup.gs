@@ -66,6 +66,7 @@ const CONFIG_DEFAULTS = [
 ];
 
 function initCoreSheets() {
+  initDriveRegistrySheet();   // Core.Drive.gs — registro de pastas do Drive
   getOrCreateSheet('CONFIG',   CONFIG_HEADERS);
   getOrCreateSheet('USERS',    USERS_HEADERS);
   getOrCreateSheet('AUDIT_LOG', AUDIT_HEADERS);

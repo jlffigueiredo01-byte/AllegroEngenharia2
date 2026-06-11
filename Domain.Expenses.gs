@@ -30,10 +30,16 @@ function _expEnsureFotoColumn() {
  * @return {Folder}
  */
 function _expGetFotosFolder() {
+  // Preferência: taxonomia oficial do Drive (Core.Drive.gs)
+  try {
+    var oficial = drvGetYearFolder('FIN_COMPROVANTES', new Date().getFullYear());
+    if (oficial) return oficial;
+  } catch (e) { /* sem ROOT_FOLDER_ID configurado: fallback abaixo */ }
+
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('EXPENSES_FOLDER_ID');
   if (id) {
-    try { return DriveApp.getFolderById(id); } catch (e) { /* recria abaixo */ }
+    try { return DriveApp.getFolderById(id); } catch (e2) { /* recria abaixo */ }
   }
   var folder = DriveApp.createFolder('SGA - Despesas (comprovantes)');
   props.setProperty('EXPENSES_FOLDER_ID', folder.getId());
