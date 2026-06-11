@@ -282,7 +282,7 @@ function _v360BaseTicketsHtml(d) {
   if (!d.tickets.length) html += '<p style="color:#94a3b8;font-size:12px">Nenhum chamado.</p>';
   for (var t = 0; t < d.tickets.length && t < 8; t++) {
     var tk = d.tickets[t];
-    html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">' +
+    html += '<div class="v360-tkt" data-id="' + escapeHtml(tk.id) + '" style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9;cursor:pointer">' +
       '<span>🛠️ <b>' + escapeHtml(tk.id) + '</b> ' + escapeHtml(tk.title || tk.tipo || '') + '</span>' +
       '<span class="badge ' + _v360Badge(tk.status) + '">' + escapeHtml(tk.status || '') + '</span></div>';
   }
@@ -343,6 +343,10 @@ function _v360Bind() {
   for (var q = 0; q < poBtns.length; q++) {
     poBtns[q].addEventListener('click', function () { _v360ModalPo(this.getAttribute('data-id')); });
   }
+  var tktRows = document.querySelectorAll('.v360-tkt');
+  for (var tr = 0; tr < tktRows.length; tr++) {
+    tktRows[tr].addEventListener('click', function () { _tktOpen(this.getAttribute('data-id')); });
+  }
   var projBtns = document.querySelectorAll('.v360-proj');
   for (var j = 0; j < projBtns.length; j++) {
     projBtns[j].addEventListener('click', function () {
@@ -364,7 +368,21 @@ function _v360InlineModal(titleHtml, bodyHtml, onSave, saveLabel) {
       '</div>' +
     '</div>';
   document.getElementById('v360-im-cancel').addEventListener('click', function () { box.innerHTML = ''; });
-  document.getElementById('v360-im-save').addEventListener('click', onSave);
+  document.getElementById('v360-im-save').addEventListener('click', function () {
+    // anti duplo-clique: desabilita e dá feedback imediato (Nielsen #1:
+    // visibilidade do estado do sistema). Reabilita só se a modal sobreviver
+    // (erro de validação); no sucesso ela é destruída pelo _v360AfterCreate.
+    var btn = document.getElementById('v360-im-save');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    var original = btn.textContent;
+    btn.textContent = 'Salvando...';
+    onSave();
+    setTimeout(function () {
+      var again = document.getElementById('v360-im-save');
+      if (again) { again.disabled = false; again.textContent = original; }
+    }, 4000);
+  });
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 

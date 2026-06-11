@@ -79,3 +79,17 @@ var TICKET_CATEGORIES = [
 function initTicketsSheet() {
   getOrCreateSheet(TICKETS_SHEET, TICKETS_HEADERS);
 }
+
+
+/** Aba de interações do chamado (comentários, anexos, mudanças de status). */
+var TICKET_UPDATES_SHEET = 'TICKET_UPDATES';
+var TICKET_UPDATES_HEADERS = [
+  'id', 'ticket_id', 'timestamp', 'user_id', 'user_name',
+  'tipo',        // COMENTARIO | STATUS | ANEXO | SISTEMA
+  'texto',
+  'anexo_url', 'anexo_name'
+];
+
+function initTicketUpdatesSheet() {
+  getOrCreateSheet(TICKET_UPDATES_SHEET, TICKET_UPDATES_HEADERS);
+}

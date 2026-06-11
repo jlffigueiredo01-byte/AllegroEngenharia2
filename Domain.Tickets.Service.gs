@@ -73,6 +73,14 @@ function tktSvcAbrir(data) {
   var user = requireAuth();
   var agora = new Date();
   var id = 'TKT-' + String(getAndIncrementCounter('TKT_COUNTER')).padStart(5, '0');
+  // Guarda de unicidade: se o CONFIG sofreu leitura defasada (cache) e o id
+  // já existe, avança o contador até achar um livre. (bug dos TKT duplicados)
+  var _idsExistentes = {};
+  var _rowsTk = sheetToObjects(TICKETS_SHEET);
+  for (var _ix = 0; _ix < _rowsTk.length; _ix++) _idsExistentes[_rowsTk[_ix].id] = true;
+  while (_idsExistentes[id]) {
+    id = 'TKT-' + String(getAndIncrementCounter('TKT_COUNTER')).padStart(5, '0');
+  }
 
   // TODO [INTEGRACAO_F6→F5]: Verificar se serial_id existe na base instalada antes de criar o ticket.
   // Usar biRepoGetById(data.serial_id) — se não encontrado, lançar erro informativo.
@@ -373,4 +381,86 @@ function tktSvcGetEmRiscoSla() {
       pct_sla:          Math.round((horas / slaH) * 100)
     };
   }).sort(function(a, b) { return b.pct_sla - a.pct_sla; });
+}
+
+
+/* ───────────────── Interações do chamado (8D-lite) ───────────────── */
+
+/** Registra uma interação no chamado. Retorna o registro criado. */
+function _tktAddUpdate(ticketId, tipo, texto, anexoUrl, anexoName) {
+  var sh = getOrCreateSheet(TICKET_UPDATES_SHEET, TICKET_UPDATES_HEADERS);
+  var user = requireAuth();
+  var rec = {
+    id:         'TKU-' + String(getAndIncrementCounter('TKT_UPDATE_COUNTER')).padStart(6, '0'),
+    ticket_id:  ticketId,
+    timestamp:  new Date().toISOString(),
+    user_id:    user.id,
+    user_name:  user.name || user.id,
+    tipo:       tipo,
+    texto:      texto || '',
+    anexo_url:  anexoUrl || '',
+    anexo_name: anexoName || ''
+  };
+  var row = [];
+  for (var i = 0; i < TICKET_UPDATES_HEADERS.length; i++) row.push(rec[TICKET_UPDATES_HEADERS[i]]);
+  sh.appendRow(row);
+  // toca o updated_at do ticket
+  try { updateRowById(TICKETS_SHEET, ticketId, { updated_at: rec.timestamp }); } catch (e) {}
+  return rec;
+}
+
+/** Comentário do time: alimenta o chamado e marca a 1ª resposta (SLA). */
+function tktSvcComentar(ticketId, texto) {
+  if (!texto || !String(texto).trim()) throw new Error('Comentário vazio.');
+  var t = tktRepoGetById ? tktRepoGetById(ticketId) : null;
+  if (!t) {
+    var rows = sheetToObjects(TICKETS_SHEET).filter(function (r) { return r.id === ticketId; });
+    t = rows[0];
+  }
+  if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
+  var rec = _tktAddUpdate(ticketId, 'COMENTARIO', String(texto).trim());
+  if (!t.first_response_at) {
+    try { tktSvcRegistrarRespondido(ticketId); } catch (e) { /* SLA é best-effort */ }
+  }
+  return rec;
+}
+
+/** Anexa um arquivo (base64) na pasta do chamado no Drive (06-PosVenda/Tickets/TKT-xxxxx). */
+function tktSvcAnexar(ticketId, base64Data, mimeType, fileName) {
+  if (!base64Data) throw new Error('Arquivo vazio.');
+  var rows = sheetToObjects(TICKETS_SHEET).filter(function (r) { return r.id === ticketId; });
+  var t = rows[0];
+  if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
+
+  var folderId = t.drive_folder_id;
+  if (!folderId) {
+    var base = drvGetFolder('POSVENDA_TICKETS');
+    if (!base) throw new Error('Drive não configurado (ROOT_FOLDER_ID) — rode setupAll e configure a pasta raiz.');
+    var it = base.getFoldersByName(ticketId);
+    var folder = it.hasNext() ? it.next() : base.createFolder(ticketId);
+    folderId = folder.getId();
+    updateRowById(TICKETS_SHEET, ticketId, { drive_folder_id: folderId });
+  }
+  var blob = Utilities.newBlob(
+    Utilities.base64Decode(base64Data), mimeType || 'application/octet-stream',
+    fileName || ('anexo-' + new Date().getTime()));
+  var file = DriveApp.getFolderById(folderId).createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return _tktAddUpdate(ticketId, 'ANEXO', 'Anexo adicionado: ' + (fileName || file.getName()),
+    file.getUrl(), fileName || file.getName());
+}
+
+/** Detalhe completo: ticket + interações + nome da empresa. */
+function tktSvcGetDetail(ticketId) {
+  var rows = sheetToObjects(TICKETS_SHEET).filter(function (r) { return r.id === ticketId; });
+  var t = rows[0];
+  if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
+  var updates = sheetToObjects(TICKET_UPDATES_SHEET).filter(function (u) {
+    return String(u.ticket_id) === String(ticketId);
+  });
+  updates.sort(function (a, b) { return String(a.timestamp).localeCompare(String(b.timestamp)); });
+  var company = null;
+  var comps = sheetToObjects(COMPANIES_SHEET).filter(function (c) { return String(c.id) === String(t.company_id); });
+  if (comps.length) company = { id: comps[0].id, name: comps[0].name, city: comps[0].city, state: comps[0].state };
+  return { ticket: t, updates: updates, company: company };
 }

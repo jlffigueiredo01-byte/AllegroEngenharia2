@@ -128,6 +128,7 @@ function initCoreSheets() {
   // F6 — Pós-Venda: Base Instalada + Tickets
   initBaseInstaladaSheet();
   initTicketsSheet();
+  initTicketUpdatesSheet();
   // F15 — Compras e Estoque
   initSuppliersSheet();
   initPurchaseOrdersSheet();

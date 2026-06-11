@@ -140,3 +140,40 @@ function Api_tktGetBySla() {
     return { ok: false, error: e.message };
   }
 }
+
+
+/** Comentário no chamado (alimentação do 8D). */
+function Api_tktComentar(ticketId, texto) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    return { ok: true, data: tktSvcComentar(ticketId, texto) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/** Anexo (base64) na pasta do chamado no Drive. */
+function Api_tktAnexar(ticketId, payload) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    if (!payload) throw new Error('payload é obrigatório.');
+    return { ok: true, data: tktSvcAnexar(ticketId, payload.base64, payload.mime, payload.name) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/** Detalhe completo (ticket + interações + empresa). */
+function Api_tktGetDetail(ticketId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    return { ok: true, data: tktSvcGetDetail(ticketId) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/** Resolver com solução + causa raiz (4D/5D do 8D-lite). */
+function Api_tktResolver(ticketId, resolutionNotes, rootCause) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
+    var r = tktSvcResolver(ticketId, resolutionNotes, rootCause);
+    _tktAddUpdate(ticketId, 'STATUS', '✅ RESOLVIDO — Solução: ' + (resolutionNotes || '—') +
+      (rootCause ? ' | Causa raiz: ' + rootCause : ''));
+    return { ok: true, data: r };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
