@@ -1,6 +1,9 @@
 // =============================================================================
 // Domain.ProductsContent.gs — SGA
-// Descritivos comerciais (PT-BR) dos produtos Hydronix, chaveados por CÓDIGO.
+// Descritivos comerciais FALLBACK (PT-BR), chaveados por CÓDIGO.
+// A fonte RICA (shortDesc/fullDesc/características/aplicações) é o
+// Domain.HydronixContent.gs — este arquivo cobre os itens que não estão lá
+// (acessórios, cabos, dutos, peças de desgaste, variantes de display/hub).
 //
 // USO: o gerador de proposta busca primeiro a coluna long_description da aba
 // PRODUCTS (editável pelo time); se vazia, cai neste dicionário. O seed
@@ -12,7 +15,7 @@
 // coluna datasheet_url na aba PRODUCTS com a URL do hydronix.com.
 // =============================================================================
 
-var HYDRONIX_PRODUCTS_CONTENT = {
+var ALLEGRO_PRODUCT_DESCRIPTIONS = {
 
   // ── Sensores ORGANICO ──────────────────────────────────────────────────
   'HMXT01':

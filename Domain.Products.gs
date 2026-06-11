@@ -9,7 +9,8 @@ var PRODUCTS_HEADERS = [
   'table_price_usd', 'purchase_price_usd', 'purchase_price_brl',
   'selling_price_usd', 'selling_price_brl', 'active',
   'long_description', // descritivo comercial PT-BR que entra na proposta (editável)
-  'datasheet_url'     // link do folder/manual no hydronix.com (opcional)
+  'datasheet_url',    // link do folder/manual oficial (PT) no hydronix.com
+  'image_url'         // foto do produto (hospedada em allegro.eng.br)
 ];
 
 // ---------------------------------------------------------------------------
@@ -20,6 +21,7 @@ function initProductsSheet() {
   getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
   _prodEnsureColumns();
   seedProductDescriptions();
+  seedProductMedia();
   var existing = sheetToObjects(PRODUCTS_SHEET);
   if (existing.length > 0) return; // already seeded
 
@@ -241,7 +243,7 @@ function Api_setDollarRate(rate) {
 function _prodEnsureColumns() {
   try {
     var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
-    var need = ['long_description', 'datasheet_url'];
+    var need = ['long_description', 'datasheet_url', 'image_url'];
     var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     for (var i = 0; i < need.length; i++) {
       if (headers.indexOf(need[i]) === -1) {
@@ -261,7 +263,6 @@ function _prodEnsureColumns() {
  */
 function seedProductDescriptions() {
   try {
-    if (typeof HYDRONIX_PRODUCTS_CONTENT === 'undefined') return;
     var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
     var values = sh.getDataRange().getValues();
     if (values.length < 2) return;
@@ -271,15 +272,66 @@ function seedProductDescriptions() {
     if (codeCol === -1 || descCol === -1) return;
     var filled = 0;
     for (var r = 1; r < values.length; r++) {
-      var code = String(values[r][codeCol]).trim();
+      var code  = String(values[r][codeCol]).trim();
       var atual = String(values[r][descCol] || '').trim();
-      if (!atual && HYDRONIX_PRODUCTS_CONTENT[code]) {
-        sh.getRange(r + 1, descCol + 1).setValue(HYDRONIX_PRODUCTS_CONTENT[code]);
+      // Repara células corrompidas por dump de objeto (bug do toString)
+      var corrompida = atual.indexOf('{shortDesc=') === 0 ||
+                       atual.indexOf('[object') !== -1 ||
+                       atual.indexOf('[Ljava') !== -1;
+      if (atual && !corrompida) continue; // edição do time: não tocar
+
+      var texto = '';
+      if (typeof HYDRONIX_PRODUCTS_CONTENT !== 'undefined' &&
+          HYDRONIX_PRODUCTS_CONTENT[code] && HYDRONIX_PRODUCTS_CONTENT[code].shortDesc) {
+        texto = HYDRONIX_PRODUCTS_CONTENT[code].shortDesc;
+      } else if (typeof ALLEGRO_PRODUCT_DESCRIPTIONS !== 'undefined' &&
+                 ALLEGRO_PRODUCT_DESCRIPTIONS[code]) {
+        texto = ALLEGRO_PRODUCT_DESCRIPTIONS[code];
+      }
+      if (texto) {
+        sh.getRange(r + 1, descCol + 1).setValue(texto);
         filled++;
       }
     }
-    if (filled) Logger.log('[Products] ' + filled + ' descritivos preenchidos.');
+    if (filled) Logger.log('[Products] ' + filled + ' descritivos preenchidos/reparados.');
   } catch (e) {
     Logger.log('seedProductDescriptions: ' + e.message);
+  }
+}
+
+/**
+ * Fotos (hospedadas em allegro.eng.br) e datasheets oficiais PT (hydronix.com)
+ * dos produtos principais. Preenche apenas células vazias. Idempotente.
+ */
+var PRODUCT_MEDIA = {
+  'HMXT01':    { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/01-Hydro-Mix-XT.jpg',        ds: 'https://www.hydronix.com/wp-content/uploads/2022/11/sl0033pt_1_3_0.pdf' },
+  'HMXT-EX01': { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/02-Hydro-Mix-XT-EX.jpg',     ds: 'https://www.hydronix.com/wp-content/uploads/2024/05/sl0041pt_1_3_0.pdf' },
+  'HMXT-FS01': { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/03-Hydro-Mix-XT-FS.jpg',     ds: 'https://www.hydronix.com/wp-content/uploads/2022/11/sl0042pt_1_0_0.pdf' },
+  'HPXT02':    { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/04-Hydro-Probe-XT.jpg',      ds: 'https://www.hydronix.com/wp-content/uploads/2022/11/sl0030ptb_1_4_0.pdf' },
+  'HMHT01':    { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/05-Hydro-Mix-HT.jpg',        ds: 'https://www.hydronix.com/wp-content/uploads/2022/11/sl0035ptb_1_2_0.pdf' },
+  'HMHT-EX01': { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/06-Hydro-Mix-HT-EX.jpg',     ds: 'https://www.hydronix.com/wp-content/uploads/2022/11/sl0035ptb_1_2_0.pdf' },
+  'HM08':      { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/08-Hydro-Mix-.jpg',          ds: 'https://www.hydronix.com/wp-content/uploads/2023/08/sl0028ptb_1_5_0.pdf' },
+  'ORB3':      { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/09-Hydro-Probe-Orbiter.jpg', ds: 'https://www.hydronix.com/wp-content/uploads/2023/08/sl0031_1_3_0.pdf' },
+  'HPBX01':    { img: 'https://allegro.eng.br/wp-content/uploads/2024/08/11-Hydro-Probe-BX.jpg',      ds: 'https://www.hydronix.com/wp-content/uploads/2023/11/sl0045ptb_1_2_0.pdf' }
+};
+
+function seedProductMedia() {
+  try {
+    var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
+    var values = sh.getDataRange().getValues();
+    if (values.length < 2) return;
+    var headers = values[0];
+    var codeCol = headers.indexOf('code');
+    var imgCol  = headers.indexOf('image_url');
+    var dsCol   = headers.indexOf('datasheet_url');
+    if (codeCol === -1) return;
+    for (var r = 1; r < values.length; r++) {
+      var media = PRODUCT_MEDIA[String(values[r][codeCol]).trim()];
+      if (!media) continue;
+      if (imgCol > -1 && !String(values[r][imgCol] || '').trim()) sh.getRange(r + 1, imgCol + 1).setValue(media.img);
+      if (dsCol  > -1 && !String(values[r][dsCol]  || '').trim()) sh.getRange(r + 1, dsCol  + 1).setValue(media.ds);
+    }
+  } catch (e) {
+    Logger.log('seedProductMedia: ' + e.message);
   }
 }

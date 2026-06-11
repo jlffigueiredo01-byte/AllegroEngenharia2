@@ -452,9 +452,9 @@ function propSvcGerarHTML(proposalId) {
 
     var INTRO = 'Com o objetivo de oferecer soluções inovadoras e alinhadas às necessidades específicas do cliente, esta proposta técnica comercial apresenta o fornecimento do Sistema de Medição de Umidade em Fluxo. O documento foi elaborado com base no conhecimento técnico especializado da Allegro Engenharia e Desenvolvimento, aliado às informações fornecidas pela contratante e enriquecido pela ampla experiência da empresa no setor.\n\nOs materiais e tecnologias indicados para este escopo representam os mais recentes avanços disponíveis, em conformidade com as normas e especificações aplicáveis. Eventuais ajustes nos padrões estabelecidos ou nas especificações aqui descritas serão previamente submetidos à aprovação da contratante, assegurando pleno alinhamento com suas necessidades e expectativas.\n\nMais do que atender a uma demanda técnica, esta proposta foi estruturada para agregar valor ao processo produtivo da [CLIENT], oferecendo confiabilidade, eficiência e resultados consistentes. A Allegro Engenharia e Desenvolvimento reafirma seu compromisso em apoiar a empresa na implementação desta solução, fortalecendo a parceria e contribuindo para a excelência de suas operações.';
 
-    var MONITORING = 'Será disponibilizado uma tela de acesso via software Hydro-Com para fazer acompanhamento dos sensores (leitura, gravação, calibração, registro, emissão de relatórios etc.). Os relatórios poderão ser exibidos em *.csv e exibidos em excel. As informações exibidas no relatório exibirão: Tipo de Produto, Temperatura, Umidade, Data, hora, valores máximos, valores mínimos entre outros.';
+    var MONITORING = 'Será disponibilizada uma tela de acesso via software Hydro-Com para acompanhamento dos sensores (leitura, gravação, calibração, registro, emissão de relatórios etc.). Os relatórios poderão ser exportados em formato *.csv e abertos no Excel, exibindo: tipo de produto, temperatura, umidade, data, hora, valores máximos e mínimos, entre outros.';
 
-    var CALIBRATION = 'A calibração dos sensores será realizada pela [CLIENT], que deve ter equipamentos de medição de umidade de referência para essa relação. Os sensores Hydronix possuem resposta lineares, sendo possível realizar calibrações a partir de 2 pontos coletados. O manual de calibração contém informações detalhadas deste procedimento. O equipamento será dimensionado para receber até 24 calibrações diferentes.\n\nPara a calibração sugere-se utilizar o método de estufa ou por destilação. Caso seja adotado um método de medição indireta, a precisão do equipamento de referência irá impactar nos valores apresentados pelos sensores Hydro-Mix.\n\nA equipe da Allegro Engenharia e Desenvolvimento dará o suporte remoto em caso de dúvidas, e fornecerá toda a documentação necessária para configuração dos equipamentos. Os manuais serão fornecidos em português via mídia digital. Está incluso suporte remoto para quaisquer dúvidas que venham a surgir durante a operação e utilização dos equipamentos.';
+    var CALIBRATION = 'A calibração dos sensores será realizada pela [CLIENT], que deve dispor de equipamentos de medição de umidade de referência para essa correlação. Os sensores Hydronix possuem resposta linear, sendo possível realizar calibrações a partir de 2 pontos coletados. O manual de calibração contém informações detalhadas deste procedimento. O equipamento será dimensionado para receber até 24 calibrações diferentes.\n\nPara a calibração sugere-se utilizar o método de estufa ou por destilação. Caso seja adotado um método de medição indireta, a precisão do equipamento de referência irá impactar nos valores apresentados pelos sensores Hydronix.\n\nA equipe da Allegro Engenharia e Desenvolvimento dará suporte remoto em caso de dúvidas e fornecerá toda a documentação necessária para configuração dos equipamentos. Os manuais serão fornecidos em português via mídia digital. Está incluso suporte remoto para quaisquer dúvidas que venham a surgir durante a operação e utilização dos equipamentos.';
 
     var WARRANTY = 'Os produtos Hydronix possuem garantia de 24 (vinte e quatro) meses. Os serviços de desenvolvimento realizados pela Allegro Engenharia e Desenvolvimento contam com garantia de 12 (doze) meses, a partir do início da operação assistida. Nesse período, a empresa se responsabiliza por refazê-los, sem ônus ao Cliente, caso seja constatada alteração do desenvolvimento inicial.';
 
@@ -463,157 +463,203 @@ function propSvcGerarHTML(proposalId) {
     INTRO       = INTRO.replace(/\[CLIENT\]/g, clientName);
     CALIBRATION = CALIBRATION.replace(/\[CLIENT\]/g, clientName);
 
+    var LOGO_ALLEGRO  = 'https://allegro.eng.br/wp-content/uploads/2024/08/logo_allegro.png';
+    var LOGO_HYDRONIX = 'https://allegro.eng.br/wp-content/uploads/2024/08/LOGO-HYDRONIX-1.png';
+
     var css = [
-      '@media print { body { margin: 0; } .no-print { display: none; } }',
-      'body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a2e; margin: 2cm; }',
-      '.header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1a56db; padding-bottom: 12px; margin-bottom: 20px; }',
-      '.logo-allegro { font-size: 18pt; font-weight: 900; color: #1a56db; letter-spacing: 2px; }',
-      '.logo-sub { font-size: 9pt; color: #555; letter-spacing: 1px; margin-top: 2px; }',
-      '.logo-hydronix { font-size: 11pt; font-weight: bold; color: #1a56db; text-align: right; }',
-      '.section-title { background: #1a56db; color: white; text-align: center; padding: 6px 12px; font-weight: bold; font-size: 10pt; margin: 20px 0 10px; letter-spacing: 1px; }',
-      '.prices-table { width: 100%; border-collapse: collapse; margin: 10px 0; }',
-      '.prices-table th { background: #1a56db; color: white; padding: 6px 8px; text-align: left; font-size: 10pt; }',
-      '.prices-table td { border: 1px solid #ddd; padding: 5px 8px; font-size: 10pt; }',
-      '.prices-table .total-row td { font-weight: bold; background: #f0f0f0; }',
-      '.metadata { margin-bottom: 20px; line-height: 2; }',
-      '.metadata strong { display: inline-block; min-width: 120px; }',
-      '.proposal-title { text-align: center; font-size: 16pt; font-weight: bold; margin: 30px 0; text-transform: uppercase; }',
-      'p { text-align: justify; line-height: 1.6; margin: 8px 0; }',
-      '.contacts { margin-top: 10px; }',
-      '.contact-name { font-weight: bold; margin-top: 12px; }',
-      '.product-item { margin-bottom: 14px; }',
-      '.product-item strong { display: block; margin-bottom: 2px; }',
-      '.product-ncm { color: #555; font-size: 9.5pt; }',
-      '.startup-row td { font-style: italic; }',
-      'ul { margin: 6px 0 6px 20px; padding: 0; }',
-      'li { line-height: 1.7; }'
+      '@page { size: A4; margin: 16mm 14mm; }',
+      '@media print { body { margin: 0; } .no-print { display: none; } .prod-card, .price-table, .cond-grid { page-break-inside: avoid; } img { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
+      '* { box-sizing: border-box; }',
+      'body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1f2937; margin: 1.4cm; line-height: 1.55; }',
+      // header
+      '.hd { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 3px solid #1a56db; }',
+      '.hd img.logo { height: 46px; }',
+      '.hd .reseller { text-align: right; }',
+      '.hd .reseller img { height: 30px; display: block; margin-left: auto; }',
+      '.hd .reseller span { font-size: 8pt; color: #6b7280; letter-spacing: .5px; }',
+      // título + meta
+      '.title { margin: 22px 0 4px; font-size: 17pt; font-weight: 800; color: #14335f; letter-spacing: .3px; }',
+      '.subtitle { color: #1a56db; font-weight: 600; font-size: 11pt; margin-bottom: 16px; }',
+      '.meta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 18px; background: #f3f7ff; border: 1px solid #dbe7ff; border-radius: 10px; padding: 12px 16px; margin-bottom: 6px; }',
+      '.meta div { font-size: 9.5pt; }',
+      '.meta b { display: block; color: #6b7280; font-size: 8pt; text-transform: uppercase; letter-spacing: .8px; font-weight: 700; }',
+      '.meta span { font-size: 10.5pt; color: #111827; font-weight: 600; }',
+      // seções
+      '.sec { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }',
+      '.sec .n { background: #1a56db; color: #fff; font-weight: 800; font-size: 10pt; border-radius: 6px; min-width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }',
+      '.sec h2 { margin: 0; font-size: 12.5pt; color: #14335f; letter-spacing: .5px; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; flex: 1; padding-bottom: 4px; }',
+      'p { text-align: justify; margin: 7px 0; }',
+      // produto
+      '.prod-card { border: 1px solid #e5e7eb; border-left: 4px solid #1a56db; border-radius: 10px; padding: 14px 16px; margin: 12px 0; }',
+      '.prod-head { display: flex; justify-content: space-between; gap: 14px; }',
+      '.prod-head h3 { margin: 0 0 4px; font-size: 12.5pt; color: #1a56db; }',
+      '.prod-head .lead { font-size: 10pt; color: #374151; font-style: italic; margin: 0; }',
+      '.prod-img { width: 130px; min-width: 130px; text-align: center; }',
+      '.prod-img img { max-width: 130px; max-height: 110px; object-fit: contain; border-radius: 8px; }',
+      '.prod-body p { font-size: 9.8pt; }',
+      '.prod-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 22px; margin-top: 8px; }',
+      '.prod-cols h4 { margin: 6px 0 2px; font-size: 9pt; color: #14335f; text-transform: uppercase; letter-spacing: .8px; }',
+      '.prod-cols ul { margin: 0 0 0 16px; padding: 0; }',
+      '.prod-cols li { font-size: 9pt; line-height: 1.5; color: #374151; }',
+      '.prod-foot { margin-top: 8px; font-size: 8.5pt; color: #6b7280; display: flex; gap: 16px; }',
+      '.prod-foot a { color: #1a56db; }',
+      // preços
+      '.price-table { width: 100%; border-collapse: collapse; margin: 10px 0 6px; }',
+      '.price-table th { background: #14335f; color: #fff; padding: 8px 10px; text-align: left; font-size: 9.5pt; letter-spacing: .4px; }',
+      '.price-table td { border-bottom: 1px solid #e5e7eb; padding: 7px 10px; font-size: 10pt; }',
+      '.price-table tbody tr:nth-child(even):not(.total) td { background: #f8fafc; }',
+      '.price-table .srv td { font-style: italic; color: #374151; }',
+      '.price-table tbody tr.total td { background: #1a56db !important; color: #fff; font-weight: 800; font-size: 11pt; border: none; }',
+      '.price-note { font-size: 8.5pt; color: #6b7280; text-align: justify; }',
+      // condições
+      '.cond-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 10px 0; }',
+      '.cond { background: #f3f7ff; border: 1px solid #dbe7ff; border-radius: 10px; padding: 12px 14px; }',
+      '.cond b { display: block; font-size: 8pt; color: #1a56db; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 4px; }',
+      '.cond span { font-size: 10.5pt; font-weight: 600; color: #111827; }',
+      // contatos / rodapé
+      '.contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }',
+      '.contact { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }',
+      '.contact b { color: #14335f; font-size: 11pt; }',
+      '.contact div { font-size: 9.5pt; color: #374151; }',
+      '.foot { margin-top: 26px; padding-top: 10px; border-top: 2px solid #1a56db; font-size: 8.5pt; color: #6b7280; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }'
     ].join('\n');
 
-    var productRows = [];
+    // ── itens: separa equipamentos (com conteúdo) de linhas de serviço ──
     var _pdMap = _propBuildDescMap();
+    var productRows = [];
     for (var i = 0; i < items.length; i++) {
       var item      = items[i];
-      var desc      = _propGetProductDescription(item, _pdMap);
       var qty       = safeNumber(item.qty || item.quantity);
       var unitPrice = safeNumber(item.unit_price || item.unitPrice || item.price);
+      var content   = _propResolveProductContent(item, _pdMap);
+      var isService = String(item.code || '').indexOf('SERV') === 0 ||
+                      String(item.code || '').indexOf('MO-') === 0;
       productRows.push({
-        name:       item.name || item.product_name || item.description || item.code || '',
-        desc:       desc,
-        ncm:        item.ncm || '',
-        qty:        qty,
-        unit_price: unitPrice,
-        total:      qty * unitPrice
+        content: content, isService: isService,
+        name: content.name, ncm: item.ncm || '',
+        qty: qty, unit_price: unitPrice, total: qty * unitPrice
       });
     }
 
-    var productsListHtml = '';
-    if (productRows.length > 0) {
-      for (var j = 0; j < productRows.length; j++) {
-        var pr = productRows[j];
-        productsListHtml +=
-          '<div class="product-item">' +
-          '<strong>' + _propEsc(pr.name) + '</strong>' +
-          (pr.desc ? '<p>' + _propEsc(pr.desc) + '</p>' : '') +
-          (pr.ncm ? '<span class="product-ncm">NCM: ' + _propEsc(pr.ncm) + '</span>' : '') +
-          '</div>';
-      }
-    } else {
-      productsListHtml = '<p>Nenhum produto adicionado.</p>';
+    function _paras(text, cls) {
+      return String(text || '').split('\n\n').map(function (par) {
+        return '<p' + (cls ? ' class="' + cls + '"' : '') + '>' + _propEsc(par).replace(/\n/g, '<br>') + '</p>';
+      }).join('');
     }
 
-    var startupValue  = safeNumber(p.startup_value);
-    var totalValue    = safeNumber(p.total_value);
+    function _bullets(arr, max) {
+      var out = '';
+      for (var b = 0; b < arr.length && b < (max || 99); b++) out += '<li>' + _propEsc(arr[b]) + '</li>';
+      return out ? '<ul>' + out + '</ul>' : '';
+    }
 
+    // ── seção 2: cards dos equipamentos ──
+    var productsListHtml = '';
+    for (var j = 0; j < productRows.length; j++) {
+      var pr = productRows[j];
+      if (pr.isService) continue;
+      var c = pr.content;
+      productsListHtml +=
+        '<div class="prod-card">' +
+          '<div class="prod-head">' +
+            '<div style="flex:1">' +
+              '<h3>' + _propEsc(c.name) + (pr.qty > 1 ? ' <span style="color:#6b7280;font-size:10pt">× ' + pr.qty + '</span>' : '') + '</h3>' +
+              (c.lead ? '<p class="lead">' + _propEsc(c.lead) + '</p>' : '') +
+            '</div>' +
+            (c.image_url ? '<div class="prod-img"><img src="' + _propEsc(c.image_url) + '" alt="' + _propEsc(c.name) + '"></div>' : '') +
+          '</div>' +
+          '<div class="prod-body">' + (c.fullDesc ? _paras(c.fullDesc) : '') + '</div>' +
+          ((c.characteristics.length || c.applications.length) ?
+            '<div class="prod-cols">' +
+              (c.characteristics.length ? '<div><h4>Características</h4>' + _bullets(c.characteristics, 8) + '</div>' : '') +
+              (c.applications.length    ? '<div><h4>Aplicações típicas</h4>' + _bullets(c.applications, 8) + '</div>' : '') +
+            '</div>' : '') +
+          '<div class="prod-foot">' +
+            (pr.ncm ? '<span>NCM: ' + _propEsc(pr.ncm) + '</span>' : '') +
+            (c.datasheet_url ? '<span>Folha de dados oficial: <a href="' + _propEsc(c.datasheet_url) + '">' + _propEsc(c.datasheet_url) + '</a></span>' : '') +
+          '</div>' +
+        '</div>';
+    }
+    if (!productsListHtml) productsListHtml = '<p>Nenhum produto adicionado.</p>';
+
+    // ── seção 6: tabela de preços ──
     var priceRowsHtml = '';
     for (var k = 0; k < productRows.length; k++) {
       var pr2 = productRows[k];
       priceRowsHtml +=
-        '<tr><td>' + _propEsc(pr2.name) + '</td>' +
+        '<tr' + (pr2.isService ? ' class="srv"' : '') + '><td>' + _propEsc(pr2.name) + '</td>' +
         '<td>' + _propEsc(pr2.ncm) + '</td>' +
         '<td style="text-align:center">' + pr2.qty + '</td>' +
         '<td style="text-align:right">' + _propFmtCurrency(pr2.unit_price) + '</td>' +
         '<td style="text-align:right">' + _propFmtCurrency(pr2.total) + '</td></tr>';
     }
-
-    var startupRowHtml = '';
+    var startupValue = safeNumber(p.startup_value);
+    var totalValue   = safeNumber(p.total_value);
     if (startupValue > 0) {
-      startupRowHtml =
-        '<tr class="startup-row"><td colspan="4">Startup / Comissionamento</td>' +
+      priceRowsHtml += '<tr class="srv"><td colspan="4">Start-up — Comissionamento e Treinamento</td>' +
         '<td style="text-align:right">' + _propFmtCurrency(startupValue) + '</td></tr>';
     }
-
-    var totalRowHtml =
-      '<tr class="total-row"><td colspan="4">TOTAL</td>' +
-      '<td style="text-align:right">' + _propFmtCurrency(totalValue) + '</td></tr>';
-
     var priceTableHtml =
-      '<table class="prices-table"><thead><tr>' +
-      '<th>Produto / Descrição</th><th>NCM</th>' +
-      '<th style="text-align:center">Qtd.</th>' +
-      '<th style="text-align:right">Preço Unit.</th>' +
-      '<th style="text-align:right">Total</th>' +
-      '</tr></thead><tbody>' + priceRowsHtml + startupRowHtml + totalRowHtml +
+      '<table class="price-table"><thead><tr>' +
+      '<th>Produto / Serviço</th><th>NCM</th><th style="text-align:center">Qtd.</th>' +
+      '<th style="text-align:right">Preço Unit.</th><th style="text-align:right">Total</th>' +
+      '</tr></thead><tbody>' + priceRowsHtml +
+      '<tr class="total"><td colspan="4">VALOR TOTAL DA PROPOSTA</td>' +
+      '<td style="text-align:right">' + _propFmtCurrency(totalValue) + '</td></tr>' +
       '</tbody></table>';
 
-    var contactsHtml =
-      '<div class="contacts">' +
-      '<div class="contact-name">GEMA FONTANA</div>' +
-      '<div>Departamento Comercial</div>' +
-      '<div>E-mail: contato@allegro.eng.br &nbsp;|&nbsp; Cel.: (45) 99946-0898</div>' +
-      '<div class="contact-name" style="margin-top:14px">JONATAN MIRANDA</div>' +
-      '<div>Analista de Projetos</div>' +
-      '<div>E-mail: jonatan.miranda@allegro.eng.br &nbsp;|&nbsp; Cel.: (41) 99155-5456</div>' +
-      '</div>';
+    var scopeHtml = p.scope_text ? _paras(p.scope_text) : '<p>—</p>';
+    var obsHtml   = p.observations ? '<p>' + _propEsc(p.observations).replace(/\n/g, '<br>') + '</p>' : '<p>—</p>';
 
-    function _paras(text) {
-      return text.split('\n\n').map(function(par) {
-        return '<p>' + _propEsc(par).replace(/\n/g, '<br>') + '</p>';
-      }).join('');
-    }
-
-    var scopeHtml  = p.scope_text ? _paras(p.scope_text) : '<p>—</p>';
-    var obsHtml    = p.observations ? '<p>' + _propEsc(p.observations).replace(/\n/g, '<br>') + '</p>' : '<p>—</p>';
-    var priceNoteHtml = '<p style="font-size:9.5pt;color:#444">' + _propEsc(PRICE_NOTE) + '</p>';
+    function sec(n, t) { return '<div class="sec"><div class="n">' + n + '</div><h2>' + t + '</h2></div>'; }
 
     var html =
-      '<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n' +
-      '<meta charset="UTF-8">\n' +
+      '<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n' +
       '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
       '<title>Proposta ' + _propEsc(p.number) + ' — ' + _propEsc(clientName) + '</title>\n' +
       '<style>\n' + css + '\n</style>\n</head>\n<body>\n' +
       '<div class="no-print" style="margin-bottom:16px">' +
-      '<button onclick="window.print()" style="padding:8px 20px;background:#1a56db;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11pt">Imprimir / Salvar PDF</button>' +
+      '<button onclick="window.print()" style="padding:9px 22px;background:#1a56db;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11pt;font-weight:600">🖨️ Imprimir / Salvar PDF</button>' +
       '</div>\n' +
-      '<div class="header">\n' +
-      '<div><div class="logo-allegro">&#x2B21; ALLEGRO | ENGENHARIA E DESENVOLVIMENTO</div>' +
-      '<div class="logo-sub">Soluções em Automação e Instrumentação Industrial</div></div>\n' +
-      '<div class="logo-hydronix">Hydronix&#174;<br><span style="font-size:9pt;font-weight:normal;color:#555">Authorized Reseller</span></div>\n' +
+      '<div class="hd">' +
+        '<img class="logo" src="' + LOGO_ALLEGRO + '" alt="Allegro Engenharia e Desenvolvimento">' +
+        '<div class="reseller"><img src="' + LOGO_HYDRONIX + '" alt="Hydronix"><span>Authorized Reseller — Brasil</span></div>' +
       '</div>\n' +
-      '<div class="proposal-title">PROPOSTA TÉCNICA COMERCIAL — SENSORES DE UMIDADE</div>\n' +
-      '<div class="metadata">\n' +
-      '<div><strong>Orçamento:</strong> ' + _propEsc(p.number) + '</div>\n' +
-      '<div><strong>Data:</strong> ' + _propEsc(dateFormatted) + '</div>\n' +
-      '<div><strong>Tipo:</strong> ' + _propEsc(p.type) + '</div>\n' +
-      '<div><strong>Cliente:</strong> ' + _propEsc(clientName) + '</div>\n' +
-      '<div><strong>Local:</strong> ' + _propEsc(p.location) + '</div>\n' +
-      '<div><strong>Responsável:</strong> ' + _propEsc(p.responsible) + '</div>\n' +
+      '<div class="title">Proposta Técnica Comercial</div>' +
+      '<div class="subtitle">Sistema de Medição de Umidade em Fluxo — Sensores Hydronix</div>\n' +
+      '<div class="meta">' +
+        '<div><b>Orçamento</b><span>' + _propEsc(p.number) + '</span></div>' +
+        '<div><b>Data</b><span>' + _propEsc(dateFormatted) + '</span></div>' +
+        '<div><b>Segmento</b><span>' + _propEsc(p.type) + '</span></div>' +
+        '<div><b>Cliente</b><span>' + _propEsc(clientName) + '</span></div>' +
+        '<div><b>Local</b><span>' + _propEsc(p.location || '—') + '</span></div>' +
+        '<div><b>A/C</b><span>' + _propEsc(p.responsible || '—') + '</span></div>' +
       '</div>\n' +
-      '<div class="section-title">1. INTRODUÇÃO</div>\n' + _paras(INTRO) + '\n' +
-      '<div class="section-title">2. DESCRIÇÃO DOS PRODUTOS</div>\n' + productsListHtml + '\n' +
-      '<div class="section-title">3. ESCOPO DE FORNECIMENTO</div>\n' + scopeHtml + '\n' +
-      '<div class="section-title">4. ACOMPANHAMENTO E RELATÓRIOS</div>\n' + _paras(MONITORING) + '\n' +
-      '<div class="section-title">5. CALIBRAÇÃO</div>\n' + _paras(CALIBRATION) + '\n' +
-      '<div class="section-title">6. PREÇOS</div>\n' + priceTableHtml + '\n' + priceNoteHtml + '\n' +
-      '<div class="section-title">7. CONDIÇÕES DE PAGAMENTO</div>\n' +
-      '<p>' + _propEsc(p.payment_terms || '—') + '</p>\n' +
-      '<div class="section-title">8. PRAZOS DE ENTREGA</div>\n' +
-      '<p>' + (p.delivery_days ? safeNumber(p.delivery_days) + ' dias úteis após confirmação do pedido.' : '—') + '</p>\n' +
-      '<div class="section-title">9. VALIDADE DO ORÇAMENTO</div>\n' +
-      '<p>' + (p.validity_days ? safeNumber(p.validity_days) + ' dias corridos a partir da data desta proposta.' : '—') + '</p>\n' +
-      '<div class="section-title">10. OBSERVAÇÕES</div>\n' + obsHtml + '\n' +
-      '<div class="section-title">11. GARANTIA</div>\n' +
-      '<p>' + _propEsc(WARRANTY) + '</p>\n' +
-      '<div class="section-title">12. CONTATOS</div>\n' + contactsHtml + '\n' +
+      sec(1, 'Introdução') + _paras(INTRO) +
+      sec(2, 'Descrição dos Produtos') + productsListHtml +
+      sec(3, 'Escopo de Fornecimento') + scopeHtml +
+      sec(4, 'Acompanhamento e Relatórios') + _paras(MONITORING) +
+      sec(5, 'Calibração') + _paras(CALIBRATION) +
+      sec(6, 'Preços') + priceTableHtml + '<p class="price-note">' + _propEsc(PRICE_NOTE) + '</p>' +
+      sec(7, 'Condições Comerciais') +
+      '<div class="cond-grid">' +
+        '<div class="cond"><b>Pagamento</b><span>' + _propEsc(p.payment_terms || '—') + '</span></div>' +
+        '<div class="cond"><b>Prazo de entrega</b><span>' + (p.delivery_days ? safeNumber(p.delivery_days) + ' dias úteis após confirmação do pedido' : '—') + '</span></div>' +
+        '<div class="cond"><b>Validade da proposta</b><span>' + (p.validity_days ? safeNumber(p.validity_days) + ' dias corridos a partir desta data' : '—') + '</span></div>' +
+      '</div>' +
+      sec(8, 'Observações') + obsHtml +
+      sec(9, 'Garantia') + '<p>' + _propEsc(WARRANTY) + '</p>' +
+      sec(10, 'Contatos') +
+      '<div class="contact-grid">' +
+        '<div class="contact"><b>Gema Fontana</b><div>Departamento Comercial</div>' +
+        '<div>contato@allegro.eng.br · (45) 99946-0898</div></div>' +
+        '<div class="contact"><b>Jonatan Miranda</b><div>Analista de Projetos</div>' +
+        '<div>jonatan.miranda@allegro.eng.br · (41) 99155-5456</div></div>' +
+      '</div>' +
+      '<div class="foot">' +
+        '<span>Allegro Engenharia e Desenvolvimento — Rua Mal. Cândido Rondon, 3171 · Cancelli · Cascavel/PR · CEP 85811-080</span>' +
+        '<span>allegro.eng.br · (45) 3037-5900</span>' +
+      '</div>\n' +
       '</body>\n</html>';
 
     return { ok: true, html: html };
@@ -723,11 +769,55 @@ function _propBuildDescMap() {
     for (var i = 0; i < rows.length; i++) {
       map[String(rows[i].code).trim().toUpperCase()] = {
         long_description: rows[i].long_description || '',
-        datasheet_url:    rows[i].datasheet_url || ''
+        datasheet_url:    rows[i].datasheet_url || '',
+        image_url:        rows[i].image_url || ''
       };
     }
   } catch (e) { /* aba indisponível: cai no dicionário */ }
   return map;
+}
+
+/**
+ * Resolve o conteúdo completo de um item da proposta.
+ * Ordem: dicionário rico (HydronixContent) > fallback (ProductsContent) >
+ * description do próprio item. A coluna long_description da planilha, quando
+ * editada pelo time, substitui o parágrafo de abertura. Imagem e datasheet
+ * vêm da planilha (seed automático).
+ * @return {{name, lead, fullDesc, characteristics, applications, image_url, datasheet_url}}
+ */
+function _propResolveProductContent(item, pdMap) {
+  var code = String(item.code || '').trim().toUpperCase();
+  var out = {
+    name: item.name || item.product_name || item.description || item.code || '',
+    lead: '', fullDesc: '', characteristics: [], applications: [],
+    image_url: '', datasheet_url: ''
+  };
+  var sheet = (pdMap && pdMap[code]) ? pdMap[code] : null;
+  if (sheet) {
+    out.image_url     = sheet.image_url || '';
+    out.datasheet_url = sheet.datasheet_url || '';
+  }
+
+  var rico = (typeof HYDRONIX_PRODUCTS_CONTENT !== 'undefined') ? HYDRONIX_PRODUCTS_CONTENT[code] : null;
+  if (rico && typeof rico === 'object') {
+    out.name = rico.name || out.name;
+    out.lead = rico.shortDesc || '';
+    out.fullDesc = rico.fullDesc || '';
+    out.characteristics = rico.characteristics || [];
+    out.applications = rico.applications || [];
+  } else if (typeof ALLEGRO_PRODUCT_DESCRIPTIONS !== 'undefined' && ALLEGRO_PRODUCT_DESCRIPTIONS[code]) {
+    out.lead = ALLEGRO_PRODUCT_DESCRIPTIONS[code];
+  } else {
+    out.lead = item.description || item.desc || '';
+  }
+
+  // Edição do time na planilha tem a palavra final sobre o parágrafo de abertura
+  if (sheet && sheet.long_description) {
+    var sld = String(sheet.long_description).trim();
+    var corrompida = sld.indexOf('{shortDesc=') === 0 || sld.indexOf('[object') !== -1 || sld.indexOf('[Ljava') !== -1;
+    if (sld && !corrompida) out.lead = sld;
+  }
+  return out;
 }
 
 function _propGetProductDescription(item, pdMap) {
