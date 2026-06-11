@@ -390,12 +390,7 @@ function _bindOpportunitiesEvents(area) {
   }
 
   // Detail status confirm
-  var btnMotor = document.getElementById('opp-detail-motor-btn');
-  if (btnMotor) {
-    btnMotor.addEventListener('click', function () {
-      _opmOpen(_currentDetailId);
-    });
-  }
+  // (bind do motor agora é por delegação global — ver _opmDelegate no fim do arquivo)
 
   var btnStatusConfirm = document.getElementById('opp-detail-status-confirm');
   if (btnStatusConfirm) {
@@ -739,9 +734,15 @@ function _opmClose() {
 }
 
 function _opmOpen(oppId) {
+  console.log('[Motor] abrindo para', oppId);
+  if (!oppId) { showAlert('Abra uma oportunidade antes de gerar a proposta.', 'warning'); return; }
   _opmOppId = oppId;
   _opmCalc  = null;
   _opmEnsureModal();
+  if (!document.getElementById('opm-modal')) {
+    showAlert('Falha ao montar a janela do motor (opm-modal não criado).', 'error');
+    return;
+  }
 
   var m = document.getElementById('opm-modal');
   m.classList.remove('hidden');
@@ -946,5 +947,20 @@ function _opmCriarProposta() {
     })
     .Api_propCreate(payload);
 }
+
+
+// Delegação global: funciona independentemente de quando a modal foi renderizada
+document.addEventListener('click', function (ev) {
+  var t = ev.target;
+  if (t && (t.id === 'opp-detail-motor-btn' || (t.closest && t.closest('#opp-detail-motor-btn')))) {
+    try {
+      _opmOpen(_currentDetailId);
+    } catch (e) {
+      console.error('[Motor]', e);
+      if (typeof showAlert === 'function') showAlert('Erro ao abrir o motor: ' + (e && e.message ? e.message : e), 'error');
+      else alert('Erro ao abrir o motor: ' + (e && e.message ? e.message : e));
+    }
+  }
+});
 
 </script>
