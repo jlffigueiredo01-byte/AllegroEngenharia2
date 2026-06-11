@@ -167,6 +167,7 @@ function propSvcCreate(data) {
     revision_num:   data.revision_num   || 'R0',
     parent_id:      data.parent_id      || '',
     pricing_json:   data.pricing_json ? JSON.stringify(data.pricing_json) : '',
+    opportunity_id: data.opportunity_id || '',
     pdf_file_id:    data.pdf_file_id    || '',
     sent_at:        '',
     closed_at:      '',
@@ -181,6 +182,9 @@ function propSvcCreate(data) {
   );
   appendTimelineEvent('Proposta', id,
     'CRIADA', 'Proposta ' + number + ' criada para ' + proposal.client_name);
+  if (proposal.opportunity_id) {
+    _propSyncOppStatus(proposal.opportunity_id, 'Elaborando proposta');
+  }
 
   return proposal;
 }
@@ -302,6 +306,15 @@ function propSvcUpdateStatus(id, novoStatus, userId, userRole, opcoes) {
   }
 
   return propRepoGetById(id);
+
+  // Sincroniza o funil da oportunidade (CONCEITO_FLUXO.md) — nunca bloqueia a transição
+  try {
+    var pSync = propRepoGetById(id);
+    if (pSync && pSync.opportunity_id) {
+      var mapa = { 'ENVIADA': 'Proposta enviada', 'FECHADA': 'Proposta fechada', 'RECUSADA': 'Proposta recusada' };
+      if (mapa[novoStatus]) _propSyncOppStatus(pSync.opportunity_id, mapa[novoStatus]);
+    }
+  } catch (eSync) { Logger.log('Sync opp falhou: ' + eSync.message); }
 }
 
 // -------------------------------------------------------
@@ -738,4 +751,34 @@ function _propCalcTotal(items, startupValue) {
     }
   }
   return total;
+}
+
+
+/**
+ * Atualiza o status da oportunidade a partir de eventos da proposta.
+ * Escrita direta e mínima na aba OPPORTUNITIES (read-model do funil).
+ * @param {string} oppId
+ * @param {string} novoStatus  rótulo do vocabulário existente da oportunidade
+ */
+function _propSyncOppStatus(oppId, novoStatus) {
+  try {
+    var sh = getOrCreateSheet(OPPORTUNITIES_SHEET, OPPORTUNITIES_HEADERS);
+    var values = sh.getDataRange().getValues();
+    var headers = values[0];
+    var idCol = headers.indexOf('id');
+    var stCol = headers.indexOf('status');
+    var upCol = headers.indexOf('updated_at');
+    if (idCol === -1 || stCol === -1) return;
+    for (var r = 1; r < values.length; r++) {
+      if (String(values[r][idCol]) === String(oppId)) {
+        if (String(values[r][stCol]) === novoStatus) return;
+        sh.getRange(r + 1, stCol + 1).setValue(novoStatus);
+        if (upCol > -1) sh.getRange(r + 1, upCol + 1).setValue(nowISO());
+        appendTimelineEvent('OPPORTUNITY', oppId, 'STATUS_SYNC', 'Funil sincronizado pela proposta: ' + novoStatus);
+        return;
+      }
+    }
+  } catch (e) {
+    Logger.log('_propSyncOppStatus: ' + e.message);
+  }
 }
