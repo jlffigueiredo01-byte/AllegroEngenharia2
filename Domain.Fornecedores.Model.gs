@@ -10,8 +10,31 @@ var SUPPLIERS_SHEET = 'SUPPLIERS';
 /** Cabeçalhos canônicos de SUPPLIERS. */
 var SUPPLIERS_HEADERS = [
   'id', 'name', 'cnpj', 'country', 'contact_name', 'contact_email', 'contact_phone',
-  'lead_time_days', 'payment_terms', 'currency', 'active', 'notes', 'created_at', 'updated_at'
+  'lead_time_days', 'payment_terms', 'currency',
+  'language',   // PT | EN — define o idioma do PO e dos e-mails ao fornecedor (Adendo §C.0)
+  'po_email',   // e-mail que recebe as ordens de compra
+  'incoterm_default',
+  'active', 'notes', 'created_at', 'updated_at'
 ];
+
+/**
+ * Garante colunas novas em aba SUPPLIERS pré-existente. Idempotente.
+ */
+function _supEnsureColumns() {
+  try {
+    var sh = getOrCreateSheet(SUPPLIERS_SHEET, SUPPLIERS_HEADERS);
+    var need = ['language', 'po_email', 'incoterm_default'];
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var i = 0; i < need.length; i++) {
+      if (headers.indexOf(need[i]) === -1) {
+        sh.getRange(1, sh.getLastColumn() + 1).setValue(need[i]);
+        headers.push(need[i]);
+      }
+    }
+  } catch (e) {
+    Logger.log('_supEnsureColumns: ' + e.message);
+  }
+}
 
 /** Nome da aba de materiais. */
 var MATERIALS_SHEET = 'MATERIALS';
@@ -37,6 +60,7 @@ var MATERIAL_PRICES_HEADERS = [
  */
 function initSuppliersSheet() {
   getOrCreateSheet(SUPPLIERS_SHEET, SUPPLIERS_HEADERS);
+  _supEnsureColumns();
   getOrCreateSheet(MATERIALS_SHEET, MATERIALS_HEADERS);
   getOrCreateSheet(MATERIAL_PRICES_SHEET, MATERIAL_PRICES_HEADERS);
 }
