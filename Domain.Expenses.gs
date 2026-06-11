@@ -181,11 +181,24 @@ function Api_saveExpense(data) {
       criado_em: now,
       atualizado_em: now,
       foto_file_id: fotoFileId,
-      ref_type: data.ref_type || '',   // PROPOSAL | PROJECT | ''
+      ref_type: data.ref_type || '',   // PROPOSAL | PROJECT | TICKET | ''
       ref_id:   data.ref_id   || ''
     }, EXPENSES_COLS);
 
     appendAuditLog('CREATE', 'EXPENSE', id, data.estabelecimento + ' R$' + data.total);
+
+    // Circuito fechado com o pós-venda: despesa vinculada a um chamado vira
+    // automaticamente um lançamento de CUSTO no chamado (sem dupla digitação).
+    if (data.ref_type === 'TICKET' && data.ref_id) {
+      try {
+        tktSvcLancarCusto(data.ref_id,
+          'Despesa ' + id + ' — ' + (data.estabelecimento || '') +
+          (data.categoria ? ' (' + data.categoria + ')' : ''),
+          Number(data.total || 0));
+      } catch (eTkt) {
+        Logger.log('Despesa ' + id + ': vínculo com chamado falhou — ' + eTkt.message);
+      }
+    }
     return { ok: true, id: id };
   } catch (e) {
     return { ok: false, error: e.message };

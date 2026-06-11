@@ -58,10 +58,13 @@ function c360SvcGet(companyId) {
   var pos = sheetToObjects(PURCHASE_ORDERS_SHEET).filter(function (r) {
     return propIds[String(r.proposal_id)] || projIds[String(r.project_id)];
   });
+  var tktIds = {};
+  for (var tk2 = 0; tk2 < tickets.length; tk2++) tktIds[String(tickets[tk2].id)] = true;
   var expenses = sheetToObjects(EXPENSES_SHEET).filter(function (r) {
     if (r.status === 'DELETED') return false;
     if (r.ref_type === 'PROPOSAL') return propIds[String(r.ref_id)];
     if (r.ref_type === 'PROJECT')  return projIds[String(r.ref_id)];
+    if (r.ref_type === 'TICKET')   return tktIds[String(r.ref_id)];
     return false;
   });
 

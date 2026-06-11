@@ -922,6 +922,7 @@ function renderOCRReview(data) {
                 '<option value="">Nada</option>' +
                 '<option value="PROPOSAL">Proposta</option>' +
                 '<option value="PROJECT">Projeto</option>' +
+                '<option value="TICKET">Chamado</option>' +
               '</select>' +
               '<select class="form-input" id="exp-ref-id" style="flex:1" disabled><option value="">—</option></select>' +
             '</div>' +
@@ -994,6 +995,13 @@ function expRefTypeChanged() {
     google.script.run.withSuccessHandler(function (r) {
       fill((r && r.ok && r.data) ? r.data : [], function (p) { return (p.number || p.id) + ' — ' + (p.client_name || ''); });
     }).withFailureHandler(function(){ sel.innerHTML='<option value="">erro</option>'; }).Api_getProposals({});
+  } else if (type === 'TICKET') {
+    google.script.run.withSuccessHandler(function (r) {
+      var rows = (r && r.ok && r.data) ? r.data : [];
+      // chamados encerrados não recebem despesa nova
+      rows = rows.filter(function (t) { return t.status !== 'FECHADO'; });
+      fill(rows, function (t) { return t.id + ' — ' + (t.company_name || t.company_id || '') + ': ' + (t.title || ''); });
+    }).withFailureHandler(function(){ sel.innerHTML='<option value="">erro</option>'; }).Api_tktGetAll({});
   } else {
     google.script.run.withSuccessHandler(function (r) {
       fill((r && r.ok && r.data) ? r.data : [], function (p) { return p.id + ' — ' + (p.title || ''); });
