@@ -163,10 +163,11 @@ function initProposalsAddColumns() {
   var headerRow = lastCol > 0
     ? sheet.getRange(1, 1, 1, lastCol).getValues()[0]
     : [];
-  var newCols = [
-    'revision_num', 'parent_id', 'pricing_json', 'pdf_file_id',
-    'sent_at', 'closed_at', 'motivo_perda', 'alcada_nivel'
-  ];
+  // FONTE ÚNICA: PROPOSALS_NEW_COLS (Domain.Proposals.Model.gs).
+  // A lista hardcoded antiga ficou para trás do modelo e fez flow_json,
+  // opportunity_id e import_origem nunca serem criados pelo setupAll —
+  // valores eram descartados em silêncio na gravação.
+  var newCols = (typeof PROPOSALS_NEW_COLS !== 'undefined') ? PROPOSALS_NEW_COLS : [];
   for (var i = 0; i < newCols.length; i++) {
     if (headerRow.indexOf(newCols[i]) === -1) {
       lastCol += 1;
