@@ -1,0 +1,225 @@
+<script>
+// =============================================================================
+// ComprasUI.html — SGA (Sistema de Gestão Allegro)
+// Purchase Orders: lista, criação (fornecedor + itens), emitir e cancelar.
+// Prefixo _po. ES5.
+// =============================================================================
+
+var _poList = [];
+var _poSuppliers = [];
+
+function renderCompras(area) {
+  area.innerHTML =
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">📦 Compras (PO)</h1>' +
+        '<p class="page-subtitle">Ordens de compra para Hydronix e fornecedores nacionais.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary" id="po-btn-new">+ Nova PO</button>' +
+    '</div>' +
+    '<div id="po-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
+    '<div id="po-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+  document.getElementById('po-btn-new').addEventListener('click', _poShowForm);
+  _poLoad();
+}
+
+function _poLoad() {
+  google.script.run.withSuccessHandler(function (r) {
+    _poList = (r && r.ok && r.data) ? r.data : [];
+    _poRenderList();
+  }).withFailureHandler(function (e) {
+    var w = document.getElementById('po-list-wrap');
+    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+  }).Api_poGetAll();
+}
+
+function _poBadge(st) {
+  var map = { RASCUNHO: 'badge-gray', EMITIDA: 'badge-blue', RECEBIDA_PARCIAL: 'badge-yellow', RECEBIDA: 'badge-green', CANCELADA: 'badge-red' };
+  return map[st] || 'badge-gray';
+}
+
+function _poRenderList() {
+  var w = document.getElementById('po-list-wrap');
+  if (!w) return;
+  if (!_poList.length) {
+    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
+      '<div class="empty-icon">📦</div><div class="empty-title">Nenhuma ordem de compra</div>' +
+      '<div class="empty-desc">Crie a primeira PO com o botão acima.</div></div></div></div>';
+    return;
+  }
+  var rows = '';
+  for (var i = 0; i < _poList.length; i++) {
+    var p = _poList[i];
+    var nItems = 0;
+    try { nItems = (JSON.parse(p.items_json || '[]') || []).length; } catch (e) {}
+    rows += '<tr>' +
+      '<td><b>' + escapeHtml(p.po_number || p.id) + '</b></td>' +
+      '<td style="font-size:12px">' + escapeHtml(p.supplier_id || '') + '</td>' +
+      '<td><span class="badge ' + _poBadge(p.status) + '">' + escapeHtml(p.status || '') + '</span></td>' +
+      '<td style="text-align:right">' + escapeHtml(p.currency || 'USD') + ' ' + (Number(p.total_amount || 0)).toFixed(2) + '</td>' +
+      '<td style="text-align:center">' + nItems + '</td>' +
+      '<td style="font-size:12px">' + escapeHtml(p.proposal_id || '') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        (p.status === 'RASCUNHO'
+          ? '<button class="btn btn-primary btn-sm po-emit" data-id="' + escapeHtml(p.id) + '">Emitir</button> ' +
+            '<button class="btn btn-ghost btn-sm po-cancel" data-id="' + escapeHtml(p.id) + '">Cancelar</button>'
+          : '') +
+      '</td>' +
+    '</tr>';
+  }
+  w.innerHTML =
+    '<div class="card"><div class="table-wrap"><table class="data-table">' +
+      '<thead><tr><th>PO</th><th>Fornecedor</th><th>Status</th><th style="text-align:right">Total</th><th>Itens</th><th>Proposta</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div>';
+
+  var emits = w.querySelectorAll('.po-emit');
+  for (var a = 0; a < emits.length; a++) {
+    emits[a].addEventListener('click', function () {
+      var id = this.getAttribute('data-id');
+      google.script.run.withSuccessHandler(function (res) {
+        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+        showAlert('PO emitida!', 'success'); _poLoad();
+      }).Api_poEmitir(id);
+    });
+  }
+  var cancels = w.querySelectorAll('.po-cancel');
+  for (var c = 0; c < cancels.length; c++) {
+    cancels[c].addEventListener('click', function () {
+      var id = this.getAttribute('data-id');
+      var motivo = prompt('Motivo do cancelamento:');
+      if (!motivo) return;
+      google.script.run.withSuccessHandler(function (res) {
+        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+        showAlert('PO cancelada.', 'success'); _poLoad();
+      }).Api_poCancelar(id, motivo);
+    });
+  }
+}
+
+/* ── Criação ── */
+
+function _poShowForm() {
+  var w = document.getElementById('po-form-wrap');
+  w.classList.remove('hidden');
+  w.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">Nova Ordem de Compra</div></div>' +
+    '<div class="card-body">' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        '<label style="font-size:12px;flex:1;min-width:220px">Fornecedor *<br>' +
+          '<select class="form-input" id="po-supplier"><option value="">Carregando...</option></select></label>' +
+        '<label style="font-size:12px">Moeda<br><select class="form-input" id="po-currency" style="width:100px">' +
+          '<option>USD</option><option>BRL</option></select></label>' +
+        '<label style="font-size:12px">Proposta vinculada<br><input class="form-input" id="po-proposal" type="text" placeholder="opcional (id/numero)" style="width:180px"></label>' +
+        '<label style="font-size:12px">Entrega prevista<br><input class="form-input" id="po-eta" type="date" style="width:160px"></label>' +
+      '</div>' +
+      '<div class="form-label" style="font-weight:700;margin:12px 0 4px">Itens</div>' +
+      '<div id="po-items"></div>' +
+      '<button class="btn btn-ghost btn-sm" id="po-add-item">+ item</button>' +
+      '<div style="margin-top:12px;display:flex;gap:8px;align-items:center">' +
+        '<button class="btn btn-primary" id="po-save">Criar PO (rascunho)</button>' +
+        '<button class="btn btn-ghost" id="po-form-cancel">Cancelar</button>' +
+        '<span id="po-total-preview" style="margin-left:auto;font-weight:700"></span>' +
+      '</div>' +
+    '</div></div>';
+
+  document.getElementById('po-add-item').addEventListener('click', function () { _poAddItemRow(); });
+  document.getElementById('po-form-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
+  document.getElementById('po-save').addEventListener('click', _poCreate);
+  _poAddItemRow();
+
+  if (_poSuppliers.length) { _poFillSuppliers(); return; }
+  google.script.run.withSuccessHandler(function (r) {
+    _poSuppliers = (r && r.ok && r.data) ? r.data : [];
+    _poFillSuppliers();
+  }).withFailureHandler(function () {
+    document.getElementById('po-supplier').innerHTML = '<option value="">erro ao carregar — cadastre fornecedores</option>';
+  }).Api_supplierGetAll();
+}
+
+function _poFillSuppliers() {
+  var sel = document.getElementById('po-supplier');
+  if (!sel) return;
+  if (!_poSuppliers.length) {
+    sel.innerHTML = '<option value="">— nenhum fornecedor cadastrado —</option>';
+    return;
+  }
+  var html = '<option value="">— selecione —</option>';
+  for (var i = 0; i < _poSuppliers.length; i++) {
+    var s = _poSuppliers[i];
+    html += '<option value="' + escapeHtml(s.id) + '">' + escapeHtml((s.name || s.trade_name || s.id) + (s.language ? ' (' + s.language + ')' : '')) + '</option>';
+  }
+  sel.innerHTML = html;
+}
+
+function _poAddItemRow() {
+  var row = document.createElement('div');
+  row.className = 'po-item-row';
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px';
+  row.innerHTML =
+    '<input class="form-input po-it-code" type="text" placeholder="código (ex.: HMXT01)" style="width:150px">' +
+    '<input class="form-input po-it-desc" type="text" placeholder="descrição" style="flex:1">' +
+    '<input class="form-input po-it-qty" type="number" min="1" value="1" style="width:70px" title="qtde">' +
+    '<input class="form-input po-it-price" type="number" min="0" step="0.01" value="0" style="width:110px" title="preço unit.">' +
+    '<button class="btn btn-ghost btn-sm po-row-del">🗑</button>';
+  row.querySelector('.po-row-del').addEventListener('click', function () { row.parentNode.removeChild(row); _poPreviewTotal(); });
+  row.querySelector('.po-it-qty').addEventListener('input', _poPreviewTotal);
+  row.querySelector('.po-it-price').addEventListener('input', _poPreviewTotal);
+  document.getElementById('po-items').appendChild(row);
+}
+
+function _poCollectItems() {
+  var items = [];
+  var rows = document.querySelectorAll('#po-items .po-item-row');
+  for (var i = 0; i < rows.length; i++) {
+    var code = rows[i].querySelector('.po-it-code').value.trim();
+    var desc = rows[i].querySelector('.po-it-desc').value.trim();
+    var qty  = parseFloat(rows[i].querySelector('.po-it-qty').value) || 0;
+    var pr   = parseFloat(rows[i].querySelector('.po-it-price').value) || 0;
+    if (code || desc) items.push({ code: code, description: desc, qty: qty, unit_price: pr, total: qty * pr });
+  }
+  return items;
+}
+
+function _poPreviewTotal() {
+  var items = _poCollectItems();
+  var t = 0;
+  for (var i = 0; i < items.length; i++) t += items[i].total;
+  var el = document.getElementById('po-total-preview');
+  if (el) el.textContent = 'Total: ' + t.toFixed(2);
+}
+
+function _poCreate() {
+  var supplier = document.getElementById('po-supplier').value;
+  if (!supplier) { showAlert('Selecione o fornecedor.', 'warning'); return; }
+  var items = _poCollectItems();
+  if (!items.length) { showAlert('Adicione ao menos um item.', 'warning'); return; }
+  var total = 0;
+  for (var i = 0; i < items.length; i++) total += items[i].total;
+
+  var payload = {
+    supplier_id:       supplier,
+    proposal_id:       document.getElementById('po-proposal').value || '',
+    currency:          document.getElementById('po-currency').value || 'USD',
+    expected_delivery: document.getElementById('po-eta').value || '',
+    items_json:        items,
+    total_amount:      total
+  };
+  var btn = document.getElementById('po-save');
+  btn.disabled = true; btn.textContent = 'Criando...';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      btn.disabled = false; btn.textContent = 'Criar PO (rascunho)';
+      if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+      var po = res.data || {};
+      showAlert('PO ' + (po.po_number || po.id || '') + ' criada como rascunho.', 'success');
+      var w = document.getElementById('po-form-wrap');
+      w.classList.add('hidden'); w.innerHTML = '';
+      _poLoad();
+    })
+    .withFailureHandler(function (err) {
+      btn.disabled = false; btn.textContent = 'Criar PO (rascunho)';
+      showAlert('Falha: ' + (err.message || err), 'error');
+    })
+    .Api_poCreate(payload);
+}
+</script>

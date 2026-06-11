@@ -240,6 +240,8 @@ function showSection(section) {
     case 'expenses':      renderExpenses(area);      break;
     case 'actioncards':   renderActionCards(area);   break;
     case 'map':           renderMap(area);            break;
+    case 'projetos':      renderProjetos(area);       break;
+    case 'compras':       renderCompras(area);        break;
     case 'config':        renderConfig(area);        break;
     default:
       area.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div>' +

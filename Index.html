@@ -124,6 +124,12 @@
           <span class="nav-icon">💰</span>
           <span class="nav-label">Despesas</span>
         </a>
+        <a class="nav-item" data-section="projetos" onclick="showSection('projetos')">
+          <span class="nav-icon">🏗️</span><span class="nav-label">Projetos</span>
+        </a>
+        <a class="nav-item" data-section="compras" onclick="showSection('compras')">
+          <span class="nav-icon">📦</span><span class="nav-label">Compras</span>
+        </a>
         <a class="nav-item" data-section="actioncards" onclick="showSection('actioncards')">
           <span class="nav-icon">🗂</span>
           <span class="nav-label">Action Cards</span>
@@ -194,6 +200,8 @@
   <?!= include('ConfigUI'); ?>
   <?!= include('ProposalBuilderUI'); ?>
   <?!= include('MapUI'); ?>
+  <?!= include('ProjetosUI'); ?>
+  <?!= include('ComprasUI'); ?>
   <?!= include('HelpSystem'); ?>
   <?!= include('ChatBotWidget'); ?>
 </body>

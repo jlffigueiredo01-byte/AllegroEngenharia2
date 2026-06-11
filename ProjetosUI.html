@@ -1,0 +1,245 @@
+<script>
+// =============================================================================
+// ProjetosUI.html — SGA (Sistema de Gestão Allegro)
+// Projetos: lista, marcos (cronograma) e RDO diário. Prefixo _pj. ES5.
+// =============================================================================
+
+var _pjProjects = [];
+var _pjCurrent  = null;
+
+function renderProjetos(area) {
+  area.innerHTML =
+    '<div class="page-header"><div class="page-header-left">' +
+      '<h1 class="page-title">🏗️ Projetos</h1>' +
+      '<p class="page-subtitle">Obras em execução: cronograma por marcos e Relatório Diário de Obra.</p>' +
+    '</div></div>' +
+    '<div id="pj-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>' +
+    '<div id="pj-detail-wrap"></div>';
+  _pjLoad();
+}
+
+function _pjLoad() {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      _pjProjects = (r && r.ok && r.data) ? r.data : [];
+      _pjRenderList();
+    })
+    .withFailureHandler(function (e) {
+      var w = document.getElementById('pj-list-wrap');
+      if (w) w.innerHTML = '<div class="empty-state">Erro ao carregar projetos: ' + escapeHtml(e.message || e) + '</div>';
+    })
+    .Api_projGetAll({});
+}
+
+function _pjBadge(status) {
+  var map = { PLANEJAMENTO: 'badge-blue', EM_ANDAMENTO: 'badge-yellow', PAUSADO: 'badge-gray', ENTREGUE: 'badge-green', ENCERRADO: 'badge-gray' };
+  return map[status] || 'badge-gray';
+}
+
+function _pjRenderList() {
+  var w = document.getElementById('pj-list-wrap');
+  if (!w) return;
+  if (!_pjProjects.length) {
+    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
+      '<div class="empty-icon">🏗️</div><div class="empty-title">Nenhum projeto ainda</div>' +
+      '<div class="empty-desc">Projetos nascem automaticamente quando uma proposta é FECHADA.</div></div></div></div>';
+    return;
+  }
+  var rows = '';
+  for (var i = 0; i < _pjProjects.length; i++) {
+    var p = _pjProjects[i];
+    rows += '<tr>' +
+      '<td><code style="font-size:11px">' + escapeHtml(p.id) + '</code></td>' +
+      '<td>' + escapeHtml(p.title || '') + '</td>' +
+      '<td><span class="badge ' + _pjBadge(p.status) + '">' + escapeHtml(p.status || '') + '</span></td>' +
+      '<td style="font-size:12px">' + escapeHtml(p.proposal_id || '') + '</td>' +
+      '<td>' + formatDate(p.kick_off_date) + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm pj-open" data-id="' + escapeHtml(p.id) + '">Abrir</button></td>' +
+    '</tr>';
+  }
+  w.innerHTML =
+    '<div class="card"><div class="table-wrap"><table class="data-table">' +
+      '<thead><tr><th>ID</th><th>Projeto</th><th>Status</th><th>Proposta</th><th>Kick-off</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div>';
+  var btns = w.querySelectorAll('.pj-open');
+  for (var b = 0; b < btns.length; b++) {
+    btns[b].addEventListener('click', function () { _pjOpen(this.getAttribute('data-id')); });
+  }
+}
+
+function _pjOpen(id) {
+  _pjCurrent = null;
+  for (var i = 0; i < _pjProjects.length; i++) { if (_pjProjects[i].id === id) { _pjCurrent = _pjProjects[i]; break; } }
+  if (!_pjCurrent) return;
+  var w = document.getElementById('pj-detail-wrap');
+  w.innerHTML =
+    '<div class="card" style="margin-top:16px"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div class="card-title">' + escapeHtml(_pjCurrent.id + ' — ' + (_pjCurrent.title || '')) + '</div>' +
+      '<span class="badge ' + _pjBadge(_pjCurrent.status) + '">' + escapeHtml(_pjCurrent.status || '') + '</span>' +
+    '</div><div class="card-body">' +
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">' +
+
+        '<div>' +
+          '<div class="form-label" style="font-weight:700">📅 Marcos do cronograma</div>' +
+          '<div id="pj-milestones"><div class="spinner-ring"></div></div>' +
+          '<div style="display:flex;gap:6px;margin-top:8px">' +
+            '<input class="form-input" id="pj-ms-title" type="text" placeholder="novo marco (ex.: Start-up)" style="flex:1">' +
+            '<input class="form-input" id="pj-ms-date" type="date" style="width:150px">' +
+            '<button class="btn btn-primary btn-sm" id="pj-ms-add">+</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div>' +
+          '<div class="form-label" style="font-weight:700">📋 RDO — Relatório Diário de Obra</div>' +
+          '<div id="pj-rdos"><div class="spinner-ring"></div></div>' +
+          '<button class="btn btn-primary btn-sm" id="pj-rdo-new" style="margin-top:8px">+ Lançar RDO de hoje</button>' +
+          '<div id="pj-rdo-form" class="hidden" style="margin-top:10px;background:#f8fafc;border-radius:10px;padding:12px"></div>' +
+        '</div>' +
+
+      '</div>' +
+    '</div></div>';
+
+  document.getElementById('pj-ms-add').addEventListener('click', _pjAddMilestone);
+  document.getElementById('pj-rdo-new').addEventListener('click', _pjShowRdoForm);
+  _pjLoadMilestones();
+  _pjLoadRdos();
+  w.scrollIntoView({ behavior: 'smooth' });
+}
+
+/* ── Marcos ── */
+
+function _pjLoadMilestones() {
+  google.script.run.withSuccessHandler(function (r) {
+    var box = document.getElementById('pj-milestones');
+    if (!box) return;
+    var list = (r && r.ok && r.data) ? r.data : [];
+    if (!list.length) { box.innerHTML = '<p style="color:#64748b;font-size:12px">Nenhum marco. Defina no kick-off.</p>'; return; }
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      var done = m.status === 'CONCLUIDO';
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9">' +
+        '<span style="font-size:16px">' + (done ? '✅' : (m.status === 'ATRASADO' ? '🔴' : '⬜')) + '</span>' +
+        '<div style="flex:1"><div style="font-size:13px;font-weight:600;' + (done ? 'text-decoration:line-through;color:#94a3b8' : '') + '">' + escapeHtml(m.title || '') + '</div>' +
+          '<div style="font-size:11px;color:#64748b">previsto: ' + formatDate(m.due_date) + (done ? ' · concluído: ' + formatDate(m.completed_at) : '') + '</div></div>' +
+        (done ? '' : '<button class="btn btn-ghost btn-sm pj-ms-done" data-id="' + escapeHtml(m.id) + '">Concluir</button>') +
+      '</div>';
+    }
+    box.innerHTML = html;
+    var btns = box.querySelectorAll('.pj-ms-done');
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        google.script.run.withSuccessHandler(function (res) {
+          if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+          _pjLoadMilestones();
+        }).Api_projConcluirMilestone(id);
+      });
+    }
+  }).Api_projGetMilestones(_pjCurrent.id);
+}
+
+function _pjAddMilestone() {
+  var t = document.getElementById('pj-ms-title').value;
+  var d = document.getElementById('pj-ms-date').value;
+  if (!t || !d) { showAlert('Informe título e data do marco.', 'warning'); return; }
+  google.script.run.withSuccessHandler(function (res) {
+    if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+    document.getElementById('pj-ms-title').value = '';
+    _pjLoadMilestones();
+  }).Api_projAddMilestone(_pjCurrent.id, t, d, '');
+}
+
+/* ── RDO ── */
+
+function _pjLoadRdos() {
+  google.script.run.withSuccessHandler(function (r) {
+    var box = document.getElementById('pj-rdos');
+    if (!box) return;
+    var list = (r && r.ok && r.data) ? r.data : [];
+    if (!list.length) { box.innerHTML = '<p style="color:#64748b;font-size:12px">Nenhum RDO lançado ainda.</p>'; return; }
+    var html = '';
+    for (var i = list.length - 1; i >= 0 && i >= list.length - 10; i--) {
+      var rdo = list[i];
+      var ativ = [];
+      try { ativ = JSON.parse(rdo.atividades_json || '[]'); } catch (e) {}
+      var ocor = [];
+      try { ocor = JSON.parse(rdo.ocorrencias_json || '[]'); } catch (e2) {}
+      html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px">' +
+        '<div style="display:flex;justify-content:space-between"><b>' + formatDate(rdo.date) + '</b>' +
+          '<span>' + escapeHtml(rdo.clima || '') + ' · ' + (rdo.horas_lancadas || 0) + 'h</span></div>' +
+        '<div style="color:#334155">' + escapeHtml(ativ.map(function (a) { return a.descricao; }).join('; ')) + '</div>' +
+        (ocor.length ? '<div style="color:#b45309">⚠ ' + escapeHtml(ocor.join('; ')) + '</div>' : '') +
+        '<div style="color:#94a3b8">' + escapeHtml(rdo.tecnico_nome || '') + ' · ' + escapeHtml(rdo.efetivo_campo || '') + '</div>' +
+      '</div>';
+    }
+    box.innerHTML = html;
+  }).Api_projGetRdos(_pjCurrent.id);
+}
+
+function _pjShowRdoForm() {
+  var f = document.getElementById('pj-rdo-form');
+  f.classList.remove('hidden');
+  var today = new Date();
+  var iso = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+  f.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<label style="font-size:12px">Data<br><input class="form-input" id="rdo-date" type="date" value="' + iso + '" style="width:150px"></label>' +
+      '<label style="font-size:12px">Clima<br><select class="form-input" id="rdo-clima" style="width:140px">' +
+        '<option>BOM</option><option>CHUVA</option><option>IMPRATICAVEL</option></select></label>' +
+      '<label style="font-size:12px;flex:1">Efetivo em campo<br><input class="form-input" id="rdo-efetivo" type="text" placeholder="quem esteve na obra"></label>' +
+    '</div>' +
+    '<label style="font-size:12px">Atividades executadas<br><textarea class="form-input" id="rdo-ativ" rows="2" placeholder="uma por linha"></textarea></label>' +
+    '<div style="display:flex;gap:8px">' +
+      '<label style="font-size:12px;width:120px">Horas do dia<br><input class="form-input" id="rdo-horas" type="number" min="0" step="0.5" value="8"></label>' +
+      '<label style="font-size:12px;flex:1">Ocorrências / impedimentos<br><input class="form-input" id="rdo-ocor" type="text" placeholder="chuva, área não liberada... (separe por ;)"></label>' +
+    '</div>' +
+    '<div style="margin-top:8px;display:flex;gap:8px">' +
+      '<button class="btn btn-primary btn-sm" id="rdo-save">Salvar RDO</button>' +
+      '<button class="btn btn-ghost btn-sm" id="rdo-cancel">Cancelar</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:#94a3b8;margin-top:4px">RDO é imutável após salvo — um por dia por obra.</div>';
+  document.getElementById('rdo-cancel').addEventListener('click', function () { f.classList.add('hidden'); f.innerHTML = ''; });
+  document.getElementById('rdo-save').addEventListener('click', _pjSaveRdo);
+}
+
+function _pjSaveRdo() {
+  var horas = parseFloat(document.getElementById('rdo-horas').value) || 0;
+  var atividades = (document.getElementById('rdo-ativ').value || '').split('\n')
+    .filter(function (l) { return l.trim(); })
+    .map(function (l) { return { descricao: l.trim(), horas: 0 }; });
+  if (atividades.length) atividades[0].horas = horas; // total do dia na 1ª atividade
+  var ocorrencias = (document.getElementById('rdo-ocor').value || '').split(';')
+    .map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+
+  var user = (typeof ALLEGRO !== 'undefined' && ALLEGRO.currentUser) ? ALLEGRO.currentUser : {};
+  var payload = {
+    project_id:      _pjCurrent.id,
+    date:            document.getElementById('rdo-date').value,
+    tecnico_id:      user.id || 'SYSTEM',
+    tecnico_nome:    user.name || '',
+    clima:           document.getElementById('rdo-clima').value,
+    efetivo_campo:   document.getElementById('rdo-efetivo').value,
+    atividades_json: atividades,
+    ocorrencias_json: ocorrencias,
+    horas_lancadas:  horas
+  };
+  var btn = document.getElementById('rdo-save');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  google.script.run
+    .withSuccessHandler(function (res) {
+      btn.disabled = false; btn.textContent = 'Salvar RDO';
+      if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+      showAlert('RDO registrado!', 'success');
+      var f = document.getElementById('pj-rdo-form');
+      f.classList.add('hidden'); f.innerHTML = '';
+      _pjLoadRdos();
+    })
+    .withFailureHandler(function (err) {
+      btn.disabled = false; btn.textContent = 'Salvar RDO';
+      showAlert('Falha: ' + (err.message || err), 'error');
+    })
+    .Api_projLancarRdo(payload);
+}
+</script>
