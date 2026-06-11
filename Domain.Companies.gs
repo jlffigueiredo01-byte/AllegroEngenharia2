@@ -317,19 +317,38 @@ function Api_companiesGeocodeBatch() {
   try {
     requireRole(['DIRETOR_TECNICO']);
     var rows = sheetToObjects(COMPANIES_SHEET);
-    var count = 0;
+    var count = 0, semDados = 0;
+    var inicio = new Date().getTime();
     for (var i = 0; i < rows.length; i++) {
       var c = rows[i];
-      if (!c.lat && c.address) {
-        var geo = _companiesGeocode(c.address);
-        if (geo) {
-          updateRowById(COMPANIES_SHEET, c.id, { lat: geo.lat, lng: geo.lng });
-          count++;
-        }
-        Utilities.sleep(200);
+      if (c.lat) continue;
+
+      // Consulta: endereço completo > cidade+UF (precisão de cidade — base
+      // legada não tem rua). Só UF não geocodifica: pin no centro do estado
+      // seria informação falsa.
+      var query = '';
+      if (c.address && String(c.address).trim()) {
+        query = String(c.address).trim();
+      } else if (c.city && String(c.city).trim()) {
+        query = String(c.city).trim() +
+          (c.state ? ', ' + String(c.state).trim() : '') + ', Brasil';
       }
+      if (!query) { semDados++; continue; }
+
+      // proteção contra o limite de 6 min: para com folga e informa o resto
+      if (new Date().getTime() - inicio > 4.5 * 60 * 1000) {
+        return { ok: true, data: { geocodificadas: count, sem_dados: semDados,
+          parcial: true, msg: 'Tempo limite próximo — rode o botão de novo para continuar (é incremental).' } };
+      }
+
+      var geo = _companiesGeocode(query);
+      if (geo) {
+        updateRowById(COMPANIES_SHEET, c.id, { lat: geo.lat, lng: geo.lng });
+        count++;
+      }
+      Utilities.sleep(150);
     }
-    return { ok: true, data: { geocodificadas: count } };
+    return { ok: true, data: { geocodificadas: count, sem_dados: semDados } };
   } catch (e) {
     return { ok: false, error: e.message };
   }
