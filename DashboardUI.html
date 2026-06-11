@@ -1,0 +1,174 @@
+<script>
+// =============================================================================
+// DashboardUI.html — SGA (Sistema de Gestão Allegro)
+// Dashboard v2. Fundamentos: Few (visão única, sem decoração), Tufte
+// (data-ink), Cleveland & McGill (posição/comprimento > ângulo → barras),
+// pré-atentivo (Ware): cor de alerta SÓ onde há ação a tomar.
+// Prefixo _dsh. ES5.
+// =============================================================================
+
+function renderDashboard(area) {
+  var user = ALLEGRO.currentUser;
+  var firstName = user ? String(user.name || '').split(' ')[0] : '';
+  var hoje = new Date();
+  var dias = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+  var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+
+  area.innerHTML =
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">' + getGreeting() + ', ' + escapeHtml(firstName) + ' 👋</h1>' +
+        '<p class="page-subtitle">' + dias[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()] + ' — o pulso da Allegro em uma tela.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid" id="dsh-kpis"></div>' +
+    '<div class="dash-grid2">' +
+      '<div>' +
+        '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">Funil de propostas</div>' +
+          '<div class="card-subtitle" style="font-size:12px;color:#98a2b3">quantidade e valor por etapa — barras proporcionais ao R$</div></div>' +
+          '<div class="card-body" id="dsh-funil"><div class="spinner-ring" style="margin:16px auto"></div></div></div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">Últimos 6 meses</div>' +
+          '<div class="card-subtitle" style="font-size:12px;color:#98a2b3">barras: propostas criadas · linha: R$ fechado</div></div>' +
+          '<div class="card-body" id="dsh-serie"></div></div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">🔥 Precisa de você</div></div>' +
+          '<div class="card-body" id="dsh-need" style="padding-top:4px"></div></div>' +
+        '<div class="card"><div class="card-header"><div class="card-title">Atividade recente</div></div>' +
+          '<div class="card-body" id="dsh-act" style="padding-top:4px"></div></div>' +
+      '</div>' +
+    '</div>';
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { _dshError(r ? r.error : 'sem resposta'); return; }
+      _dshRender(r.data);
+    })
+    .withFailureHandler(function (e) { _dshError(e.message || e); })
+    .Api_dashV2();
+}
+
+function _dshError(msg) {
+  var el = document.getElementById('dsh-kpis');
+  if (el) el.innerHTML = '<div class="card" style="grid-column:1/-1"><div class="card-body">Erro ao carregar o dashboard: ' + escapeHtml(msg) + '</div></div>';
+}
+
+function _dshCompact(v) {
+  v = Number(v || 0);
+  if (v >= 1000000) return 'R$ ' + (v / 1000000).toFixed(1).replace('.', ',') + ' mi';
+  if (v >= 1000)    return 'R$ ' + (v / 1000).toFixed(0) + ' mil';
+  return formatBRL(v);
+}
+
+function _dshKpi(label, value, sub, cls, onclick) {
+  return '<div class="kpi ' + (cls || '') + '"' + (onclick ? ' style="cursor:pointer" onclick="' + onclick + '"' : '') + '>' +
+    '<div class="k-label"><span>' + label + '</span></div>' +
+    '<div class="k-value">' + value + '</div>' +
+    (sub ? '<div class="k-sub">' + sub + '</div>' : '') +
+  '</div>';
+}
+
+function _dshRender(d) {
+  var k = d.kpis;
+
+  // ── KPIs (Painel de 8 com o que os dados já permitem)
+  document.getElementById('dsh-kpis').innerHTML =
+    _dshKpi('Pipeline aberto', _dshCompact(k.pipeline.valor), k.pipeline.qtd + ' proposta' + (k.pipeline.qtd === 1 ? '' : 's') + ' em jogo', '', "showSection('quotes')") +
+    _dshKpi('Fechado no mês', _dshCompact(k.fechado_mes.valor), 'ano: ' + _dshCompact(k.fechado_ytd), k.fechado_mes.valor > 0 ? 'k-ok' : '') +
+    _dshKpi('Win rate', k.win_rate === null ? '—' : k.win_rate + '%', k.win_rate === null ? 'sem decisões ainda' : 'fechadas ÷ decididas') +
+    _dshKpi('Ticket médio', k.ticket_medio === null ? '—' : _dshCompact(k.ticket_medio), 'por negócio fechado') +
+    _dshKpi('Margem média', k.margem_media === null ? '—' : String(k.margem_media).replace('.', ',') + '%', 'dos negócios fechados') +
+    _dshKpi('Ação necessária', String(k.cards.urgentes), k.cards.abertos + ' cards abertos · backlog ' + _dshCompact(k.backlog.valor),
+      k.cards.urgentes > 0 ? 'k-alert' : 'k-ok', "showSection('actioncards')");
+
+  // ── Funil (barras horizontais ∝ valor; posição/comprimento — Cleveland & McGill)
+  var LBL = { PROPOSTA_GERADA: 'Geradas', EM_REVISAO: 'Em revisão', APROVADA_ENVIO: 'Aprovadas', ENVIADA: 'Enviadas', FECHADA: 'Fechadas ✓', RECUSADA: 'Recusadas' };
+  var ORD = ['PROPOSTA_GERADA', 'EM_REVISAO', 'APROVADA_ENVIO', 'ENVIADA', 'FECHADA', 'RECUSADA'];
+  var max = 1;
+  for (var o = 0; o < ORD.length; o++) max = Math.max(max, d.funil[ORD[o]].valor);
+  var fh = '';
+  for (var f = 0; f < ORD.length; f++) {
+    var st = ORD[f], fd = d.funil[st];
+    var pct = Math.max(2, Math.round(100 * fd.valor / max));
+    var grad = st === 'FECHADA' ? 'background:linear-gradient(90deg,#039855,#12b76a)' :
+               st === 'RECUSADA' ? 'background:linear-gradient(90deg,#d92d20,#f97066)' : '';
+    fh += '<div class="funnel-row">' +
+      '<div class="f-label">' + LBL[st] + '</div>' +
+      '<div class="f-track"><div class="f-bar" style="width:' + pct + '%;' + grad + '"></div>' +
+        '<div class="f-val">' + fd.qtd + ' · ' + _dshCompact(fd.valor) + '</div></div>' +
+    '</div>';
+  }
+  document.getElementById('dsh-funil').innerHTML = fh;
+
+  // ── Série 6m: SVG próprio (barras = criadas; linha = R$ fechado)
+  document.getElementById('dsh-serie').innerHTML = _dshSerieSvg(d.serie_6m);
+
+  // ── Precisa de você: SÓ o que exige ação (vermelho/âmbar pré-atentivo)
+  var need = '';
+  for (var u = 0; u < d.urgentes.length; u++) {
+    need += '<div class="need-item"><span class="n-dot" style="background:#d92d20"></span>' +
+      '<div><b>Card vencido:</b> ' + escapeHtml(d.urgentes[u].title || d.urgentes[u].id) +
+      (d.urgentes[u].assigned ? ' <span style="color:#98a2b3">(' + escapeHtml(d.urgentes[u].assigned) + ')</span>' : '') + '</div></div>';
+  }
+  for (var pz = 0; pz < d.paradas.length; pz++) {
+    need += '<div class="need-item"><span class="n-dot" style="background:#f79009"></span>' +
+      '<div><b>Sem follow-up há ' + d.paradas[pz].dias + 'd:</b> ' + escapeHtml((d.paradas[pz].number || d.paradas[pz].id) + ' · ' + (d.paradas[pz].client || '')) + '</div></div>';
+  }
+  for (var g = 0; g < (d.garantias || []).length; g++) {
+    var ga = d.garantias[g];
+    need += '<div class="need-item"><span class="n-dot" style="background:#1a56db"></span>' +
+      '<div><b>Garantia vencendo:</b> ' + escapeHtml((ga.serial || ga.id || '') + (ga.company_name ? ' · ' + ga.company_name : '')) +
+      ' <span style="color:#98a2b3">→ oferecer contrato de manutenção</span></div></div>';
+  }
+  document.getElementById('dsh-need').innerHTML = need ||
+    '<div style="padding:14px 0;color:#027a48;font-size:13px">✓ Tudo em dia — nenhuma pendência crítica.</div>';
+
+  // ── Atividade
+  var act = '';
+  for (var a = 0; a < d.atividade.length; a++) {
+    act += '<div class="act-item"><span>' + escapeHtml(d.atividade[a].desc) + '</span>' +
+      '<span class="a-date">' + formatDate(d.atividade[a].ts) + '</span></div>';
+  }
+  document.getElementById('dsh-act').innerHTML = act || '<div style="padding:10px 0;color:#98a2b3;font-size:12px">Os eventos do sistema aparecem aqui.</div>';
+}
+
+function _dshSerieSvg(serie) {
+  if (!serie || !serie.length) return '<p style="color:#98a2b3;font-size:12px">Sem dados ainda.</p>';
+  var W = 560, H = 170, padL = 8, padB = 22, padT = 14;
+  var n = serie.length;
+  var bw = Math.floor((W - padL * 2) / n * 0.52);
+  var step = (W - padL * 2) / n;
+  var maxC = 1, maxV = 1;
+  for (var i = 0; i < n; i++) {
+    maxC = Math.max(maxC, serie[i].criadas);
+    maxV = Math.max(maxV, serie[i].fechado_valor);
+  }
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto">';
+  var pts = [];
+  for (var j = 0; j < n; j++) {
+    var x = padL + j * step + step / 2;
+    var bh = Math.round((H - padB - padT) * serie[j].criadas / maxC);
+    svg += '<rect x="' + (x - bw / 2) + '" y="' + (H - padB - bh) + '" width="' + bw + '" height="' + bh + '" rx="4" fill="#dbe7ff"/>';
+    if (serie[j].criadas) {
+      svg += '<text x="' + x + '" y="' + (H - padB - bh - 4) + '" text-anchor="middle" font-size="10" fill="#667085">' + serie[j].criadas + '</text>';
+    }
+    var vy = (H - padB) - (H - padB - padT) * serie[j].fechado_valor / maxV;
+    pts.push([x, vy, serie[j].fechado_valor]);
+    var mesLbl = serie[j].mes.slice(5) + '/' + serie[j].mes.slice(2, 4);
+    svg += '<text x="' + x + '" y="' + (H - 6) + '" text-anchor="middle" font-size="10" fill="#98a2b3">' + mesLbl + '</text>';
+  }
+  var path = '';
+  for (var pIdx = 0; pIdx < pts.length; pIdx++) {
+    path += (pIdx ? ' L ' : 'M ') + pts[pIdx][0] + ' ' + pts[pIdx][1].toFixed(1);
+  }
+  svg += '<path d="' + path + '" fill="none" stroke="#039855" stroke-width="2.5" stroke-linecap="round"/>';
+  for (var c2 = 0; c2 < pts.length; c2++) {
+    if (pts[c2][2] > 0) {
+      svg += '<circle cx="' + pts[c2][0] + '" cy="' + pts[c2][1].toFixed(1) + '" r="3.5" fill="#039855"/>';
+      svg += '<text x="' + pts[c2][0] + '" y="' + (pts[c2][1] - 7).toFixed(1) + '" text-anchor="middle" font-size="10" font-weight="700" fill="#027a48">' + _dshCompact(pts[c2][2]) + '</text>';
+    }
+  }
+  svg += '</svg>';
+  return svg;
+}
+</script>

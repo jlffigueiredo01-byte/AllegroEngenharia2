@@ -216,6 +216,11 @@ function doLogout() {
 /**
  * Exibe a seção solicitada na área de conteúdo principal.
  */
+function toggleNavGroup(head) {
+  var g = head.parentNode;
+  if (g) g.classList.toggle('open');
+}
+
 function showSection(section) {
   if (ALLEGRO.activeSection === section) return;
   ALLEGRO.activeSection = section;
@@ -224,7 +229,11 @@ function showSection(section) {
   var navItems = document.querySelectorAll('.nav-item, .topbar-nav-btn');
   navItems.forEach(function (el) {
     var s = el.getAttribute('data-section');
-    if (s === section) { el.classList.add('active'); }
+    if (s === section) {
+      el.classList.add('active');
+      var grp = el.closest ? el.closest('.nav-group') : null;
+      if (grp) grp.classList.add('open');
+    }
     else               { el.classList.remove('active'); }
   });
 
@@ -261,7 +270,7 @@ function showSection(section) {
    RENDERIZADORES DE SEÇÃO
 ══════════════════════════════════════════════════════════════ */
 
-function renderDashboard(area) {
+function _legacyRenderDashboard(area) {
   var user = ALLEGRO.currentUser;
   var greeting = getGreeting();
   var firstName = user ? user.name.split(' ')[0] : '';

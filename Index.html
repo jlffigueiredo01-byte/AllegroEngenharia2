@@ -100,61 +100,76 @@
       </div>
 
       <nav class="sidebar-nav" id="sidebar-nav">
-        <a class="nav-item" data-section="dashboard" onclick="showSection('dashboard')">
-          <span class="nav-icon">◈</span>
-          <span class="nav-label">Dashboard</span>
+        <a class="nav-item " data-section="dashboard" onclick="showSection('dashboard')">
+          <span class="nav-icon">◈</span><span class="nav-label">Dashboard</span>
         </a>
-        <a class="nav-item" data-section="companies" onclick="showSection('companies')">
-          <span class="nav-icon">🏢</span>
-          <span class="nav-label">Empresas</span>
+        <a class="nav-item " data-section="visao360" onclick="showSection('visao360')">
+          <span class="nav-icon">🔎</span><span class="nav-label">Visão 360</span>
         </a>
-        <a class="nav-item" data-section="contacts" onclick="showSection('contacts')">
-          <span class="nav-icon">👤</span>
-          <span class="nav-label">Contatos</span>
+        <div class="nav-group open" data-group="comercial">
+          <button class="nav-group-head" onclick="toggleNavGroup(this)">
+            <span>Comercial</span><span class="nav-caret">▾</span>
+          </button>
+          <div class="nav-group-items">
+        <a class="nav-item " data-section="opportunities" onclick="showSection('opportunities')">
+          <span class="nav-icon">🎯</span><span class="nav-label">Oportunidades</span>
         </a>
-        <a class="nav-item" data-section="visao360" onclick="showSection('visao360')">
-          <span class="nav-icon">🔎</span>
-          <span class="nav-label">Visão 360</span>
+        <a class="nav-item " data-section="quotes" onclick="showSection('quotes')">
+          <span class="nav-icon">📄</span><span class="nav-label">Propostas</span>
         </a>
-        <a class="nav-item" data-section="opportunities" onclick="showSection('opportunities')">
-          <span class="nav-icon">🎯</span>
-          <span class="nav-label">Oportunidades</span>
+        <a class="nav-item " data-section="companies" onclick="showSection('companies')">
+          <span class="nav-icon">🏢</span><span class="nav-label">Empresas</span>
         </a>
-        <a class="nav-item" data-section="quotes" onclick="showSection('quotes')">
-          <span class="nav-icon">📄</span>
-          <span class="nav-label">Propostas</span>
+        <a class="nav-item " data-section="contacts" onclick="showSection('contacts')">
+          <span class="nav-icon">👤</span><span class="nav-label">Contatos</span>
         </a>
-        <a class="nav-item" data-section="expenses" onclick="showSection('expenses')">
-          <span class="nav-icon">💰</span>
-          <span class="nav-label">Despesas</span>
+        <a class="nav-item " data-section="map" onclick="showSection('map')">
+          <span class="nav-icon">🗺️</span><span class="nav-label">Mapa de clientes</span>
         </a>
-        <a class="nav-item" data-section="projetos" onclick="showSection('projetos')">
-          <span class="nav-icon">🏗️</span><span class="nav-label">Projetos</span>
+          </div>
+        </div>
+        <div class="nav-group" data-group="operacoes">
+          <button class="nav-group-head" onclick="toggleNavGroup(this)">
+            <span>Operações</span><span class="nav-caret">▾</span>
+          </button>
+          <div class="nav-group-items">
+        <a class="nav-item " data-section="projetos" onclick="showSection('projetos')">
+          <span class="nav-icon">🏗️</span><span class="nav-label">Projetos & RDO</span>
         </a>
-        <a class="nav-item" data-section="compras" onclick="showSection('compras')">
-          <span class="nav-icon">📦</span><span class="nav-label">Compras</span>
-        </a>
-        <a class="nav-item" data-section="fornecedores" onclick="showSection('fornecedores')">
-          <span class="nav-icon">🏭</span><span class="nav-label">Fornecedores</span>
-        </a>
-        <a class="nav-item" data-section="agenda" onclick="showSection('agenda')">
+        <a class="nav-item " data-section="agenda" onclick="showSection('agenda')">
           <span class="nav-icon">📅</span><span class="nav-label">Agenda</span>
         </a>
-        <a class="nav-item" data-section="actioncards" onclick="showSection('actioncards')">
-          <span class="nav-icon">🗂</span>
-          <span class="nav-label">Action Cards</span>
+        <a class="nav-item " data-section="actioncards" onclick="showSection('actioncards')">
+          <span class="nav-icon">🗂</span><span class="nav-label">Action Cards</span>
         </a>
-
+          </div>
+        </div>
+        <div class="nav-group" data-group="suprimentos">
+          <button class="nav-group-head" onclick="toggleNavGroup(this)">
+            <span>Suprimentos</span><span class="nav-caret">▾</span>
+          </button>
+          <div class="nav-group-items">
+        <a class="nav-item " data-section="compras" onclick="showSection('compras')">
+          <span class="nav-icon">📦</span><span class="nav-label">Compras (PO)</span>
+        </a>
+        <a class="nav-item " data-section="fornecedores" onclick="showSection('fornecedores')">
+          <span class="nav-icon">🏭</span><span class="nav-label">Fornecedores</span>
+        </a>
+          </div>
+        </div>
+        <div class="nav-group" data-group="financeiro">
+          <button class="nav-group-head" onclick="toggleNavGroup(this)">
+            <span>Financeiro</span><span class="nav-caret">▾</span>
+          </button>
+          <div class="nav-group-items">
+        <a class="nav-item " data-section="expenses" onclick="showSection('expenses')">
+          <span class="nav-icon">💰</span><span class="nav-label">Despesas</span>
+        </a>
+          </div>
+        </div>
         <div class="nav-divider"></div>
-
-        <a class="nav-item" data-section="map" onclick="showSection('map')">
-          <span class="nav-icon">🗺️</span>
-          <span class="nav-label">Mapa</span>
-        </a>
-
         <a class="nav-item nav-item-admin hidden" id="nav-config" data-section="config" onclick="showSection('config')">
-          <span class="nav-icon">⚙️</span>
-          <span class="nav-label">Configurações</span>
+          <span class="nav-icon">⚙️</span><span class="nav-label">Configurações</span>
         </a>
       </nav>
 
@@ -211,6 +226,7 @@
   <?!= include('ProposalBuilderUI'); ?>
   <?!= include('MapUI'); ?>
   <?!= include('Visao360UI'); ?>
+  <?!= include('DashboardUI'); ?>
   <?!= include('ProjetosUI'); ?>
   <?!= include('ComprasUI'); ?>
   <?!= include('FornecedoresUI'); ?>
