@@ -110,3 +110,18 @@ function Api_poGetByProposal(proposalId) {
     return { ok: false, error: e.message };
   }
 }
+
+
+/**
+ * Gera PO em rascunho a partir de uma proposta FECHADA.
+ * @param {string} proposalId
+ * @param {string} supplierId
+ */
+function Api_poCreateFromProposal(proposalId, supplierId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
+    return { ok: true, data: poSvcCreateFromProposal(proposalId, supplierId) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}

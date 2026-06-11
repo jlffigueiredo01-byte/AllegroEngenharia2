@@ -181,3 +181,66 @@ function poSvcThreeWayMatch(poId, nfId) {
     divergencia_pct: divergencia * 100
   };
 }
+
+
+/**
+ * Cria uma PO em RASCUNHO a partir dos itens Hydronix de uma proposta FECHADA.
+ * Preço unitário = table_price_usd x (1 - DESCONTO_COMPRA_PCT) — preço de COMPRA.
+ * Itens sem correspondência na PRODUCTS são ignorados (linhas de serviço etc).
+ * @param {string} proposalId
+ * @param {string} supplierId
+ * @return {Object} a PO criada
+ */
+function poSvcCreateFromProposal(proposalId, supplierId) {
+  if (!proposalId) throw new Error('proposalId é obrigatório.');
+  if (!supplierId) throw new Error('supplierId é obrigatório.');
+
+  var prop = propRepoGetById(proposalId);
+  if (!prop) throw new Error('Proposta não encontrada: ' + proposalId);
+  if (prop.status !== 'FECHADA') {
+    throw new Error('PO só pode ser gerada de proposta FECHADA. Status atual: ' + prop.status);
+  }
+
+  var propItems = [];
+  try { propItems = JSON.parse(prop.items_json || '[]') || []; } catch (e) {}
+  if (!propItems.length) throw new Error('Proposta sem itens.');
+
+  var products = sheetToObjects(PRODUCTS_SHEET);
+  var byCode = {};
+  for (var i = 0; i < products.length; i++) byCode[products[i].code] = products[i];
+
+  var params = prcRepoGetSetupCalcParams();
+  var desconto = params.DESCONTO_COMPRA_PCT || 0;
+
+  var poItems = [];
+  var total = 0;
+  var ignorados = [];
+  for (var j = 0; j < propItems.length; j++) {
+    var it = propItems[j];
+    var prod = byCode[it.code];
+    if (!prod) { ignorados.push(it.code || it.description || '?'); continue; }
+    var unit = Number(prod.table_price_usd || 0) * (1 - desconto);
+    var qty  = Number(it.qty || 1);
+    var line = { code: it.code, description: prod.description || it.description || '',
+                 qty: qty, unit_price: Math.round(unit * 100) / 100,
+                 total: Math.round(unit * qty * 100) / 100 };
+    total += line.total;
+    poItems.push(line);
+  }
+  if (!poItems.length) {
+    throw new Error('Nenhum item da proposta corresponde a produtos do catálogo (só serviços?).');
+  }
+
+  var po = poSvcCreate({
+    supplier_id:  supplierId,
+    proposal_id:  proposalId,
+    currency:     'USD',
+    items_json:   poItems,
+    total_amount: Math.round(total * 100) / 100
+  });
+
+  appendTimelineEvent('PROPOSAL', proposalId, 'PO_GERADA',
+    'PO ' + (po.po_number || po.id) + ' gerada da proposta (' + poItems.length + ' itens' +
+    (ignorados.length ? '; ignorados: ' + ignorados.join(', ') : '') + ')');
+  return po;
+}
