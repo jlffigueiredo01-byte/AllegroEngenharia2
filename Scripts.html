@@ -700,6 +700,9 @@ function renderExpensesList(list) {
       '<td><span class="badge badge-blue" style="font-size:11px">' + escapeHtml(e.categoria) + '</span></td>' +
       '<td style="font-weight:600;color:#16a34a">' + formatBRL(Number(e.total)) + '</td>' +
       '<td style="color:#64748b;font-size:12px">' + escapeHtml(e.criado_por) + '</td>' +
+      '<td>' + (e.foto_file_id
+        ? '<a href="https://drive.google.com/file/d/' + escapeHtml(e.foto_file_id) + '/view" target="_blank" title="Ver comprovante">\uD83D\uDCCE</a>'
+        : '') + '</td>' +
     '</tr>';
   }).join('');
   wrap.innerHTML =
@@ -938,7 +941,11 @@ function saveExpense() {
       if (btn) btn.disabled = false;
       showAlert('Falha ao salvar: ' + (err.message || 'erro desconhecido'), 'error');
     })
-    .Api_saveExpense({ data: data, estabelecimento: est, categoria: cat, total: total, descricao: desc, itens: [] });
+    .Api_saveExpense({
+      data: data, estabelecimento: est, categoria: cat, total: total,
+      descricao: desc, itens: [],
+      imageBase64: _ocrBase64 || '', imageMime: _ocrMime || 'image/jpeg'
+    });
 }
 
 function cancelExpenseUpload() {

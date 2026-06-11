@@ -1,9 +1,43 @@
 var EXPENSES_SHEET = 'EXPENSES';
 var EXPENSE_CATEGORIES = ['Alimentação','Transporte','Material de Escritório','Serviços','Equipamentos','Marketing','Outros'];
-var EXPENSES_COLS = ['id','data','estabelecimento','categoria','total','descricao','itens_json','status','criado_por','criado_em','atualizado_em'];
+var EXPENSES_COLS = ['id','data','estabelecimento','categoria','total','descricao','itens_json','status','criado_por','criado_em','atualizado_em','foto_file_id'];
 
 function initExpensesSheet() {
   getOrCreateSheet(EXPENSES_SHEET, EXPENSES_COLS);
+  _expEnsureFotoColumn();
+}
+
+/**
+ * Garante a coluna foto_file_id em planilhas criadas antes desta versao.
+ * Idempotente.
+ */
+function _expEnsureFotoColumn() {
+  try {
+    var sh = getOrCreateSheet(EXPENSES_SHEET, EXPENSES_COLS);
+    var lastCol = sh.getLastColumn();
+    var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (headers.indexOf('foto_file_id') === -1) {
+      sh.getRange(1, lastCol + 1).setValue('foto_file_id');
+    }
+  } catch (e) {
+    Logger.log('_expEnsureFotoColumn: ' + e.message);
+  }
+}
+
+/**
+ * Pasta de comprovantes de despesa no Drive (criada uma unica vez,
+ * id persistido em Script Properties: EXPENSES_FOLDER_ID).
+ * @return {Folder}
+ */
+function _expGetFotosFolder() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('EXPENSES_FOLDER_ID');
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* recria abaixo */ }
+  }
+  var folder = DriveApp.createFolder('SGA - Despesas (comprovantes)');
+  props.setProperty('EXPENSES_FOLDER_ID', folder.getId());
+  return folder;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +144,21 @@ function Api_saveExpense(data) {
     var id = 'EXP-' + getAndIncrementCounter('EXPENSE_COUNTER');
     var now = nowISO();
 
+    // Arquiva o comprovante no Drive (se a UI enviou a imagem do cupom)
+    var fotoFileId = '';
+    if (data.imageBase64) {
+      try {
+        _expEnsureFotoColumn();
+        var mime = data.imageMime || 'image/jpeg';
+        var ext  = (mime.indexOf('png') > -1) ? 'png' : 'jpg';
+        var blob = Utilities.newBlob(
+          Utilities.base64Decode(data.imageBase64), mime, id + '.' + ext);
+        fotoFileId = _expGetFotosFolder().createFile(blob).getId();
+      } catch (fe) {
+        Logger.log('Falha ao arquivar comprovante de ' + id + ': ' + fe.message);
+      }
+    }
+
     appendRowToSheet(EXPENSES_SHEET, {
       id: id,
       data: data.data || '',
@@ -121,7 +170,8 @@ function Api_saveExpense(data) {
       status: 'ATIVO',
       criado_por: user.id,
       criado_em: now,
-      atualizado_em: now
+      atualizado_em: now,
+      foto_file_id: fotoFileId
     }, EXPENSES_COLS);
 
     appendAuditLog('CREATE', 'EXPENSE', id, data.estabelecimento + ' R$' + data.total);
