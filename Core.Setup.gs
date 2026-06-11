@@ -65,6 +65,38 @@ const CONFIG_DEFAULTS = [
   ['CALENDAR_EVENT_COUNTER', '0', 'Sequencial de eventos de agenda'],
 ];
 
+
+/**
+ * SETUP COMPLETO DO SGA — execute ESTA função (uma vez por ambiente).
+ * Orquestra todos os inits e migrações na ordem correta. Idempotente:
+ * pode rodar quantas vezes quiser sem duplicar nada.
+ * @return {{ok:boolean, steps:string[], error?:string}}
+ */
+function setupAll() {
+  var steps = [];
+  try {
+    initCoreSheets();              steps.push('initCoreSheets');
+    initProposalsAddColumns();     steps.push('initProposalsAddColumns');
+    initOpportunitiesAddColumns(); steps.push('initOpportunitiesAddColumns');
+    initResiliencia();             steps.push('initResiliencia');
+    initKpiSnapshotSheet();        steps.push('initKpiSnapshotSheet');
+    initCalendarEventsSheet();     steps.push('initCalendarEventsSheet');
+    migrateAcStatusPtBr();         steps.push('migrateAcStatusPtBr');
+    // Drive: só roda se ROOT_FOLDER_ID estiver configurado; senão, pula sem erro
+    if (drvGetRootId()) {
+      setupDriveStructure();       steps.push('setupDriveStructure');
+    } else {
+      steps.push('setupDriveStructure PULADO (configure ROOT_FOLDER_ID e rode de novo)');
+    }
+    appendAuditLog('SETUP_ALL', 'SYSTEM', 'ALL', steps.join(' | '));
+    Logger.log('setupAll concluído: ' + steps.join(' -> '));
+    return { ok: true, steps: steps };
+  } catch (e) {
+    Logger.log('setupAll FALHOU em: ' + steps.join(' -> ') + ' | erro: ' + e.message);
+    return { ok: false, steps: steps, error: e.message };
+  }
+}
+
 function initCoreSheets() {
   initDriveRegistrySheet();   // Core.Drive.gs — registro de pastas do Drive
   getOrCreateSheet('CONFIG',   CONFIG_HEADERS);
