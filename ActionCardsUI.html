@@ -182,7 +182,7 @@ function _acCardHtml(card) {
     (quoteBadge ? '<div style="margin-bottom:4px;">' + quoteBadge + '</div>' : '') +
     (assignee ? '<div style="font-size:11px;color:#94a3b8;">👤 ' + escapeHtml(assignee) + '</div>' : '') +
     (card.created_at ? '<div style="font-size:10px;color:#cbd5e1;margin-top:3px;">' + formatDate(card.created_at) + '</div>' : '') +
-    '<button onclick="_openDetailModal(\'' + escapeHtml(card.id) + '\')" ' +
+    '<button onclick="_ac_openDetailModal(\'' + escapeHtml(card.id) + '\')" ' +
     'style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;' +
     'color:#94a3b8;font-size:16px;padding:0 2px;line-height:1;" title="Detalhes">⋯</button>' +
     '</div>';
@@ -369,7 +369,7 @@ function _submitStatus(cardId, newStatus) {
 }
 
 /* ── Modal: Detalhe + histórico ── */
-function _openDetailModal(cardId) {
+function _ac_openDetailModal(cardId) {
   var card = null;
   for (var i = 0; i < _acCards.length; i++) {
     if (_acCards[i].id === cardId) { card = _acCards[i]; break; }

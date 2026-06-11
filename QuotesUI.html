@@ -7,7 +7,7 @@
 var _quotes = [];
 var _quotesFilter = { status: '', q: '' };
 
-function renderQuotes(area) {
+function _qtRenderQuotesLegacy(area) {
   area.innerHTML = _buildQuotesShell();
   _loadQuoteStats();
   _loadQuotes();
@@ -197,7 +197,7 @@ function _bindQuotesEvents(area) {
 
   // Detail modal close
   var btnDetailClose = document.getElementById('btn-detail-close');
-  if (btnDetailClose) btnDetailClose.addEventListener('click', _closeDetailModal);
+  if (btnDetailClose) btnDetailClose.addEventListener('click', _qt_closeDetailModal);
 
   // Detail modal save status
   var btnSaveStatus = document.getElementById('btn-detail-save-status');
@@ -206,8 +206,8 @@ function _bindQuotesEvents(area) {
   // New modal close/cancel
   var btnNewClose = document.getElementById('btn-new-close');
   var btnNewCancel = document.getElementById('btn-new-cancel');
-  if (btnNewClose) btnNewClose.addEventListener('click', _closeNewModal);
-  if (btnNewCancel) btnNewCancel.addEventListener('click', _closeNewModal);
+  if (btnNewClose) btnNewClose.addEventListener('click', _qt_closeNewModal);
+  if (btnNewCancel) btnNewCancel.addEventListener('click', _qt_closeNewModal);
 
   // New modal submit
   var btnNewSubmit = document.getElementById('btn-new-submit');
@@ -220,11 +220,11 @@ function _bindQuotesEvents(area) {
   // Close modals on backdrop click
   var detailModal = document.getElementById('quote-detail-modal');
   if (detailModal) detailModal.addEventListener('click', function(e) {
-    if (e.target === detailModal) _closeDetailModal();
+    if (e.target === detailModal) _qt_closeDetailModal();
   });
   var newModal = document.getElementById('quote-new-modal');
   if (newModal) newModal.addEventListener('click', function(e) {
-    if (e.target === newModal) _closeNewModal();
+    if (e.target === newModal) _qt_closeNewModal();
   });
 }
 
@@ -328,7 +328,7 @@ function _renderQuotesTable() {
   for (var i = 0; i < btns.length; i++) {
     (function(btn) {
       btn.addEventListener('click', function() {
-        _openDetailModal(btn.getAttribute('data-quote-id'));
+        _qt_openDetailModal(btn.getAttribute('data-quote-id'));
       });
     })(btns[i]);
   }
@@ -352,7 +352,7 @@ function _statusBadge(status) {
 // ------------------------------------------------------------
 var _detailQuoteId = null;
 
-function _openDetailModal(quoteId) {
+function _qt_openDetailModal(quoteId) {
   _detailQuoteId = quoteId;
   var modal = document.getElementById('quote-detail-modal');
   var body = document.getElementById('detail-modal-body');
@@ -401,7 +401,7 @@ function _detailField(label, value) {
     escapeHtml(value || '—') + '</div></div>';
 }
 
-function _closeDetailModal() {
+function _qt_closeDetailModal() {
   var modal = document.getElementById('quote-detail-modal');
   if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
   _detailQuoteId = null;
@@ -427,7 +427,7 @@ function _saveDetailStatus() {
       for (var i = 0; i < _quotes.length; i++) {
         if (_quotes[i].id === _detailQuoteId) { _quotes[i].status = newStatus; break; }
       }
-      _closeDetailModal();
+      _qt_closeDetailModal();
       _renderQuotesTable();
       _loadQuoteStats();
     })
@@ -459,7 +459,7 @@ function _openNewQuoteModal() {
   _loadCompaniesForSelect();
 }
 
-function _closeNewModal() {
+function _qt_closeNewModal() {
   var modal = document.getElementById('quote-new-modal');
   if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
 }
@@ -528,7 +528,7 @@ function _submitNewQuote() {
         return;
       }
       showAlert('Proposta criada com sucesso! ID: ' + res.id, 'success');
-      _closeNewModal();
+      _qt_closeNewModal();
       _loadQuotes();
       _loadQuoteStats();
     })
