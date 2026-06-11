@@ -1,6 +1,6 @@
 var EXPENSES_SHEET = 'EXPENSES';
 var EXPENSE_CATEGORIES = ['Alimentação','Transporte','Material de Escritório','Serviços','Equipamentos','Marketing','Outros'];
-var EXPENSES_COLS = ['id','data','estabelecimento','categoria','total','descricao','itens_json','status','criado_por','criado_em','atualizado_em','foto_file_id'];
+var EXPENSES_COLS = ['id','data','estabelecimento','categoria','total','descricao','itens_json','status','criado_por','criado_em','atualizado_em','foto_file_id','ref_type','ref_id'];
 
 function initExpensesSheet() {
   getOrCreateSheet(EXPENSES_SHEET, EXPENSES_COLS);
@@ -14,10 +14,13 @@ function initExpensesSheet() {
 function _expEnsureFotoColumn() {
   try {
     var sh = getOrCreateSheet(EXPENSES_SHEET, EXPENSES_COLS);
-    var lastCol = sh.getLastColumn();
-    var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-    if (headers.indexOf('foto_file_id') === -1) {
-      sh.getRange(1, lastCol + 1).setValue('foto_file_id');
+    var need = ['foto_file_id', 'ref_type', 'ref_id'];
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var i = 0; i < need.length; i++) {
+      if (headers.indexOf(need[i]) === -1) {
+        sh.getRange(1, sh.getLastColumn() + 1).setValue(need[i]);
+        headers.push(need[i]);
+      }
     }
   } catch (e) {
     Logger.log('_expEnsureFotoColumn: ' + e.message);
@@ -177,7 +180,9 @@ function Api_saveExpense(data) {
       criado_por: user.id,
       criado_em: now,
       atualizado_em: now,
-      foto_file_id: fotoFileId
+      foto_file_id: fotoFileId,
+      ref_type: data.ref_type || '',   // PROPOSAL | PROJECT | ''
+      ref_id:   data.ref_id   || ''
     }, EXPENSES_COLS);
 
     appendAuditLog('CREATE', 'EXPENSE', id, data.estabelecimento + ' R$' + data.total);

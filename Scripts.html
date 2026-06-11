@@ -700,6 +700,7 @@ function renderExpensesList(list) {
       '<td><span class="badge badge-blue" style="font-size:11px">' + escapeHtml(e.categoria) + '</span></td>' +
       '<td style="font-weight:600;color:#16a34a">' + formatBRL(Number(e.total)) + '</td>' +
       '<td style="color:#64748b;font-size:12px">' + escapeHtml(e.criado_por) + '</td>' +
+      '<td style="font-size:11px;color:#64748b">' + escapeHtml(e.ref_id || '') + '</td>' +
       '<td>' + (e.foto_file_id
         ? '<a href="https://drive.google.com/file/d/' + escapeHtml(e.foto_file_id) + '/view" target="_blank" title="Ver comprovante">\uD83D\uDCCE</a>'
         : '') + '</td>' +
@@ -899,6 +900,17 @@ function renderOCRReview(data) {
             '<label class="form-label">Descrição (opcional)</label>' +
             '<input type="text" class="form-input" id="exp-desc" placeholder="Ex: Almoço com cliente">' +
           '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Vincular a</label>' +
+            '<div style="display:flex;gap:8px">' +
+              '<select class="form-input" id="exp-ref-type" style="width:140px" onchange="expRefTypeChanged()">' +
+                '<option value="">Nada</option>' +
+                '<option value="PROPOSAL">Proposta</option>' +
+                '<option value="PROJECT">Projeto</option>' +
+              '</select>' +
+              '<select class="form-input" id="exp-ref-id" style="flex:1" disabled><option value="">—</option></select>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
         itensHtml +
         '<div style="display:flex;gap:12px;margin-top:8px">' +
@@ -944,8 +956,34 @@ function saveExpense() {
     .Api_saveExpense({
       data: data, estabelecimento: est, categoria: cat, total: total,
       descricao: desc, itens: [],
-      imageBase64: _ocrBase64 || '', imageMime: _ocrMime || 'image/jpeg'
+      imageBase64: _ocrBase64 || '', imageMime: _ocrMime || 'image/jpeg',
+      ref_type: document.getElementById('exp-ref-type') ? document.getElementById('exp-ref-type').value : '',
+      ref_id:   document.getElementById('exp-ref-id')   ? document.getElementById('exp-ref-id').value   : ''
     });
+}
+
+function expRefTypeChanged() {
+  var type = document.getElementById('exp-ref-type').value;
+  var sel  = document.getElementById('exp-ref-id');
+  sel.innerHTML = '<option value="">Carregando...</option>';
+  sel.disabled = true;
+  if (!type) { sel.innerHTML = '<option value="">—</option>'; return; }
+
+  var fill = function (rows, fmt) {
+    var html = '<option value="">— selecione —</option>';
+    for (var i = 0; i < rows.length; i++) html += '<option value="' + escapeHtml(rows[i].id) + '">' + escapeHtml(fmt(rows[i])) + '</option>';
+    sel.innerHTML = html; sel.disabled = false;
+  };
+
+  if (type === 'PROPOSAL') {
+    google.script.run.withSuccessHandler(function (r) {
+      fill((r && r.ok && r.data) ? r.data : [], function (p) { return (p.number || p.id) + ' — ' + (p.client_name || ''); });
+    }).withFailureHandler(function(){ sel.innerHTML='<option value="">erro</option>'; }).Api_getProposals({});
+  } else {
+    google.script.run.withSuccessHandler(function (r) {
+      fill((r && r.ok && r.data) ? r.data : [], function (p) { return p.id + ' — ' + (p.title || ''); });
+    }).withFailureHandler(function(){ sel.innerHTML='<option value="">erro</option>'; }).Api_projGetAll({});
+  }
 }
 
 function cancelExpenseUpload() {
