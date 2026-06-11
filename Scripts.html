@@ -616,9 +616,28 @@ function formatBRL(value) {
  */
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  var parts = String(dateStr).split('-');
-  if (parts.length !== 3) return dateStr;
-  return parts[2] + '/' + parts[1] + '/' + parts[0];
+  // Aceita Date (serializado pelo google.script.run), ISO completo e YYYY-MM-DD
+  if (Object.prototype.toString.call(dateStr) === '[object Date]') {
+    return _fmtDMY(dateStr);
+  }
+  var s = String(dateStr);
+  if (s.indexOf('T') > 0) {            // ISO 8601
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return _fmtDMY(d);
+  }
+  var parts = s.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return parts[2].substring(0, 2) + '/' + parts[1] + '/' + parts[0];
+  }
+  var d2 = new Date(s);                // "Wed Jun 11 2026 ..." e afins
+  if (!isNaN(d2.getTime())) return _fmtDMY(d2);
+  return s;
+}
+
+function _fmtDMY(d) {
+  var dd = ('0' + d.getDate()).slice(-2);
+  var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+  return dd + '/' + mm + '/' + d.getFullYear();
 }
 
 

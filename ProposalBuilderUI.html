@@ -1424,8 +1424,10 @@ function _pbSaveProposal(andPrint) {
         return;
       }
 
-      var proposalId = res.id;
-      showAlert('Proposta ' + proposalId + ' salva com sucesso!', 'success');
+      var created = res.data || {};
+      var proposalId = created.id || res.id; // API em camadas retorna {ok, data:{id,...}}
+      var propLabel = created.number || proposalId;
+      showAlert('Proposta ' + propLabel + ' salva com sucesso!', 'success');
 
       if (andPrint) {
         _printProposal(proposalId);
