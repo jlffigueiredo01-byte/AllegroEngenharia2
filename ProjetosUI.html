@@ -23,6 +23,11 @@ function _pjLoad() {
     .withSuccessHandler(function (r) {
       _pjProjects = (r && r.ok && r.data) ? r.data : [];
       _pjRenderList();
+      if (window._pjPendingId) {
+        var pend = window._pjPendingId;
+        window._pjPendingId = null;
+        _pjOpen(pend);
+      }
     })
     .withFailureHandler(function (e) {
       var w = document.getElementById('pj-list-wrap');

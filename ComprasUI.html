@@ -15,11 +15,15 @@ function renderCompras(area) {
         '<h1 class="page-title">📦 Compras (PO)</h1>' +
         '<p class="page-subtitle">Ordens de compra para Hydronix e fornecedores nacionais.</p>' +
       '</div>' +
-      '<button class="btn btn-primary" id="po-btn-new">+ Nova PO</button>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn btn-success" id="po-btn-from-prop">📄→📦 Gerar da proposta</button>' +
+        '<button class="btn btn-primary" id="po-btn-new">+ Nova PO</button>' +
+      '</div>' +
     '</div>' +
     '<div id="po-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
     '<div id="po-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
   document.getElementById('po-btn-new').addEventListener('click', _poShowForm);
+  document.getElementById('po-btn-from-prop').addEventListener('click', _poFromProposalForm);
   _poLoad();
 }
 
@@ -94,6 +98,58 @@ function _poRenderList() {
       }).Api_poCancelar(id, motivo);
     });
   }
+}
+
+/* ── Geração a partir de proposta FECHADA ── */
+
+function _poFromProposalForm() {
+  var w = document.getElementById('po-form-wrap');
+  w.classList.remove('hidden');
+  w.innerHTML =
+    '<div class="card"><div class="card-header"><div class="card-title">Gerar PO de proposta FECHADA</div></div>' +
+    '<div class="card-body"><div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<select class="form-input" id="pofp-prop" style="flex:1;min-width:220px"><option value="">Carregando propostas...</option></select>' +
+      '<select class="form-input" id="pofp-sup" style="flex:1;min-width:220px"><option value="">Carregando fornecedores...</option></select>' +
+      '<button class="btn btn-primary" id="pofp-go">Gerar</button>' +
+      '<button class="btn btn-ghost" id="pofp-cancel">Cancelar</button>' +
+    '</div><p style="font-size:12px;color:#94a3b8;margin:8px 0 0">Os itens Hydronix da proposta entram com preço de COMPRA (tabela − desconto). Linhas de serviço são ignoradas.</p></div></div>';
+
+  document.getElementById('pofp-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
+  document.getElementById('pofp-go').addEventListener('click', function () {
+    var prop = document.getElementById('pofp-prop').value;
+    var sup  = document.getElementById('pofp-sup').value;
+    if (!prop || !sup) { showAlert('Escolha a proposta e o fornecedor.', 'warning'); return; }
+    google.script.run.withSuccessHandler(function (res) {
+      if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+      var po = res.data || {};
+      showAlert('PO ' + (po.po_number || po.id) + ' criada em rascunho!', 'success');
+      w.classList.add('hidden'); w.innerHTML = '';
+      _poLoad();
+    }).Api_poCreateFromProposal(prop, sup);
+  });
+
+  google.script.run.withSuccessHandler(function (r) {
+    var sel = document.getElementById('pofp-prop');
+    if (!sel) return;
+    var props = ((r && r.ok && r.data) ? r.data : []).filter(function (p) { return p.status === 'FECHADA'; });
+    if (!props.length) { sel.innerHTML = '<option value="">— nenhuma proposta FECHADA —</option>'; return; }
+    var html = '<option value="">— proposta —</option>';
+    for (var i = 0; i < props.length; i++) {
+      html += '<option value="' + escapeHtml(props[i].id) + '">' + escapeHtml((props[i].number || props[i].id) + ' — ' + (props[i].client_name || '')) + '</option>';
+    }
+    sel.innerHTML = html;
+  }).Api_getProposals({});
+
+  google.script.run.withSuccessHandler(function (r) {
+    var sel = document.getElementById('pofp-sup');
+    if (!sel) return;
+    var sups = (r && r.ok && r.data) ? r.data : [];
+    var html = '<option value="">— fornecedor —</option>';
+    for (var i = 0; i < sups.length; i++) {
+      html += '<option value="' + escapeHtml(sups[i].id) + '">' + escapeHtml(sups[i].name || sups[i].id) + '</option>';
+    }
+    sel.innerHTML = html;
+  }).Api_supplierGetAll();
 }
 
 /* ── Criação ── */

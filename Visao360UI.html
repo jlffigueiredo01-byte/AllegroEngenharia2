@@ -1,0 +1,519 @@
+<script>
+// =============================================================================
+// Visao360UI.html — SGA (Sistema de Gestão Allegro)
+// O CORAÇÃO DO SISTEMA: workspace completo do cliente.
+// Filosofia TIA Portal: tudo que existe do cliente está aqui; tudo que pode
+// ser criado dele nasce daqui — já vinculado. Prefixo _v360. ES5.
+// =============================================================================
+
+var _v360Companies = [];
+var _v360Sel  = null;
+var _v360Data = null;
+
+/** Deep-link global: abre a Visão 360 de uma empresa de qualquer tela. */
+function open360(companyId) {
+  window._v360Pending = companyId;
+  if (typeof ALLEGRO !== 'undefined' && ALLEGRO.activeSection === 'visao360') {
+    var sel = document.getElementById('v360-company-sel');
+    if (sel) sel.value = companyId;
+    _v360Load(companyId);
+  } else {
+    showSection('visao360');
+  }
+}
+
+function renderVisao360(area) {
+  area.innerHTML =
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">🔎 Visão 360</h1>' +
+        '<p class="page-subtitle">O workspace do cliente: tudo que existe, tudo que pode ser criado — já vinculado.</p>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<select class="form-input" id="v360-company-sel" style="min-width:260px"><option value="">Carregando empresas...</option></select>' +
+      '</div>' +
+    '</div>' +
+    '<div id="v360-workspace"><div class="card"><div class="card-body"><div class="empty-state" style="padding:32px 0">' +
+      '<div class="empty-icon">🔎</div><div class="empty-title">Escolha um cliente acima</div>' +
+      '<div class="empty-desc">ou abra pelo botão Visão 360 em Empresas.</div></div></div></div></div>';
+
+  var boot = function () {
+    var sel = document.getElementById('v360-company-sel');
+    var html = '<option value="">— escolha o cliente —</option>';
+    for (var i = 0; i < _v360Companies.length; i++) {
+      var c = _v360Companies[i];
+      html += '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || c.id) + '</option>';
+    }
+    sel.innerHTML = html;
+    sel.addEventListener('change', function () { if (sel.value) _v360Load(sel.value); });
+    if (window._v360Pending) {
+      sel.value = window._v360Pending;
+      _v360Load(window._v360Pending);
+      window._v360Pending = null;
+    } else if (_v360Sel) {
+      sel.value = _v360Sel;
+      _v360Load(_v360Sel);
+    }
+  };
+
+  if (_v360Companies.length) { boot(); return; }
+  google.script.run.withSuccessHandler(function (r) {
+    _v360Companies = (r && r.ok && r.data) ? r.data : [];
+    boot();
+  }).withFailureHandler(function () {
+    document.getElementById('v360-company-sel').innerHTML = '<option value="">erro ao carregar</option>';
+  }).Api_getCompanies();
+}
+
+function _v360Load(companyId) {
+  _v360Sel = companyId;
+  var w = document.getElementById('v360-workspace');
+  if (w) w.innerHTML = '<div class="spinner-ring" style="margin:32px auto"></div>';
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) {
+        if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(r ? r.error : 'sem resposta') + '</div>';
+        return;
+      }
+      _v360Data = r.data;
+      _v360Render();
+    })
+    .withFailureHandler(function (e) {
+      if (w) w.innerHTML = '<div class="empty-state">Falha: ' + escapeHtml(e.message || e) + '</div>';
+    })
+    .Api_c360(companyId);
+}
+
+/* ───────────────────────── RENDER ───────────────────────── */
+
+function _v360Badge(status) {
+  var map = {
+    'FECHADA': 'badge-green', 'ENVIADA': 'badge-blue', 'EM_REVISAO': 'badge-yellow',
+    'PROPOSTA_GERADA': 'badge-yellow', 'APROVADA_ENVIO': 'badge-blue',
+    'RECUSADA': 'badge-red', 'CANCELADA': 'badge-red', 'SUBSTITUIDA': 'badge-gray',
+    'Lead': 'badge-blue', 'Elaborando proposta': 'badge-yellow',
+    'Proposta enviada': 'badge-blue', 'Proposta fechada': 'badge-green',
+    'Proposta recusada': 'badge-red', 'Cancelada': 'badge-red',
+    'PLANEJAMENTO': 'badge-blue', 'EM_ANDAMENTO': 'badge-yellow', 'ENTREGUE': 'badge-green',
+    'RASCUNHO': 'badge-gray', 'EMITIDA': 'badge-blue', 'RECEBIDA': 'badge-green',
+    'ABERTO': 'badge-red', 'EM_ATENDIMENTO': 'badge-yellow', 'FECHADO': 'badge-gray'
+  };
+  return map[status] || 'badge-gray';
+}
+
+function _v360Stat(icon, value, label) {
+  return '<div style="background:#fff;border-radius:10px;padding:10px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);min-width:130px">' +
+    '<div style="font-size:11px;color:#64748b">' + icon + ' ' + label + '</div>' +
+    '<div style="font-size:18px;font-weight:700;color:#0f172a">' + value + '</div></div>';
+}
+
+function _v360ActionBtn(id, icon, label) {
+  return '<button class="btn btn-primary btn-sm" id="' + id + '" style="white-space:nowrap">' + icon + ' ' + label + '</button>';
+}
+
+function _v360Render() {
+  var d = _v360Data;
+  var w = document.getElementById('v360-workspace');
+  if (!w || !d) return;
+  var c = d.company;
+  var k = d.kpis;
+
+  var html =
+    // ── Header do cliente
+    '<div class="card" style="margin-bottom:14px"><div class="card-body" style="padding:16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">' +
+        '<div>' +
+          '<h2 style="margin:0;font-size:22px">' + escapeHtml(c.name || c.id) + '</h2>' +
+          '<div style="color:#64748b;font-size:13px;margin-top:2px">' +
+            escapeHtml((c.city || '') + (c.state ? '/' + c.state : '')) +
+            (c.client_type ? ' · ' + escapeHtml(c.client_type) : '') +
+            ' · <code style="font-size:11px">' + escapeHtml(c.id) + '</code>' +
+          '</div>' +
+          (d.contacts.length ? '<div style="font-size:12px;color:#475569;margin-top:4px">👤 ' +
+            escapeHtml(d.contacts.slice(0, 3).map(function (ct) { return ct.name + (ct.phone ? ' (' + ct.phone + ')' : ''); }).join(' · ')) + '</div>' : '') +
+        '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+          _v360Stat('💰', formatBRL(k.total_fechado), 'Total fechado') +
+          _v360Stat('📄', k.propostas_abertas, 'Propostas abertas') +
+          _v360Stat('⚙️', k.equipamentos, 'Equipamentos') +
+          _v360Stat('🛠️', k.tickets_abertos, 'Tickets abertos') +
+        '</div>' +
+      '</div>' +
+      // ── BARRA DE AÇÕES (tudo nasce daqui, já vinculado)
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9">' +
+        _v360ActionBtn('v360-act-opp',   '🎯', 'Oportunidade') +
+        _v360ActionBtn('v360-act-prop',  '💰', 'Proposta (Motor)') +
+        _v360ActionBtn('v360-act-card',  '📌', 'Action Card') +
+        _v360ActionBtn('v360-act-tkt',   '🛠️', 'Chamado') +
+        _v360ActionBtn('v360-act-po',    '📦', 'PO de proposta') +
+        '<button class="btn btn-ghost btn-sm" id="v360-act-exp">💸 Lançar despesa</button>' +
+        '<button class="btn btn-ghost btn-sm" id="v360-refresh" style="margin-left:auto">↻ Atualizar</button>' +
+      '</div>' +
+      '<div id="v360-inline-modal"></div>' +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start">' +
+      '<div>' +
+        _v360FunnelHtml(d) +
+        _v360ProjectsHtml(d) +
+        _v360PosHtml(d) +
+        _v360BaseTicketsHtml(d) +
+        _v360ExpensesHtml(d) +
+      '</div>' +
+      _v360TimelineHtml(d) +
+    '</div>';
+
+  w.innerHTML = html;
+  _v360Bind();
+}
+
+/* ── Funil encadeado: Oportunidade → Propostas → ações ── */
+function _v360FunnelHtml(d) {
+  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">🎯 Funil — Oportunidades & Propostas</div></div><div class="card-body" style="padding-top:6px">';
+  if (!d.opportunities.length && !d.proposals.length) {
+    html += '<p style="color:#94a3b8;font-size:13px">Nenhuma oportunidade ainda. Crie a primeira na barra acima.</p>';
+  }
+
+  var orphan = {};
+  for (var p = 0; p < d.proposals.length; p++) orphan[d.proposals[p].id] = d.proposals[p];
+
+  for (var i = 0; i < d.opportunities.length; i++) {
+    var o = d.opportunities[i];
+    html += '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<div><b>' + escapeHtml(o.id) + '</b> <span style="color:#475569">' + escapeHtml(o.product || '') + '</span>' +
+          (o.representative ? ' <span style="color:#94a3b8;font-size:12px">· ' + escapeHtml(o.representative) + '</span>' : '') + '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          '<span class="badge ' + _v360Badge(o.status) + '">' + escapeHtml(o.status || '') + '</span>' +
+          '<button class="btn btn-success btn-sm v360-motor" data-id="' + escapeHtml(o.id) + '">💰 Proposta</button>' +
+        '</div>' +
+      '</div>';
+
+    // propostas filhas
+    var filhas = [];
+    for (var f = 0; f < d.proposals.length; f++) {
+      if (String(d.proposals[f].opportunity_id) === String(o.id)) {
+        filhas.push(d.proposals[f]);
+        delete orphan[d.proposals[f].id];
+      }
+    }
+    for (var f2 = 0; f2 < filhas.length; f2++) html += _v360PropRow(filhas[f2], d);
+    html += '</div>';
+  }
+
+  // propostas sem oportunidade vinculada (legado)
+  var orphanList = [];
+  for (var key in orphan) orphanList.push(orphan[key]);
+  if (orphanList.length) {
+    html += '<div style="border:1px dashed #cbd5e1;border-radius:10px;padding:10px 12px">' +
+      '<div style="font-size:12px;color:#94a3b8;margin-bottom:4px">Propostas sem oportunidade vinculada (legado)</div>';
+    for (var g = 0; g < orphanList.length; g++) html += _v360PropRow(orphanList[g], d);
+    html += '</div>';
+  }
+  return html + '</div></div>';
+}
+
+function _v360PropRow(p, d) {
+  // projeto derivado?
+  var proj = null;
+  for (var j = 0; j < d.projects.length; j++) {
+    if (String(d.projects[j].proposal_id) === String(p.id)) { proj = d.projects[j]; break; }
+  }
+  return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;' +
+      'margin-top:6px;padding:6px 10px;background:#f8fafc;border-radius:8px;font-size:13px">' +
+    '<div>↳ <b>' + escapeHtml(p.number || p.id) + '</b> · ' + formatBRL(Number(p.total_value || 0)) +
+      (p.revision_num ? ' <span style="color:#94a3b8;font-size:11px">' + escapeHtml(p.revision_num) + '</span>' : '') + '</div>' +
+    '<div style="display:flex;gap:6px;align-items:center">' +
+      '<span class="badge ' + _v360Badge(p.status) + '">' + escapeHtml(p.status || '') + '</span>' +
+      '<button class="btn btn-ghost btn-sm v360-pdf" data-id="' + escapeHtml(p.id) + '" title="Imprimir PDF">🖨️</button>' +
+      (p.status === 'FECHADA'
+        ? '<button class="btn btn-primary btn-sm v360-po" data-id="' + escapeHtml(p.id) + '">📦 PO</button>'
+        : '') +
+      (proj ? '<button class="btn btn-ghost btn-sm v360-proj" data-id="' + escapeHtml(proj.id) + '" title="Abrir projeto">🏗️ ' + escapeHtml(proj.id) + '</button>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+function _v360ProjectsHtml(d) {
+  if (!d.projects.length) return '';
+  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">🏗️ Projetos</div></div><div class="card-body" style="padding-top:6px">';
+  for (var i = 0; i < d.projects.length; i++) {
+    var p = d.projects[i];
+    var ms = d.milestones_by_project[String(p.id)] || { done: 0, total: 0 };
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px">' +
+      '<div><b>' + escapeHtml(p.id) + '</b> ' + escapeHtml(p.title || '') +
+        ' <span style="color:#94a3b8;font-size:11px">· proposta ' + escapeHtml(p.proposal_id || '—') + '</span></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+        '<span style="font-size:12px;color:#475569">marcos ' + ms.done + '/' + ms.total + '</span>' +
+        '<span class="badge ' + _v360Badge(p.status) + '">' + escapeHtml(p.status || '') + '</span>' +
+        '<button class="btn btn-ghost btn-sm v360-proj" data-id="' + escapeHtml(p.id) + '">Abrir</button>' +
+      '</div></div>';
+  }
+  return html + '</div></div>';
+}
+
+function _v360PosHtml(d) {
+  if (!d.pos.length) return '';
+  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">📦 Ordens de Compra</div></div><div class="card-body" style="padding-top:6px">';
+  for (var i = 0; i < d.pos.length; i++) {
+    var po = d.pos[i];
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px">' +
+      '<div><b>' + escapeHtml(po.po_number || po.id) + '</b> <span style="color:#94a3b8;font-size:11px">· ' + escapeHtml(po.proposal_id || po.project_id || '') + '</span></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+        '<span style="font-size:12px">' + escapeHtml(po.currency || 'USD') + ' ' + Number(po.total_amount || 0).toFixed(2) + '</span>' +
+        '<span class="badge ' + _v360Badge(po.status) + '">' + escapeHtml(po.status || '') + '</span>' +
+      '</div></div>';
+  }
+  return html + '</div></div>';
+}
+
+function _v360BaseTicketsHtml(d) {
+  if (!d.base.length && !d.tickets.length) return '';
+  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">⚙️ Base instalada & 🛠️ Chamados</div></div><div class="card-body" style="padding-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+  html += '<div>';
+  if (!d.base.length) html += '<p style="color:#94a3b8;font-size:12px">Nenhum equipamento.</p>';
+  for (var i = 0; i < d.base.length && i < 8; i++) {
+    var b = d.base[i];
+    html += '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">⚙️ <b>' + escapeHtml(b.serial || b.id) + '</b> ' +
+      escapeHtml(b.product_code || '') +
+      '<span style="color:#94a3b8"> · garantia até ' + formatDate(b.warranty_hw_end || b.warranty_end || '') + '</span></div>';
+  }
+  html += '</div><div>';
+  if (!d.tickets.length) html += '<p style="color:#94a3b8;font-size:12px">Nenhum chamado.</p>';
+  for (var t = 0; t < d.tickets.length && t < 8; t++) {
+    var tk = d.tickets[t];
+    html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">' +
+      '<span>🛠️ <b>' + escapeHtml(tk.id) + '</b> ' + escapeHtml(tk.title || tk.tipo || '') + '</span>' +
+      '<span class="badge ' + _v360Badge(tk.status) + '">' + escapeHtml(tk.status || '') + '</span></div>';
+  }
+  return html + '</div></div></div>';
+}
+
+function _v360ExpensesHtml(d) {
+  if (!d.expenses.length) return '';
+  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">💸 Despesas vinculadas — ' + formatBRL(d.kpis.total_despesas) + '</div></div><div class="card-body" style="padding-top:6px">';
+  for (var i = 0; i < d.expenses.length && i < 10; i++) {
+    var e = d.expenses[i];
+    html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">' +
+      '<span>' + formatDate(e.data) + ' · ' + escapeHtml(e.estabelecimento || '') + ' <span style="color:#94a3b8">(' + escapeHtml(e.ref_id || '') + ')</span></span>' +
+      '<b>' + formatBRL(Number(e.total || 0)) + '</b></div>';
+  }
+  return html + '</div></div>';
+}
+
+function _v360TimelineHtml(d) {
+  var icons = { OPPORTUNITY: '🎯', PROPOSAL: '📄', PROJECT: '🏗️', PURCHASE_ORDERS: '📦', TICKET: '🛠️', COMPANY: '🏢', EXPENSE: '💸' };
+  var html = '<div class="card"><div class="card-header"><div class="card-title">🕒 Linha do tempo</div></div><div class="card-body" style="padding-top:6px;max-height:70vh;overflow:auto">';
+  if (!d.timeline.length) html += '<p style="color:#94a3b8;font-size:12px">Sem eventos ainda — eles aparecem aqui conforme o uso.</p>';
+  for (var i = 0; i < d.timeline.length; i++) {
+    var ev = d.timeline[i];
+    html += '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px">' +
+      '<span>' + (icons[ev.entity] || '•') + '</span>' +
+      '<div style="flex:1"><div style="color:#0f172a">' + escapeHtml(ev.description || ev.event_type || '') + '</div>' +
+        '<div style="color:#94a3b8;font-size:11px">' + formatDate(ev.timestamp) + (ev.user_name ? ' · ' + escapeHtml(ev.user_name) : '') +
+        ' · <code style="font-size:10px">' + escapeHtml(ev.entity_id || '') + '</code></div></div></div>';
+  }
+  return html + '</div></div>';
+}
+
+/* ───────────────────────── AÇÕES ───────────────────────── */
+
+function _v360Bind() {
+  var on = function (id, fn) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+  on('v360-refresh',  function () { _v360Load(_v360Sel); });
+  on('v360-act-opp',  _v360ModalOpp);
+  on('v360-act-prop', _v360ChooseOppForMotor);
+  on('v360-act-card', _v360ModalCard);
+  on('v360-act-tkt',  _v360ModalTicket);
+  on('v360-act-po',   _v360ModalPo);
+  on('v360-act-exp',  function () { showSection('expenses'); showAlert('Use o campo "Vincular a" para amarrar a despesa a uma proposta ou projeto deste cliente.', 'info'); });
+
+  var motorBtns = document.querySelectorAll('.v360-motor');
+  for (var i = 0; i < motorBtns.length; i++) {
+    motorBtns[i].addEventListener('click', function () { _opmOpen(this.getAttribute('data-id')); });
+  }
+  var pdfBtns = document.querySelectorAll('.v360-pdf');
+  for (var p = 0; p < pdfBtns.length; p++) {
+    pdfBtns[p].addEventListener('click', function () { _printProposal(this.getAttribute('data-id')); });
+  }
+  var poBtns = document.querySelectorAll('.v360-po');
+  for (var q = 0; q < poBtns.length; q++) {
+    poBtns[q].addEventListener('click', function () { _v360ModalPo(this.getAttribute('data-id')); });
+  }
+  var projBtns = document.querySelectorAll('.v360-proj');
+  for (var j = 0; j < projBtns.length; j++) {
+    projBtns[j].addEventListener('click', function () {
+      window._pjPendingId = this.getAttribute('data-id');
+      showSection('projetos');
+    });
+  }
+}
+
+function _v360InlineModal(titleHtml, bodyHtml, onSave, saveLabel) {
+  var box = document.getElementById('v360-inline-modal');
+  box.innerHTML =
+    '<div style="margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">' +
+      '<div style="font-weight:700;margin-bottom:8px">' + titleHtml + '</div>' +
+      bodyHtml +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="btn btn-primary btn-sm" id="v360-im-save">' + (saveLabel || 'Salvar') + '</button>' +
+        '<button class="btn btn-ghost btn-sm" id="v360-im-cancel">Cancelar</button>' +
+      '</div>' +
+    '</div>';
+  document.getElementById('v360-im-cancel').addEventListener('click', function () { box.innerHTML = ''; });
+  document.getElementById('v360-im-save').addEventListener('click', onSave);
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function _v360AfterCreate(msg) {
+  showAlert(msg, 'success');
+  document.getElementById('v360-inline-modal').innerHTML = '';
+  _v360Load(_v360Sel);
+}
+
+/* + Oportunidade */
+function _v360ModalOpp() {
+  var c = _v360Data.company;
+  _v360InlineModal('🎯 Nova oportunidade — ' + escapeHtml(c.name),
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<input class="form-input" id="v360-opp-rep" placeholder="representante / contato" style="flex:1;min-width:180px">' +
+      '<input class="form-input" id="v360-opp-prod" placeholder="produto / solução (ex.: Hydro-Mix XT)" style="flex:1;min-width:180px">' +
+    '</div>' +
+    '<textarea class="form-input" id="v360-opp-notes" rows="2" placeholder="notas iniciais" style="margin-top:8px"></textarea>',
+    function () {
+      google.script.run.withSuccessHandler(function (res) {
+        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+        _v360AfterCreate('Oportunidade criada e vinculada a ' + c.name + '!');
+      }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+      .Api_createOpportunity({
+        company_id:     c.id,
+        company_name:   c.name,
+        client_type:    c.client_type || '',
+        representative: document.getElementById('v360-opp-rep').value,
+        product:        document.getElementById('v360-opp-prod').value,
+        status:         'Lead',
+        notes:          document.getElementById('v360-opp-notes').value
+      });
+    }, 'Criar oportunidade');
+}
+
+/* + Proposta (Motor): escolhe a oportunidade e abre o motor */
+function _v360ChooseOppForMotor() {
+  var opps = _v360Data.opportunities.filter(function (o) {
+    return ['Proposta fechada', 'Proposta recusada', 'Cancelada'].indexOf(o.status) === -1;
+  });
+  if (!opps.length) { showAlert('Crie uma oportunidade primeiro — a proposta sempre nasce de uma.', 'warning'); return; }
+  if (opps.length === 1) { _opmOpen(opps[0].id); return; }
+  var options = '';
+  for (var i = 0; i < opps.length; i++) {
+    options += '<option value="' + escapeHtml(opps[i].id) + '">' + escapeHtml(opps[i].id + ' — ' + (opps[i].product || '')) + '</option>';
+  }
+  _v360InlineModal('💰 Gerar proposta — de qual oportunidade?',
+    '<select class="form-input" id="v360-motor-opp">' + options + '</select>',
+    function () { _opmOpen(document.getElementById('v360-motor-opp').value); },
+    'Abrir motor');
+}
+
+/* + Action Card */
+function _v360ModalCard() {
+  var c = _v360Data.company;
+  var body =
+    '<input class="form-input" id="v360-card-title" placeholder="título da tarefa *">' +
+    '<textarea class="form-input" id="v360-card-msg" rows="2" placeholder="detalhes" style="margin-top:8px">Cliente: ' + escapeHtml(c.name) + ' (' + escapeHtml(c.id) + ')</textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">' +
+      '<select class="form-input" id="v360-card-user" style="flex:1"><option value="">— responsável —</option></select>' +
+      '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="v360-card-urgent"> Urgente</label>' +
+    '</div>';
+  _v360InlineModal('📌 Novo action card — ' + escapeHtml(c.name), body, function () {
+    var title = document.getElementById('v360-card-title').value;
+    if (!title.trim()) { showAlert('Título é obrigatório.', 'warning'); return; }
+    google.script.run.withSuccessHandler(function (res) {
+      if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+      _v360AfterCreate('Card criado!');
+    }).Api_acCreate({
+      title:       title,
+      message:     document.getElementById('v360-card-msg').value,
+      assigned_to: document.getElementById('v360-card-user').value,
+      urgent:      document.getElementById('v360-card-urgent').checked,
+      quote_id:    ''
+    });
+  }, 'Criar card');
+
+  google.script.run.withSuccessHandler(function (r) {
+    var sel = document.getElementById('v360-card-user');
+    if (!sel) return;
+    var users = (r && r.ok && r.data) ? r.data : (r && r.length ? r : []);
+    var html = '<option value="">— responsável —</option>';
+    for (var i = 0; i < users.length; i++) {
+      html += '<option value="' + escapeHtml(users[i].id) + '">' + escapeHtml(users[i].name || users[i].id) + '</option>';
+    }
+    sel.innerHTML = html;
+  }).Api_acGetActiveUsers();
+}
+
+/* + Chamado */
+function _v360ModalTicket() {
+  var c = _v360Data.company;
+  _v360InlineModal('🛠️ Novo chamado — ' + escapeHtml(c.name),
+    '<input class="form-input" id="v360-tkt-title" placeholder="título do chamado *">' +
+    '<div style="display:flex;gap:8px;margin-top:8px">' +
+      '<select class="form-input" id="v360-tkt-prio" style="width:140px">' +
+        '<option value="BAIXA">Baixa</option><option value="MEDIA" selected>Média</option>' +
+        '<option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select>' +
+      '<input class="form-input" id="v360-tkt-desc" placeholder="descrição" style="flex:1">' +
+    '</div>',
+    function () {
+      var title = document.getElementById('v360-tkt-title').value;
+      if (!title.trim()) { showAlert('Título é obrigatório.', 'warning'); return; }
+      google.script.run.withSuccessHandler(function (res) {
+        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+        _v360AfterCreate('Chamado aberto!');
+      }).Api_tktAbrir({
+        title:       title,
+        company_id:  c.id,
+        priority:    document.getElementById('v360-tkt-prio').value,
+        description: document.getElementById('v360-tkt-desc').value
+      });
+    }, 'Abrir chamado');
+}
+
+/* + PO de proposta FECHADA */
+function _v360ModalPo(preProposalId) {
+  var fechadas = _v360Data.proposals.filter(function (p) { return p.status === 'FECHADA'; });
+  if (!fechadas.length) { showAlert('Nenhuma proposta FECHADA deste cliente — a PO nasce do negócio fechado.', 'warning'); return; }
+  var propOpts = '';
+  for (var i = 0; i < fechadas.length; i++) {
+    var selAttr = (preProposalId && String(fechadas[i].id) === String(preProposalId)) ? ' selected' : '';
+    propOpts += '<option value="' + escapeHtml(fechadas[i].id) + '"' + selAttr + '>' +
+      escapeHtml((fechadas[i].number || fechadas[i].id) + ' — ' + formatBRL(Number(fechadas[i].total_value || 0))) + '</option>';
+  }
+  _v360InlineModal('📦 Gerar PO — itens Hydronix com preço de COMPRA',
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<select class="form-input" id="v360-po-prop" style="flex:1;min-width:200px">' + propOpts + '</select>' +
+      '<select class="form-input" id="v360-po-sup" style="flex:1;min-width:200px"><option value="">Carregando fornecedores...</option></select>' +
+    '</div>',
+    function () {
+      var sup = document.getElementById('v360-po-sup').value;
+      if (!sup) { showAlert('Selecione o fornecedor.', 'warning'); return; }
+      google.script.run.withSuccessHandler(function (res) {
+        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+        var po = res.data || {};
+        _v360AfterCreate('PO ' + (po.po_number || po.id) + ' criada em rascunho — revise em Compras.');
+      }).Api_poCreateFromProposal(document.getElementById('v360-po-prop').value, sup);
+    }, 'Gerar PO (rascunho)');
+
+  google.script.run.withSuccessHandler(function (r) {
+    var sel = document.getElementById('v360-po-sup');
+    if (!sel) return;
+    var sups = (r && r.ok && r.data) ? r.data : [];
+    var html = '<option value="">— fornecedor —</option>';
+    for (var i = 0; i < sups.length; i++) {
+      html += '<option value="' + escapeHtml(sups[i].id) + '">' + escapeHtml(sups[i].name || sups[i].id) + '</option>';
+    }
+    sel.innerHTML = html;
+  }).Api_supplierGetAll();
+}
+</script>

@@ -399,6 +399,11 @@ function _clientTypeOptions(selected) {
    =========================================================================== */
 
 function _c360Open(companyId) {
+  // v2: a Visão 360 virou seção própria (workspace completo)
+  _closeDetailModalDirect();
+  open360(companyId);
+  return;
+
   var box = document.getElementById('co-detail-content');
   var company = null;
   for (var i = 0; i < _companies.length; i++) {

@@ -678,6 +678,7 @@ function _submitStatusChange() {
 var _opmOppId    = null;
 var _opmProducts = [];
 var _opmCalc     = null;
+var _opmOppData  = null;
 
 function _opmEnsureModal() {
   if (document.getElementById('opm-modal')) return;
@@ -752,10 +753,13 @@ function _opmOpen(oppId) {
   document.getElementById('opm-items').innerHTML = '';
   document.getElementById('opm-points').innerHTML = '';
 
-  var boot = function () {
-    // Pré-popula a partir da oportunidade
-    var opp = null;
-    for (var i = 0; i < _opps.length; i++) { if (_opps[i].id === oppId) { opp = _opps[i]; break; } }
+  var boot = function (oppFetched) {
+    _opmOppData = oppFetched || null;
+    // Pré-popula a partir da oportunidade (lista local ou busca direta)
+    var opp = oppFetched || null;
+    if (!opp) {
+      for (var i = 0; i < _opps.length; i++) { if (_opps[i].id === oppId) { opp = _opps[i]; break; } }
+    }
 
     var pts = [];
     if (opp && opp.points_json) {
@@ -771,13 +775,25 @@ function _opmOpen(oppId) {
     _opmAddItemRow('', 1);
   };
 
-  if (_opmProducts.length) { boot(); return; }
+  var startBoot = function () {
+    // Em contextos fora da tela de Oportunidades (ex.: Visão 360), a opp
+    // pode não estar em _opps — busca direta para pré-popular corretamente.
+    var local = null;
+    for (var i = 0; i < _opps.length; i++) { if (_opps[i].id === oppId) { local = _opps[i]; break; } }
+    if (local) { boot(local); return; }
+    google.script.run
+      .withSuccessHandler(function (r) { boot((r && r.ok && r.data) ? r.data : null); })
+      .withFailureHandler(function () { boot(null); })
+      .Api_getOpportunity(oppId);
+  };
+
+  if (_opmProducts.length) { startBoot(); return; }
   google.script.run
     .withSuccessHandler(function (res) {
       _opmProducts = (res && res.ok && res.data) ? res.data : [];
-      boot();
+      startBoot();
     })
-    .withFailureHandler(function () { _opmProducts = []; boot(); })
+    .withFailureHandler(function () { _opmProducts = []; startBoot(); })
     .Api_getProducts();
 }
 
@@ -891,9 +907,11 @@ function _opmRenderResult(c) {
 
 function _opmCriarProposta() {
   if (!_opmCalc) return;
-  var opp = null;
-  for (var i = 0; i < _opps.length; i++) { if (_opps[i].id === _opmOppId) { opp = _opps[i]; break; } }
-  if (!opp) { showAlert('Oportunidade n\u00e3o encontrada na lista local.', 'error'); return; }
+  var opp = _opmOppData || null;
+  if (!opp) {
+    for (var i = 0; i < _opps.length; i++) { if (_opps[i].id === _opmOppId) { opp = _opps[i]; break; } }
+  }
+  if (!opp) { showAlert('Oportunidade n\u00e3o encontrada \u2014 recarregue a tela.', 'error'); return; }
 
   // Itens da proposta: materiais (do motor) + linha de serviços (gross-up)
   var items = [];
