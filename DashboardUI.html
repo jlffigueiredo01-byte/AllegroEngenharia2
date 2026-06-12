@@ -15,12 +15,16 @@ function renderDashboard(area) {
   var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 
   area.innerHTML =
-    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end">' +
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">' +
       '<div class="page-header-left">' +
         '<h1 class="page-title">' + getGreeting() + ', ' + escapeHtml(firstName) + ' 👋</h1>' +
         '<p class="page-subtitle">' + dias[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()] + ' — o pulso da Allegro em uma tela.</p>' +
       '</div>' +
+      (user && user.role === 'DIRETOR_TECNICO'
+        ? '<button class="btn btn-ghost btn-sm" id="dsh-atualizar-tudo" title="setupAll + reparos + seeds, em cascata">🔄 Atualizar tudo</button>'
+        : '') +
     '</div>' +
+    '<div id="dsh-atualizar-relatorio"></div>' +
     '<div class="kpi-grid" id="dsh-kpis"></div>' +
     '<div class="dash-grid2">' +
       '<div>' +
@@ -42,6 +46,9 @@ function renderDashboard(area) {
       '</div>' +
     '</div>';
 
+  var btnAt = document.getElementById('dsh-atualizar-tudo');
+  if (btnAt) btnAt.addEventListener('click', _dshAtualizarTudo);
+
   google.script.run
     .withSuccessHandler(function (r) {
       if (!r || !r.ok) { _dshError(r ? r.error : 'sem resposta'); return; }
@@ -49,6 +56,35 @@ function renderDashboard(area) {
     })
     .withFailureHandler(function (e) { _dshError(e.message || e); })
     .Api_dashV2();
+}
+
+function _dshAtualizarTudo() {
+  var btn = document.getElementById('dsh-atualizar-tudo');
+  btn.disabled = true; btn.textContent = '🔄 Executando... (até 2 min)';
+  var rel = document.getElementById('dsh-atualizar-relatorio');
+  rel.innerHTML = '';
+  google.script.run.withSuccessHandler(function (r) {
+    btn.disabled = false; btn.textContent = '🔄 Atualizar tudo';
+    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+    var passos = (r.data && r.data.passos) || [];
+    var html = '<div class="card" style="margin-bottom:14px"><div class="card-body" style="padding:12px 16px">' +
+      '<div style="font-weight:700;margin-bottom:6px">Relatório da atualização</div>';
+    var falhas = 0;
+    for (var i = 0; i < passos.length; i++) {
+      if (!passos[i].ok) falhas++;
+      html += '<div style="font-size:12.5px;padding:3px 0">' +
+        (passos[i].ok ? '✅' : '❌') + ' ' + escapeHtml(passos[i].etapa) +
+        (passos[i].detalhe ? ' <span style="color:#98a2b3">— ' + escapeHtml(passos[i].detalhe) + '</span>' : '') +
+        '</div>';
+    }
+    html += '<div style="font-size:11px;color:#98a2b3;margin-top:6px">A importação da base legada continua manual (importarBaseLegada no editor) por ser pesada e de uso único.</div>' +
+      '</div></div>';
+    rel.innerHTML = html;
+    showAlert(falhas ? 'Atualização concluída com ' + falhas + ' falha(s) — veja o relatório.' : 'Sistema atualizado ✅ Recarregue com Ctrl+Shift+R.', falhas ? 'warning' : 'success');
+  }).withFailureHandler(function (e) {
+    btn.disabled = false; btn.textContent = '🔄 Atualizar tudo';
+    showAlert('Falha: ' + (e.message || e), 'error');
+  }).Api_sysAtualizarTudo();
 }
 
 function _dshError(msg) {

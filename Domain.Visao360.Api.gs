@@ -11,7 +11,7 @@
 function Api_c360(companyId) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
-    return { ok: true, data: c360SvcGet(companyId) };
+    return { ok: true, data: sanitizeForClient(c360SvcGet(companyId)) };
   } catch (e) {
     return { ok: false, error: e.message };
   }

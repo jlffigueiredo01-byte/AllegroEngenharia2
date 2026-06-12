@@ -1,3 +1,11 @@
+// Helper global: o google.script.run NÃO serializa objetos Date — a resposta
+// vira null no cliente ("sem resposta"). O Sheets converte células de data
+// automaticamente, então TODO endpoint que devolve linhas cruas precisa
+// passar por aqui. JSON.stringify converte Date em ISO string.
+function sanitizeForClient(o) {
+  return JSON.parse(JSON.stringify(o));
+}
+
 // =============================================================================
 // Domain.Visao360.Service.gs — SGA
 // Read-model agregador da Visão 360: entrega o workspace completo de um

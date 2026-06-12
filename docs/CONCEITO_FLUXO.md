@@ -64,3 +64,19 @@ pronta:
 Exemplo canônico: despesa vinculada a chamado vira custo do chamado, entra na
 Visão 360 do cliente, soma no endgate de cobrança e aparece na timeline — uma
 digitação, cinco efeitos.
+
+
+## Padrão de Navegação (vinculante — 12/06/2026)
+
+Comportamento ÚNICO em todo o SGA:
+
+1. **Entidades de trabalho** (proposta, chamado, projeto, cliente/360, PO):
+   LISTA com busca/filtro → clique → **PÁGINA DEDICADA** ocupando a área de
+   conteúdo, com botão "← Voltar" no topo. Nunca painel embaixo, nunca popup.
+2. **Ações rápidas de um passo** (confirmar, escolher fornecedor): modal
+   centralizada pequena, OK.
+3. **prompts() do navegador**: proibidos em fluxo novo; migrar os existentes
+   para formulários inline na página dedicada.
+
+Status da migração: Visão 360 ✔ · Chamados ✔ · Propostas (editor/etapas) —
+próxima leva · Compras/Projetos — próxima leva.

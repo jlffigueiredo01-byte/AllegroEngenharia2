@@ -14,8 +14,7 @@ var _v360Data = null;
 function open360(companyId) {
   window._v360Pending = companyId;
   if (typeof ALLEGRO !== 'undefined' && ALLEGRO.activeSection === 'visao360') {
-    var sel = document.getElementById('v360-company-sel');
-    if (sel) sel.value = companyId;
+    window._v360Pending = null;
     _v360Load(companyId);
   } else {
     showSection('visao360');
@@ -24,34 +23,26 @@ function open360(companyId) {
 
 function renderVisao360(area) {
   area.innerHTML =
-    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+    '<div class="page-header">' +
       '<div class="page-header-left">' +
         '<h1 class="page-title">🔎 Visão 360</h1>' +
-        '<p class="page-subtitle">O workspace do cliente: tudo que existe, tudo que pode ser criado — já vinculado.</p>' +
-      '</div>' +
-      '<div style="display:flex;gap:8px;align-items:center">' +
-        '<select class="form-input" id="v360-company-sel" style="min-width:260px"><option value="">Carregando empresas...</option></select>' +
+        '<p class="page-subtitle">Escolha o cliente — a página dele reúne tudo que existe e tudo que pode ser criado, já vinculado.</p>' +
       '</div>' +
     '</div>' +
-    '<div id="v360-workspace"><div class="card"><div class="card-body"><div class="empty-state" style="padding:32px 0">' +
-      '<div class="empty-icon">🔎</div><div class="empty-title">Escolha um cliente acima</div>' +
-      '<div class="empty-desc">ou abra pelo botão Visão 360 em Empresas.</div></div></div></div></div>';
+    '<div id="v360-list-wrap">' +
+      '<input class="form-input" id="v360-busca" placeholder="🔎 buscar por nome, cidade ou UF..." style="max-width:420px;margin-bottom:12px">' +
+      '<div id="v360-list"><div class="spinner-ring" style="margin:24px auto"></div></div>' +
+    '</div>' +
+    '<div id="v360-workspace" class="hidden"></div>';
 
   var boot = function () {
-    var sel = document.getElementById('v360-company-sel');
-    var html = '<option value="">— escolha o cliente —</option>';
-    for (var i = 0; i < _v360Companies.length; i++) {
-      var c = _v360Companies[i];
-      html += '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || c.id) + '</option>';
-    }
-    sel.innerHTML = html;
-    sel.addEventListener('change', function () { if (sel.value) _v360Load(sel.value); });
+    document.getElementById('v360-busca').addEventListener('input', _v360RenderList);
+    _v360RenderList();
     if (window._v360Pending) {
-      sel.value = window._v360Pending;
-      _v360Load(window._v360Pending);
+      var pend = window._v360Pending;
       window._v360Pending = null;
+      _v360Load(pend);
     } else if (_v360Sel) {
-      sel.value = _v360Sel;
       _v360Load(_v360Sel);
     }
   };
@@ -61,14 +52,51 @@ function renderVisao360(area) {
     _v360Companies = (r && r.ok && r.data) ? r.data : [];
     boot();
   }).withFailureHandler(function () {
-    document.getElementById('v360-company-sel').innerHTML = '<option value="">erro ao carregar</option>';
+    document.getElementById('v360-list').innerHTML = '<div class="empty-state">Erro ao carregar empresas.</div>';
   }).Api_getCompanies();
+}
+
+function _v360RenderList() {
+  var box = document.getElementById('v360-list');
+  if (!box) return;
+  var q = (document.getElementById('v360-busca').value || '').toUpperCase();
+  var lista = _v360Companies.filter(function (c) {
+    if (!q) return true;
+    return (String(c.name || '') + ' ' + String(c.city || '') + ' ' + String(c.state || '')).toUpperCase().indexOf(q) !== -1;
+  });
+  if (!lista.length) {
+    box.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:24px 0">' +
+      '<div class="empty-title">Nenhuma empresa encontrada</div></div></div></div>';
+    return;
+  }
+  var rows = '';
+  var max = Math.min(lista.length, 200);
+  for (var i = 0; i < max; i++) {
+    var c = lista[i];
+    rows += '<tr class="v360-emp" data-id="' + escapeHtml(c.id) + '" style="cursor:pointer">' +
+      '<td><b>' + escapeHtml(c.name || c.id) + '</b></td>' +
+      '<td>' + escapeHtml((c.city || '') + (c.state ? '/' + c.state : (c.state || ''))) + '</td>' +
+      '<td>' + escapeHtml(c.client_type || '') + '</td>' +
+      '<td style="text-align:right;color:#1a56db;font-size:12px">abrir 360 →</td>' +
+    '</tr>';
+  }
+  box.innerHTML =
+    '<div class="card"><div class="table-wrap"><table class="data-table">' +
+    '<thead><tr><th>Empresa</th><th>Cidade/UF</th><th>Tipo</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div></div>' +
+    (lista.length > max ? '<p style="font-size:12px;color:#98a2b3;margin-top:6px">Mostrando ' + max + ' de ' + lista.length + ' — refine a busca.</p>' : '');
+  var trs = box.querySelectorAll('.v360-emp');
+  for (var b = 0; b < trs.length; b++) {
+    trs[b].addEventListener('click', function () { _v360Load(this.getAttribute('data-id')); });
+  }
 }
 
 function _v360Load(companyId) {
   _v360Sel = companyId;
+  var lw = document.getElementById('v360-list-wrap');
   var w = document.getElementById('v360-workspace');
-  if (w) w.innerHTML = '<div class="spinner-ring" style="margin:32px auto"></div>';
+  if (lw) lw.classList.add('hidden');
+  if (w) { w.classList.remove('hidden'); w.innerHTML = '<div class="spinner-ring" style="margin:32px auto"></div>'; }
   google.script.run
     .withSuccessHandler(function (r) {
       if (!r || !r.ok) {
@@ -119,6 +147,7 @@ function _v360Render() {
   var k = d.kpis;
 
   var html =
+    '<button class="btn btn-ghost btn-sm" id="v360-voltar" style="margin-bottom:10px">← Voltar à lista de clientes</button>' +
     // ── Header do cliente
     '<div class="card" style="margin-bottom:14px"><div class="card-body" style="padding:16px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">' +
@@ -164,6 +193,12 @@ function _v360Render() {
     '</div>';
 
   w.innerHTML = html;
+  var voltar = document.getElementById('v360-voltar');
+  if (voltar) voltar.addEventListener('click', function () {
+    _v360Sel = null;
+    document.getElementById('v360-workspace').classList.add('hidden');
+    document.getElementById('v360-list-wrap').classList.remove('hidden');
+  });
   _v360Bind();
 }
 

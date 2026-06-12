@@ -267,7 +267,7 @@ function Api_dashV2() {
     var serie = [];
     for (var sk in seis) serie.push(seis[sk]);
 
-    return { ok: true, data: {
+    return { ok: true, data: sanitizeForClient({
       kpis: {
         pipeline:     { qtd: pipelineQtd, valor: Math.round(pipelineVal * 100) / 100 },
         fechado_mes:  { qtd: fechMesQtd, valor: Math.round(fechMesVal * 100) / 100 },
@@ -285,8 +285,44 @@ function Api_dashV2() {
       garantias: garantias,
       atividade: atividade,
       por_estado: porEstado
-    }};
+    })};
   } catch (e2) {
     return { ok: false, error: e2.message };
+  }
+}
+
+
+/**
+ * Cascata de manutenção do sistema (botão ATUALIZAR TUDO do dashboard).
+ * Roda cada etapa isoladamente — uma falha não derruba as demais — e
+ * devolve o relatório passo a passo. Restrito ao DIRETOR_TECNICO.
+ */
+function Api_sysAtualizarTudo() {
+  try {
+    requireRole(['DIRETOR_TECNICO']);
+    var passos = [];
+    var rodar = function (nome, fn) {
+      try {
+        var r = fn();
+        passos.push({ etapa: nome, ok: true, detalhe: typeof r === 'object' ? JSON.stringify(r).slice(0, 120) : '' });
+      } catch (e) {
+        passos.push({ etapa: nome, ok: false, detalhe: e.message });
+      }
+    };
+
+    rodar('setupAll (abas, colunas, seeds, triggers)', function () { return setupAll(); });
+    rodar('Reparo da importação (valores + marcação)', function () {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      if (!ss.getSheetByName(IMP_SHEET_ORG)) return 'aba de importação ausente — pulado';
+      return corrigirImportacao();
+    });
+    rodar('Descritivos e mídia dos produtos', function () {
+      seedProductDescriptions(); seedProductMedia(); return 'ok';
+    });
+    rodar('Colunas de tickets/updates', function () { _tktEnsureColumns(); return 'ok'; });
+
+    return { ok: true, data: { passos: passos } };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 }

@@ -61,7 +61,7 @@ function Api_tktGetAll(filters) {
       }
     }
 
-    return { ok: true, data: todos };
+    return { ok: true, data: sanitizeForClient(todos) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -163,7 +163,7 @@ function Api_tktAnexar(ticketId, payload) {
 function Api_tktGetDetail(ticketId) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
-    return { ok: true, data: tktSvcGetDetail(ticketId) };
+    return { ok: true, data: sanitizeForClient(tktSvcGetDetail(ticketId)) };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
