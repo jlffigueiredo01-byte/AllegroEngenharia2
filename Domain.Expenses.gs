@@ -213,7 +213,22 @@ function Api_getExpenses() {
     var rows = (user.role === 'TECNICO')
       ? allRows.filter(function(r) { return r.criado_por === user.id; })
       : allRows;
-    return { ok: true, data: rows };
+    // sanitizeForClient: células de data viram Date no Sheets e o
+    // google.script.run devolve null silenciosamente (caso EXP-1)
+    return { ok: true, data: sanitizeForClient(rows) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Exclusão suave (status = DELETED). Mantém o rastro e a foto no Drive. */
+function Api_deleteExpense(id) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
+    if (!id) throw new Error('id é obrigatório.');
+    updateRowById(EXPENSES_SHEET, id, { status: 'DELETED', atualizado_em: nowISO() });
+    appendAuditLog('DELETE', 'EXPENSE', id, 'exclusão suave');
+    return { ok: true, data: { id: id } };
   } catch (e) {
     return { ok: false, error: e.message };
   }

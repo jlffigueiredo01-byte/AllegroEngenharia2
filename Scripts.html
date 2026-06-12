@@ -667,70 +667,309 @@ var _ocrMime   = 'image/jpeg';
 
 function renderExpenses(area) {
   area.innerHTML =
-    '<div class="page-header">' +
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">' +
       '<div class="page-header-left">' +
         '<h1 class="page-title">💰 Despesas</h1>' +
-        '<p class="page-subtitle">Lance despesas via foto do cupom fiscal. A IA extrai os dados automaticamente.</p>' +
+        '<p class="page-subtitle">Comprovantes e gastos — por foto (a IA extrai os dados) ou lançamento manual, sempre vinculáveis a propostas, projetos e chamados.</p>' +
       '</div>' +
-      '<button class="btn btn-primary" onclick="showExpenseUpload()">+ Nova Despesa</button>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn btn-ghost" onclick="_expmOpen()">⌨️ Lançar manual</button>' +
+        '<button class="btn btn-primary" onclick="showExpenseUpload()">📷 Foto do cupom</button>' +
+      '</div>' +
     '</div>' +
     '<div id="expenses-ocr-wrap" class="hidden"></div>' +
+    '<div class="kpi-grid" id="exp-kpis" style="grid-template-columns:repeat(4,1fr)"></div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
+      '<input class="form-input" id="exp-busca" placeholder="🔎 buscar por estabelecimento, descrição ou ID..." style="max-width:340px">' +
+      '<select class="form-input" id="exp-filtro-cat" style="width:190px"><option value="">Todas as categorias</option></select>' +
+    '</div>' +
     '<div id="expenses-list-wrap"></div>';
 
+  document.getElementById('exp-busca').addEventListener('input', _expRenderTable);
+  document.getElementById('exp-filtro-cat').addEventListener('change', _expRenderTable);
   loadExpensesList();
 }
+
+var _expCache = [];
 
 function loadExpensesList() {
   var wrap = document.getElementById('expenses-list-wrap');
   if (!wrap) return;
-  wrap.innerHTML = '<div style="text-align:center;padding:40px 0;color:#64748b">Carregando...</div>';
+  wrap.innerHTML = '<div class="spinner-ring" style="margin:24px auto"></div>';
   google.script.run
-    .withSuccessHandler(function(r) {
-      if (!r || !r.ok) { wrap.innerHTML = ''; return; }
-      renderExpensesList(r.data || []);
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) {
+        wrap.innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Erro ao carregar despesas: ' + escapeHtml((r && r.error) || 'sem resposta do servidor') + '</div></div>';
+        return;
+      }
+      _expCache = r.data || [];
+      _expCache.sort(function (a, b) { return String(b.data || '').localeCompare(String(a.data || '')); });
+      _expKpis();
+      _expFiltroCats();
+      _expRenderTable();
     })
-    .withFailureHandler(function() { wrap.innerHTML = ''; })
+    .withFailureHandler(function (e) {
+      wrap.innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+    })
     .Api_getExpenses();
 }
 
-function renderExpensesList(list) {
+function _expKpis() {
+  var box = document.getElementById('exp-kpis');
+  if (!box) return;
+  var hoje = new Date();
+  var mes = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2);
+  var total = 0, totalMes = 0, vinc = 0;
+  for (var i = 0; i < _expCache.length; i++) {
+    var v = Number(_expCache[i].total || 0);
+    total += v;
+    if (String(_expCache[i].data || '').indexOf(mes) === 0) totalMes += v;
+    if (_expCache[i].ref_id) vinc++;
+  }
+  var kpi = function (l, val, sub) {
+    return '<div class="kpi"><div class="k-label"><span>' + l + '</span></div>' +
+      '<div class="k-value">' + val + '</div>' + (sub ? '<div class="k-sub">' + sub + '</div>' : '') + '</div>';
+  };
+  box.innerHTML =
+    kpi('Total geral', formatBRL(total), _expCache.length + ' lançamento' + (_expCache.length === 1 ? '' : 's')) +
+    kpi('Este mês', formatBRL(totalMes), mes.split('-').reverse().join('/')) +
+    kpi('Vinculadas', String(vinc), 'a propostas, projetos ou chamados') +
+    kpi('Sem vínculo', String(_expCache.length - vinc), 'gastos gerais');
+}
+
+function _expFiltroCats() {
+  var sel = document.getElementById('exp-filtro-cat');
+  if (!sel) return;
+  var atual = sel.value;
+  var cats = {};
+  for (var i = 0; i < _expCache.length; i++) { if (_expCache[i].categoria) cats[_expCache[i].categoria] = 1; }
+  var html = '<option value="">Todas as categorias</option>';
+  for (var c in cats) html += '<option value="' + escapeHtml(c) + '"' + (c === atual ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+  sel.innerHTML = html;
+}
+
+var _EXP_CAT_CORES = { 'Combustível': 'badge-yellow', 'Alimentação': 'badge-green', 'Hospedagem': 'badge-blue',
+  'Transporte': 'badge-blue', 'Material': 'badge-blue', 'Materiais': 'badge-blue', 'Ferramentas': 'badge-gray',
+  'Serviços': 'badge-gray', 'Pedágio': 'badge-yellow', 'Outros': 'badge-gray' };
+
+function _expVincBadge(e2) {
+  if (!e2.ref_id) return '';
+  var icon = e2.ref_type === 'TICKET' ? '🛠️' : (e2.ref_type === 'PROJECT' ? '🏗️' : '📄');
+  return '<span class="badge badge-blue exp-vinc" data-rt="' + escapeHtml(e2.ref_type) + '" data-ri="' + escapeHtml(e2.ref_id) +
+    '" style="cursor:pointer" title="abrir vínculo">' + icon + ' ' + escapeHtml(e2.ref_id) + '</span>';
+}
+
+function _expRenderTable() {
   var wrap = document.getElementById('expenses-list-wrap');
   if (!wrap) return;
-  if (!list.length) {
-    wrap.innerHTML =
-      '<div class="card"><div class="card-body">' +
-        '<div class="empty-state" style="padding:32px 0">' +
-          '<div class="empty-icon">💰</div>' +
-          '<div class="empty-title">Nenhuma despesa lançada</div>' +
-          '<div class="empty-desc">Clique em "+ Nova Despesa" e fotografe o cupom.</div>' +
-        '</div>' +
-      '</div></div>';
+  var q = (document.getElementById('exp-busca').value || '').toUpperCase();
+  var cat = document.getElementById('exp-filtro-cat').value;
+  var lista = _expCache.filter(function (e2) {
+    if (cat && e2.categoria !== cat) return false;
+    if (!q) return true;
+    return (String(e2.estabelecimento || '') + ' ' + String(e2.descricao || '') + ' ' + String(e2.id || '')).toUpperCase().indexOf(q) !== -1;
+  });
+  if (!lista.length) {
+    wrap.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:32px 0">' +
+      '<div class="empty-icon">💰</div><div class="empty-title">Nenhuma despesa neste filtro</div>' +
+      '<div class="empty-desc">Lance por foto do cupom (IA) ou manualmente.</div></div></div></div>';
     return;
   }
-  var rows = list.map(function(e) {
-    return '<tr>' +
-      '<td><code style="font-size:11px">' + escapeHtml(e.id) + '</code></td>' +
-      '<td>' + formatDate(e.data) + '</td>' +
-      '<td>' + escapeHtml(e.estabelecimento) + '</td>' +
-      '<td><span class="badge badge-blue" style="font-size:11px">' + escapeHtml(e.categoria) + '</span></td>' +
-      '<td style="font-weight:600;color:#16a34a">' + formatBRL(Number(e.total)) + '</td>' +
-      '<td style="color:#64748b;font-size:12px">' + escapeHtml(e.criado_por) + '</td>' +
-      '<td style="font-size:11px;color:#64748b">' + escapeHtml(e.ref_id || '') + '</td>' +
-      '<td>' + (e.foto_file_id
-        ? '<a href="https://drive.google.com/file/d/' + escapeHtml(e.foto_file_id) + '/view" target="_blank" title="Ver comprovante">\uD83D\uDCCE</a>'
-        : '') + '</td>' +
+  var podeExcluir = ALLEGRO.currentUser && (ALLEGRO.currentUser.role === 'DIRETOR_TECNICO' || ALLEGRO.currentUser.role === 'FINANCEIRO_ADMIN');
+  var rows = '';
+  for (var i = 0; i < lista.length; i++) {
+    var e2 = lista[i];
+    rows += '<tr>' +
+      '<td><code style="font-size:11px">' + escapeHtml(e2.id) + '</code></td>' +
+      '<td style="white-space:nowrap">' + formatDate(e2.data) + '</td>' +
+      '<td><b>' + escapeHtml(e2.estabelecimento || '') + '</b></td>' +
+      '<td><span class="badge ' + (_EXP_CAT_CORES[e2.categoria] || 'badge-gray') + '" style="font-size:11px">' + escapeHtml(e2.categoria || '—') + '</span></td>' +
+      '<td style="color:#64748b;font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(e2.descricao || '') + '">' + escapeHtml(e2.descricao || '') + '</td>' +
+      '<td>' + _expVincBadge(e2) + '</td>' +
+      '<td style="font-weight:700;text-align:right;white-space:nowrap">' + formatBRL(Number(e2.total || 0)) + '</td>' +
+      '<td style="text-align:center">' + (e2.foto_file_id ? '📎' : '') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button class="btn btn-ghost btn-sm exp-ver" data-id="' + escapeHtml(e2.id) + '">Ver</button>' +
+        (podeExcluir ? '<button class="btn btn-ghost btn-sm exp-del" data-id="' + escapeHtml(e2.id) + '" title="excluir" style="color:#b42318">🗑</button>' : '') +
+      '</td>' +
     '</tr>';
-  }).join('');
+  }
   wrap.innerHTML =
-    '<div class="card">' +
-      '<div class="card-header"><div class="card-title">Histórico (' + list.length + ')</div></div>' +
-      '<div class="table-wrap">' +
-        '<table class="data-table">' +
-          '<thead><tr><th>ID</th><th>Data</th><th>Estabelecimento</th><th>Categoria</th><th>Total</th><th>Usuário</th></tr></thead>' +
-          '<tbody>' + rows + '</tbody>' +
-        '</table>' +
+    '<div class="card"><div class="table-wrap"><table class="data-table">' +
+      '<thead><tr><th>ID</th><th>Data</th><th>Estabelecimento</th><th>Categoria</th><th>Descrição</th><th>Vínculo</th><th style="text-align:right">Total</th><th>📎</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div>';
+
+  var vers = wrap.querySelectorAll('.exp-ver');
+  for (var a = 0; a < vers.length; a++) vers[a].addEventListener('click', function () { _expVer(this.getAttribute('data-id')); });
+  var dels = wrap.querySelectorAll('.exp-del');
+  for (var b = 0; b < dels.length; b++) dels[b].addEventListener('click', function () { _expExcluir(this.getAttribute('data-id')); });
+  var vincs = wrap.querySelectorAll('.exp-vinc');
+  for (var c = 0; c < vincs.length; c++) {
+    vincs[c].addEventListener('click', function () { _expAbrirVinculo(this.getAttribute('data-rt'), this.getAttribute('data-ri')); });
+  }
+}
+
+function _expAbrirVinculo(refType, refId) {
+  if (refType === 'TICKET' && typeof _tktOpen === 'function') { _tktOpen(refId); return; }
+  if (refType === 'PROJECT') { window._pjPendingId = refId; showSection('projetos'); return; }
+  if (refType === 'PROPOSAL') { showSection('quotes'); return; }
+}
+
+/* ── Página dedicada da despesa (padrão do sistema) ── */
+function _expVer(id) {
+  var e2 = null;
+  for (var i = 0; i < _expCache.length; i++) { if (_expCache[i].id === id) { e2 = _expCache[i]; break; } }
+  if (!e2) return;
+  var area = document.getElementById('section-content');
+  var podeExcluir = ALLEGRO.currentUser && (ALLEGRO.currentUser.role === 'DIRETOR_TECNICO' || ALLEGRO.currentUser.role === 'FINANCEIRO_ADMIN');
+  var campo = function (l, v) {
+    return '<div style="min-width:160px"><div style="font-size:11px;color:#667085;font-weight:700;text-transform:uppercase;letter-spacing:.4px">' + l + '</div>' +
+      '<div style="font-size:14px;margin-top:2px">' + v + '</div></div>';
+  };
+  area.innerHTML =
+    '<button class="btn btn-ghost btn-sm" id="exp-voltar" style="margin-bottom:10px">← Voltar às despesas</button>' +
+    '<div class="card"><div class="card-body">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">' +
+        '<h2 style="margin:0;font-size:19px">💰 ' + escapeHtml(e2.id) + ' — ' + escapeHtml(e2.estabelecimento || '') + '</h2>' +
+        (podeExcluir ? '<button class="btn btn-ghost btn-sm" id="exp-det-del" style="color:#b42318">🗑 Excluir</button>' : '') +
       '</div>' +
-    '</div>';
+      '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px">' +
+        campo('Data', formatDate(e2.data)) +
+        campo('Categoria', '<span class="badge ' + (_EXP_CAT_CORES[e2.categoria] || 'badge-gray') + '">' + escapeHtml(e2.categoria || '—') + '</span>') +
+        campo('Total', '<b>' + formatBRL(Number(e2.total || 0)) + '</b>') +
+        campo('Lançada por', escapeHtml(e2.criado_por || '')) +
+        campo('Vínculo', e2.ref_id ? _expVincBadge(e2) : '<span style="color:#98a2b3">sem vínculo</span>') +
+      '</div>' +
+      (e2.descricao ? '<div style="margin-top:14px;background:#f8fafc;border-radius:8px;padding:10px 14px;font-size:13px">' + escapeHtml(e2.descricao) + '</div>' : '') +
+      (e2.foto_file_id
+        ? '<div style="margin-top:14px"><a class="btn btn-ghost btn-sm" href="https://drive.google.com/file/d/' + escapeHtml(e2.foto_file_id) + '/view" target="_blank">📎 Abrir comprovante no Drive</a></div>'
+        : '') +
+    '</div></div>';
+  document.getElementById('exp-voltar').addEventListener('click', function () {
+    renderExpenses(document.getElementById('section-content'));
+  });
+  var del = document.getElementById('exp-det-del');
+  if (del) del.addEventListener('click', function () { _expExcluir(id); });
+  var vinc = area.querySelector('.exp-vinc');
+  if (vinc) vinc.addEventListener('click', function () { _expAbrirVinculo(this.getAttribute('data-rt'), this.getAttribute('data-ri')); });
+}
+
+function _expExcluir(id) {
+  if (!confirm('Excluir a despesa ' + id + '? (exclusão suave — o registro e o comprovante ficam preservados na planilha/Drive)')) return;
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); return; }
+    showAlert('Despesa excluída.', 'success');
+    renderExpenses(document.getElementById('section-content'));
+  }).withFailureHandler(function (e3) { showAlert('Falha: ' + (e3.message || e3), 'error'); })
+  .Api_deleteExpense(id);
+}
+
+/* ── Lançamento manual (modal de ação rápida) ── */
+function _expmOpen() {
+  var old = document.getElementById('expm-modal');
+  if (old) old.parentNode.removeChild(old);
+  var hoje = new Date();
+  var hojeStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="modal-backdrop" id="expm-modal" style="display:flex;z-index:1170">' +
+      '<div class="modal" style="max-width:560px;width:94%">' +
+        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title">⌨️ Lançar despesa manual</div>' +
+          '<button class="btn btn-ghost btn-sm" id="expm-close">✕</button>' +
+        '</div><div class="card-body">' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+            '<label style="font-size:12px;width:150px">Data *<br><input class="form-input" id="expm-data" type="date" value="' + hojeStr + '"></label>' +
+            '<label style="font-size:12px;flex:1;min-width:200px">Estabelecimento *<br><input class="form-input" id="expm-estab" placeholder="ex.: Posto Shell BR-277"></label>' +
+          '</div>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+            '<label style="font-size:12px;flex:1;min-width:170px">Categoria *<br><select class="form-input" id="expm-cat"><option>Carregando...</option></select></label>' +
+            '<label style="font-size:12px;width:150px">Total (R$) *<br><input class="form-input" id="expm-total" type="number" min="0" step="0.01"></label>' +
+          '</div>' +
+          '<label style="font-size:12px;display:block;margin-top:8px">Descrição<br><textarea class="form-input" id="expm-desc" rows="2" placeholder="o que foi comprado / motivo"></textarea></label>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+            '<label style="font-size:12px;width:170px">Vincular a<br><select class="form-input" id="expm-ref-type">' +
+              '<option value="">— nada —</option>' +
+              '<option value="PROPOSAL">Proposta</option>' +
+              '<option value="PROJECT">Projeto</option>' +
+              '<option value="TICKET">Chamado</option>' +
+            '</select></label>' +
+            '<label style="font-size:12px;flex:1;min-width:220px">Item vinculado<br><select class="form-input" id="expm-ref-id" disabled><option value="">—</option></select></label>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
+            '<button class="btn btn-ghost btn-sm" id="expm-cancel">Cancelar</button>' +
+            '<button class="btn btn-primary" id="expm-save">Salvar despesa</button>' +
+          '</div>' +
+        '</div></div>' +
+      '</div></div>');
+
+  var fechar = function () { var m = document.getElementById('expm-modal'); if (m) m.parentNode.removeChild(m); };
+  document.getElementById('expm-close').addEventListener('click', fechar);
+  document.getElementById('expm-cancel').addEventListener('click', fechar);
+  document.getElementById('expm-modal').addEventListener('click', function (ev) { if (ev.target === this) fechar(); });
+
+  google.script.run.withSuccessHandler(function (r) {
+    var cats = (r && r.ok && r.data) ? r.data : ['Outros'];
+    var html = '';
+    for (var i = 0; i < cats.length; i++) html += '<option>' + escapeHtml(cats[i]) + '</option>';
+    document.getElementById('expm-cat').innerHTML = html;
+  }).Api_getExpenseCategories();
+
+  document.getElementById('expm-ref-type').addEventListener('change', function () {
+    _expmLoadRefs(this.value, document.getElementById('expm-ref-id'));
+  });
+
+  document.getElementById('expm-save').addEventListener('click', function () {
+    var estab = document.getElementById('expm-estab').value;
+    var total = parseFloat(document.getElementById('expm-total').value);
+    if (!estab.trim()) { showAlert('Informe o estabelecimento.', 'warning'); return; }
+    if (isNaN(total) || total <= 0) { showAlert('Informe o valor total.', 'warning'); return; }
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Salvar despesa'; return; }
+      showAlert('Despesa lançada! ' + (document.getElementById('expm-ref-type') && document.getElementById('expm-ref-type').value === 'TICKET' ? 'O custo já entrou no chamado vinculado.' : ''), 'success');
+      fechar();
+      renderExpenses(document.getElementById('section-content'));
+    }).withFailureHandler(function (e3) {
+      showAlert('Falha: ' + (e3.message || e3), 'error'); btn.disabled = false; btn.textContent = 'Salvar despesa';
+    }).Api_saveExpense({
+      data: document.getElementById('expm-data').value,
+      estabelecimento: estab.trim(),
+      categoria: document.getElementById('expm-cat').value,
+      total: total,
+      descricao: document.getElementById('expm-desc').value,
+      itens_json: '[]',
+      ref_type: document.getElementById('expm-ref-type').value,
+      ref_id: document.getElementById('expm-ref-id').value
+    });
+  });
+}
+
+function _expmLoadRefs(type, sel) {
+  if (!type) { sel.innerHTML = '<option value="">—</option>'; sel.disabled = true; return; }
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Carregando...</option>';
+  var fill = function (rows, fmt) {
+    var html = '<option value="">— escolha —</option>';
+    for (var i = 0; i < rows.length; i++) {
+      html += '<option value="' + escapeHtml(rows[i].id) + '">' + escapeHtml(fmt(rows[i])) + '</option>';
+    }
+    sel.innerHTML = html;
+  };
+  if (type === 'PROPOSAL') {
+    google.script.run.withSuccessHandler(function (r) {
+      fill((r && r.ok && r.data) ? r.data : [], function (p) { return (p.number || p.id) + ' — ' + (p.client_name || ''); });
+    }).withFailureHandler(function () { sel.innerHTML = '<option value="">erro</option>'; }).Api_getProposals({});
+  } else if (type === 'TICKET') {
+    google.script.run.withSuccessHandler(function (r) {
+      var rows = ((r && r.ok && r.data) ? r.data : []).filter(function (t) { return t.status !== 'FECHADO'; });
+      fill(rows, function (t) { return t.id + ' — ' + (t.company_name || t.company_id || '') + ': ' + (t.title || ''); });
+    }).withFailureHandler(function () { sel.innerHTML = '<option value="">erro</option>'; }).Api_tktGetAll({});
+  } else {
+    google.script.run.withSuccessHandler(function (r) {
+      fill((r && r.ok && r.data) ? r.data : [], function (p) { return p.id + ' — ' + (p.nome || p.name || ''); });
+    }).withFailureHandler(function () { sel.innerHTML = '<option value="">erro</option>'; }).Api_getProjects({});
+  }
 }
 
 /* ── Upload + compressão de imagem ── */
