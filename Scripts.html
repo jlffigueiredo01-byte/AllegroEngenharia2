@@ -968,7 +968,7 @@ function _expmLoadRefs(type, sel) {
   } else {
     google.script.run.withSuccessHandler(function (r) {
       fill((r && r.ok && r.data) ? r.data : [], function (p) { return p.id + ' — ' + (p.nome || p.name || ''); });
-    }).withFailureHandler(function () { sel.innerHTML = '<option value="">erro</option>'; }).Api_getProjects({});
+    }).withFailureHandler(function () { sel.innerHTML = '<option value="">erro</option>'; }).Api_projGetAll({});
   }
 }
 
