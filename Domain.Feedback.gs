@@ -30,6 +30,7 @@ var FEEDBACK_HEADERS = [
   'contexto_json',       // user-agent, papel, erros JS recentes, etc.
   'criado_por', 'criado_por_nome', 'criado_em',
   'compilado_em',        // data do .md em que entrou
+  'camada',              // VERDE | AMARELO | VERMELHO (classificada pelo agente na triagem)
   'resolucao_nota',      // preenchido na triagem/implementação
   'atualizado_em'
 ];
@@ -86,7 +87,7 @@ function fbSvcCriar(data) {
     anexo_url: anexoUrl, anexo_name: anexoName,
     contexto_json: JSON.stringify(data.contexto || {}),
     criado_por: user.id, criado_por_nome: user.name || user.id, criado_em: now,
-    compilado_em: '', resolucao_nota: '', atualizado_em: now
+    compilado_em: '', camada: '', resolucao_nota: '', atualizado_em: now
   };
   var sh = getOrCreateSheet(FEEDBACK_SHEET, FEEDBACK_HEADERS);
   var row = [];

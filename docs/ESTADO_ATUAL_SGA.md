@@ -12,7 +12,8 @@
 ## 0. Como retomar (checklist do agente)
 1. `clasp pull` na branch de trabalho (o código é a fonte da verdade).
 2. Ler, nesta ordem: `docs/CONCEITO_FLUXO.md` (conceito + as DUAS leis novas),
-   este arquivo, e `PROMPT_TRIAGEM.md` (ciclo de feedback). Se você tiver um
+   este arquivo, `docs/POLITICA_AUTONOMIA_AGENTES.md` (o que você pode publicar
+   sozinho) e `PROMPT_TRIAGEM.md` (ciclo de feedback). Se você tiver um
    prompt-mestre próprio na máquina (instruções dos agentes), cruze com §5 —
    este documento prevalece onde houver divergência, por ser mais recente.
 3. Antes de QUALQUER feature nova, aplicar o **checklist da Interligação Total**

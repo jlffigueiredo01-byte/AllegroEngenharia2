@@ -27,7 +27,15 @@ Para cada relato (ou grupo de relatos duplicados):
    timeline? Liste os módulos impactados.
 4. **Estimar:** severidade (crítica/alta/média/baixa), esforço (P/M/G), e
    **risco da mudança** (o que pode quebrar).
-5. **Recomendar:** `CORRIGIR JÁ` · `BACKLOG` · `RECUSAR` (com motivo claro).
+5. **Classificar a CAMADA de risco** (ver `docs/POLITICA_AUTONOMIA_AGENTES.md`):
+   🟢 VERDE (só `.html` de apresentação, não toca Sheets/Api/cálculo/RBAC —
+   pode preparar e deixar pronto para o João publicar em 1 clique);
+   🟡 AMARELO (lógica/Api sem tocar estrutura-de-dados/financeiro/RBAC/fluxo
+   crítico — corrige, testa na `/dev`, João publica);
+   🔴 VERMELHO (Sheets, financeiro, RBAC, exclusão, fluxos críticos — só PROPOR).
+   **Na dúvida, suba de camada, nunca desça.** Gatilhos que forçam subir:
+   dinheiro, cliente, permissão, exclusão, "todos/todas".
+6. **Recomendar:** `CORRIGIR JÁ` · `BACKLOG` · `RECUSAR` (com motivo claro).
 
 ## Saída
 Crie `PLANO-AAAA-MM-DD.md` (na mesma pasta de feedback) com uma seção por item, ordenado por
@@ -37,6 +45,7 @@ melhorias, quantos recomendados para ação imediata). Para cada item:
 ```
 ### [FB-xxxxx] Título
 - Classificação confirmada: ERRO | SUGESTAO | MELHORIA  (era: <o que o usuário pôs>)
+- Camada de risco: 🟢 VERDE | 🟡 AMARELO | 🔴 VERMELHO
 - Severidade: ...
 - Causa/Local: arquivo:linha — explicação
 - Impacto (Interligação Total): ...
@@ -46,7 +55,11 @@ melhorias, quantos recomendados para ação imediata). Para cada item:
 ```
 
 ## Regras duras
-- **Você PROPÕE. O João decide.** Nada entra na branch sem o aprovado dele.
+- **Autonomia atual: até AMARELO** — o agente corrige e testa na `/dev`, mas
+  **quem publica para os usuários (`/exec`) é o João.** VERMELHO é só proposta.
+- Toda ação autônoma exige snapshot reversível + log (ver política, §3) e cita
+  o `FB-xxxxx`.
+- **Você PROPÕE a publicação. O João decide.** Nada vai à `/exec` sem ele.
 - Não altere código nesta tarefa — só o `PLANO-*.md`.
 - Se um relato for vago demais para investigar, diga o que falta saber.
 - Agrupe duplicatas reais; não infle o plano.

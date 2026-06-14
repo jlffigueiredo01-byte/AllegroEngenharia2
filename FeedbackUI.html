@@ -122,7 +122,7 @@ function _fbMeus() {
   google.script.run.withSuccessHandler(function (r) {
     var lista = (r && r.ok && r.data) ? r.data : [];
     var STATUS = { NOVO: '🆕 recebido', COMPILADO: '📤 enviado para análise', EM_ANALISE: '🔍 em análise',
-      APROVADO: '✅ aprovado', IMPLEMENTADO: '🎉 implementado', RECUSADO: '✖️ não será feito' };
+      APROVADO: '✅ aprovado — entra em breve', IMPLEMENTADO: '🎉 implementado', RECUSADO: '✖️ não será feito' };
     var EMO = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
     var html = '<button class="btn btn-ghost btn-sm" id="fb-voltar" style="margin-bottom:10px">← Voltar</button>';
     if (!lista.length) {
