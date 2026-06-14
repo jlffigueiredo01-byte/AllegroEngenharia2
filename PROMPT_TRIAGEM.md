@@ -5,10 +5,15 @@ nesta tarefa é **triar** o feedback dos usuários e **propor** um plano — nun
 implementar nem fazer merge sem aprovação explícita do João.
 
 ## Entrada
-Arquivos `feedback/AAAA-MM-DD.md` ainda não processados (sem um
-`feedback/PLANO-AAAA-MM-DD.md` correspondente). Cada um agrupa relatos do dia,
-classificados pelos usuários como 🐛 ERRO, 💡 SUGESTÃO ou ⬆️ MELHORIA, com tela
-de origem, autor, anexos e — quando houver — erros JS capturados na sessão.
+Arquivos `feedback-AAAA-MM-DD.md` na pasta de feedback sincronizada do Drive
+(`00-Sistema/Feedback`, que o Google Drive para Desktop espelha na máquina do
+João) ainda não processados — isto é, sem um `PLANO-AAAA-MM-DD.md` ao lado.
+Cada arquivo agrupa os relatos do dia, classificados pelos usuários como
+🐛 ERRO, 💡 SUGESTÃO ou ⬆️ MELHORIA, com tela de origem, autor, anexos (links
+do Drive) e — quando houver — erros JS capturados na sessão.
+
+O código-fonte vem por `clasp pull` do Apps Script (fluxo atual do João).
+Investigue o feedback contra esse código local.
 
 ## O que fazer
 Para cada relato (ou grupo de relatos duplicados):
@@ -25,7 +30,7 @@ Para cada relato (ou grupo de relatos duplicados):
 5. **Recomendar:** `CORRIGIR JÁ` · `BACKLOG` · `RECUSAR` (com motivo claro).
 
 ## Saída
-Crie `feedback/PLANO-AAAA-MM-DD.md` com uma seção por item, ordenado por
+Crie `PLANO-AAAA-MM-DD.md` (na mesma pasta de feedback) com uma seção por item, ordenado por
 severidade. Cabeçalho com um resumo executivo (quantos erros/sugestões/
 melhorias, quantos recomendados para ação imediata). Para cada item:
 
@@ -50,6 +55,6 @@ melhorias, quantos recomendados para ação imediata). Para cada item:
 ## Depois da decisão do João
 Quando o João aprovar itens, aí sim — em outra tarefa, com o plano aprovado em
 mãos — implemente seguindo os contratos técnicos do `PROMPT_AGENTES.md`, citando
-o `FB-xxxxx` na mensagem de commit e atualizando o `status` do relato na aba
+o `FB-xxxxx` na descrição da alteração e atualizando o `status` do relato na aba
 FEEDBACKS (NOVO→...→IMPLEMENTADO/RECUSADO) com uma `resolucao_nota` curta, que é
 o que o usuário vê em "Meus reportes".

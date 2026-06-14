@@ -8,10 +8,13 @@
 // Status do relato:
 //   NOVO → COMPILADO → EM_ANALISE → APROVADO → IMPLEMENTADO | RECUSADO
 //
-// Configuração necessária em Script Properties (Projeto → Configurações):
-//   GITHUB_TOKEN   PAT fine-grained, escopo Contents:write SÓ neste repo
-//   GITHUB_REPO    ex.: jlffigueiredo01-byte/AllegroEngenharia2
-//   GITHUB_BRANCH  ex.: yrdyrsdfgRuflo  (default: main)
+// Entrega: o .md do dia é gravado na pasta 00-Sistema/Feedback do Drive.
+// Com o Google Drive para Desktop sincronizando, o arquivo aparece local na
+// máquina do João e os agentes do Claude Code (VS Code) o leem direto — sem
+// GitHub, sem token, sem fluxo novo. Os agentes seguem com `clasp pull` para
+// o CÓDIGO; o feedback é DADO e mora no Drive, junto com os prints.
+//
+// Configuração em Script Properties (Projeto → Configurações):
 //   FEEDBACK_HORA  hora do lote diário 0-23 (default: 19)
 // ALERT_EMAIL (já usado pelos Action Cards) recebe os relatos urgentes.
 // =============================================================================
@@ -115,8 +118,8 @@ function fbSvcMeus() {
 /* ──────────────── Compilação diária + commit no repo ──────────────── */
 
 /**
- * Agrupa os relatos NOVOS, gera o .md do dia, commita no repositório via
- * GitHub API e marca os relatos como COMPILADO. Roda no trigger diário,
+ * Agrupa os relatos NOVOS, gera o .md do dia, grava na pasta de feedback do
+ * Drive e marca os relatos como COMPILADO. Roda no trigger diário,
  * mas também pode ser chamada manualmente (botão no dashboard).
  */
 function fbCompilarECommitar() {
@@ -130,19 +133,18 @@ function fbCompilarECommitar() {
     var dataStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
     var md = _fbMontarMarkdown(novos, dataStr);
 
-    var path = 'feedback/' + dataStr + '.md';
-    var commit = _fbCommitGitHub(path, md,
-      'feedback: ' + novos.length + ' relato(s) de ' + dataStr + ' [skip ci]');
+    var nomeArq = 'feedback-' + dataStr + '.md';
+    var grav = _fbGravarNoDrive(nomeArq, md);
 
-    // marca como COMPILADO só se o commit deu certo (senão tenta de novo amanhã)
-    if (commit.ok) {
+    // marca como COMPILADO só se gravou (senão tenta de novo amanhã)
+    if (grav.ok) {
       var now = nowISO();
       for (var i = 0; i < novos.length; i++) {
         updateRowById(FEEDBACK_SHEET, novos[i].id, { status: 'COMPILADO', compilado_em: dataStr, atualizado_em: now });
       }
     }
-    Logger.log('[Feedback] ' + (commit.ok ? 'commitado ' + path : 'FALHA no commit: ' + commit.error));
-    return { ok: commit.ok, compilados: commit.ok ? novos.length : 0, path: path, erro: commit.error };
+    Logger.log('[Feedback] ' + (grav.ok ? 'gravado ' + nomeArq + ' (' + grav.url + ')' : 'FALHA: ' + grav.error));
+    return { ok: grav.ok, compilados: grav.ok ? novos.length : 0, arquivo: nomeArq, url: grav.url, erro: grav.error };
   } finally {
     lock.releaseLock();
   }
@@ -198,42 +200,22 @@ function _fbMontarMarkdown(relatos, dataStr) {
   return out;
 }
 
-/** Cria/atualiza um arquivo no repositório via GitHub Contents API. */
-function _fbCommitGitHub(path, content, message) {
-  var props = PropertiesService.getScriptProperties();
-  var token = props.getProperty('GITHUB_TOKEN');
-  var repo  = props.getProperty('GITHUB_REPO');
-  var branch = props.getProperty('GITHUB_BRANCH') || 'main';
-  if (!token || !repo) return { ok: false, error: 'GITHUB_TOKEN/GITHUB_REPO não configurados em Script Properties.' };
-
-  var apiBase = 'https://api.github.com/repos/' + repo + '/contents/' + path;
-  var headers = { Authorization: 'token ' + token, Accept: 'application/vnd.github+json' };
-
-  // se o arquivo do dia já existe, precisamos do sha para atualizar
-  var sha = null;
+/**
+ * Grava o .md do dia na pasta 00-Sistema/Feedback do Drive (sobrescreve se
+ * já existir o arquivo do mesmo dia). É isto que o Drive para Desktop
+ * sincroniza para a máquina do João.
+ */
+function _fbGravarNoDrive(nomeArq, content) {
   try {
-    var get = UrlFetchApp.fetch(apiBase + '?ref=' + encodeURIComponent(branch),
-      { headers: headers, muteHttpExceptions: true });
-    if (get.getResponseCode() === 200) sha = JSON.parse(get.getContentText()).sha;
-  } catch (e) { /* arquivo ainda não existe */ }
-
-  var payload = {
-    message: message,
-    content: Utilities.base64Encode(Utilities.newBlob(content).getBytes()),
-    branch: branch
-  };
-  if (sha) payload.sha = sha;
-
-  try {
-    var put = UrlFetchApp.fetch(apiBase, {
-      method: 'put', headers: headers, contentType: 'application/json',
-      payload: JSON.stringify(payload), muteHttpExceptions: true
-    });
-    var code = put.getResponseCode();
-    if (code === 200 || code === 201) return { ok: true };
-    return { ok: false, error: 'HTTP ' + code + ': ' + put.getContentText().slice(0, 200) };
-  } catch (e2) {
-    return { ok: false, error: e2.message };
+    var pasta = drvGetFolder('SISTEMA_FEEDBACK');
+    if (!pasta) return { ok: false, error: 'Pasta de feedback indisponível — configure ROOT_FOLDER_ID (setupAll).' };
+    // remove versão anterior do mesmo dia (idempotente)
+    var existentes = pasta.getFilesByName(nomeArq);
+    while (existentes.hasNext()) existentes.next().setTrashed(true);
+    var file = pasta.createFile(nomeArq, content, 'text/markdown');
+    return { ok: true, url: file.getUrl() };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 }
 
