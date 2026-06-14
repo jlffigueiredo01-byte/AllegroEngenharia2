@@ -12,8 +12,9 @@
 ## 0. Como retomar (checklist do agente)
 1. `clasp pull` na branch de trabalho (o código é a fonte da verdade).
 2. Ler, nesta ordem: `docs/CONCEITO_FLUXO.md` (conceito + as DUAS leis novas),
-   este arquivo, `PROMPT_AGENTES.md` (contratos), `PROMPT_TRIAGEM.md` (ciclo de
-   feedback).
+   este arquivo, e `PROMPT_TRIAGEM.md` (ciclo de feedback). Se você tiver um
+   prompt-mestre próprio na máquina (instruções dos agentes), cruze com §5 —
+   este documento prevalece onde houver divergência, por ser mais recente.
 3. Antes de QUALQUER feature nova, aplicar o **checklist da Interligação Total**
    (§3) e o **Padrão de Navegação** (§4). Não são sugestões — são vinculantes.
 
@@ -91,7 +92,7 @@ Exemplo canônico: despesa→chamado = 1 digitação, 5 efeitos. (Detalhe em
 
 ---
 
-## 5. Contratos técnicos (resumo — detalhe em PROMPT_AGENTES.md)
+## 5. Contratos técnicos (resumo)
 - **Envelope de toda API:** `{ ok: true, data }` ou `{ ok: false, error }`.
 - **Datas:** o Sheets converte células ISO em `Date`, e o `google.script.run`
   **não serializa Date** (volta `null` silencioso). Todo endpoint que devolve
@@ -152,4 +153,4 @@ agenda, chamados, actioncards, compras, fornecedores, expenses, config.
 - `node --check` nos blocos `<script>` de cada HTML alterado.
 - Checagem de funções duplicadas entre HTMLs (deve ser vazio).
 - Harness Node com stubs para lógica GAS crítica (ver exemplos de importação).
-- Mensagens de commit descritivas; uma entrega por assunto.
+- Mensagens de commit/alteração descritivas; uma entrega por assunto.
