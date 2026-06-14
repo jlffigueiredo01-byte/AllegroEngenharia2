@@ -120,6 +120,9 @@ function enterApp(user) {
   // Esconde tela de login
   document.getElementById('login-screen').classList.add('hidden');
 
+  // Botão flutuante de feedback (ciclo de construção colaborativa)
+  if (typeof _fbInjectButton === 'function') _fbInjectButton();
+
   // Atualiza dados do usuário na sidebar
   var initials = getInitials(user.name);
   var roleLabel = user.role || 'Usuário';

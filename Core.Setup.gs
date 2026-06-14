@@ -129,6 +129,7 @@ function initCoreSheets() {
   initBaseInstaladaSheet();
   initTicketsSheet();
   initTicketUpdatesSheet();
+  initFeedbackSheet();
   // F15 — Compras e Estoque
   initSuppliersSheet();
   initPurchaseOrdersSheet();

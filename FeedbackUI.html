@@ -1,0 +1,147 @@
+<script>
+// =============================================================================
+// FeedbackUI.html — SGA
+// Botão flutuante de feedback + formulário (tipo, descrição, print, urgência)
+// + "meus reportes" com status. Captura contexto automaticamente (tela ativa,
+// user-agent, erros JS recentes da sessão). Prefixo _fb. ES5.
+// =============================================================================
+
+// buffer global de erros JS da sessão (metade do diagnóstico vem de graça)
+window._fbJsErrors = window._fbJsErrors || [];
+window.addEventListener('error', function (e) {
+  try {
+    window._fbJsErrors.push((e.message || 'erro') + ' @ ' + (e.filename || '').split('/').pop() + ':' + (e.lineno || '?'));
+    if (window._fbJsErrors.length > 10) window._fbJsErrors.shift();
+  } catch (_) {}
+});
+
+function _fbInjectButton() {
+  if (document.getElementById('fb-fab')) return;
+  document.body.insertAdjacentHTML('beforeend',
+    '<button id="fb-fab" title="Relatar erro, sugestão ou melhoria" ' +
+      'style="position:fixed;right:22px;bottom:22px;z-index:1190;width:52px;height:52px;border-radius:50%;' +
+      'border:none;cursor:pointer;background:#1a56db;color:#fff;font-size:22px;box-shadow:0 4px 14px rgba(16,24,40,.28)">💬</button>');
+  document.getElementById('fb-fab').addEventListener('click', _fbOpen);
+}
+
+var _fbAnexo = null;
+
+function _fbOpen() {
+  var old = document.getElementById('fb-modal');
+  if (old) old.parentNode.removeChild(old);
+  _fbAnexo = null;
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="modal-backdrop" id="fb-modal" style="display:flex;z-index:1200">' +
+      '<div class="modal" style="max-width:520px;width:94%;max-height:92vh;overflow:auto">' +
+        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title">💬 Sua opinião constrói o sistema</div>' +
+          '<button class="btn btn-ghost btn-sm" id="fb-close">✕</button>' +
+        '</div><div class="card-body">' +
+          '<div style="display:flex;gap:6px;margin-bottom:10px" id="fb-tipos">' +
+            '<button class="btn btn-ghost btn-sm fb-tipo" data-t="ERRO">🐛 Erro</button>' +
+            '<button class="btn btn-primary btn-sm fb-tipo" data-t="SUGESTAO">💡 Sugestão</button>' +
+            '<button class="btn btn-ghost btn-sm fb-tipo" data-t="MELHORIA">⬆️ Melhoria</button>' +
+          '</div>' +
+          '<label style="font-size:12px;display:block">Título (opcional)<br><input class="form-input" id="fb-titulo" placeholder="resumo em poucas palavras"></label>' +
+          '<label style="font-size:12px;display:block;margin-top:8px">O que aconteceu? *<br><textarea class="form-input" id="fb-desc" rows="4" placeholder="descreva o erro, a ideia ou a melhoria. quanto mais detalhe, melhor a análise."></textarea></label>' +
+          '<div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
+            '<label class="btn btn-ghost btn-sm" style="cursor:pointer">📎 Anexar print<input type="file" id="fb-file" accept="image/*" style="display:none"></label>' +
+            '<span id="fb-file-name" style="font-size:12px;color:#98a2b3"></span>' +
+            '<label style="font-size:12.5px;margin-left:auto;display:flex;align-items:center;gap:6px;cursor:pointer">' +
+              '<input type="checkbox" id="fb-urgente"> 🚨 está me impedindo de trabalhar</label>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#98a2b3;margin-top:8px">Vai junto automaticamente: a tela atual e detalhes técnicos da sessão — você não precisa descrevê-los.</div>' +
+          '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
+            '<button class="btn btn-ghost btn-sm" id="fb-meus">Meus reportes</button>' +
+            '<button class="btn btn-primary" id="fb-enviar">Enviar</button>' +
+          '</div>' +
+        '</div></div>' +
+      '</div></div>');
+
+  var fechar = function () { var m = document.getElementById('fb-modal'); if (m) m.parentNode.removeChild(m); };
+  document.getElementById('fb-close').addEventListener('click', fechar);
+  document.getElementById('fb-modal').addEventListener('click', function (e) { if (e.target === this) fechar(); });
+
+  var tipoSel = 'SUGESTAO';
+  var tipos = document.querySelectorAll('.fb-tipo');
+  for (var i = 0; i < tipos.length; i++) {
+    tipos[i].addEventListener('click', function () {
+      tipoSel = this.getAttribute('data-t');
+      for (var j = 0; j < tipos.length; j++) {
+        tipos[j].className = 'btn btn-ghost btn-sm fb-tipo';
+      }
+      this.className = 'btn btn-primary btn-sm fb-tipo';
+    });
+  }
+
+  document.getElementById('fb-file').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (f.size > 6 * 1024 * 1024) { showAlert('Imagem acima de 6 MB.', 'warning'); this.value = ''; return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      _fbAnexo = { base64: String(reader.result).split(',')[1], mime: f.type, name: f.name };
+      document.getElementById('fb-file-name').textContent = f.name;
+    };
+    reader.readAsDataURL(f);
+  });
+
+  document.getElementById('fb-meus').addEventListener('click', _fbMeus);
+  document.getElementById('fb-enviar').addEventListener('click', function () {
+    var desc = document.getElementById('fb-desc').value;
+    if (!desc.trim()) { showAlert('Descreva o que aconteceu.', 'warning'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Enviando...';
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Enviar'; return; }
+      showAlert('Obrigado! Relato ' + r.data.id + ' registrado. Você acompanha o status em "Meus reportes".', 'success');
+      fechar();
+    }).withFailureHandler(function (e) {
+      showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Enviar';
+    }).Api_fbCriar({
+      tipo: tipoSel,
+      titulo: document.getElementById('fb-titulo').value,
+      descricao: desc,
+      tela: (typeof ALLEGRO !== 'undefined' ? ALLEGRO.activeSection : '') || '',
+      urgente: document.getElementById('fb-urgente').checked,
+      anexo: _fbAnexo,
+      contexto: {
+        userAgent: navigator.userAgent,
+        papel: (typeof ALLEGRO !== 'undefined' && ALLEGRO.currentUser) ? ALLEGRO.currentUser.role : '',
+        viewport: window.innerWidth + 'x' + window.innerHeight,
+        jsErrors: (window._fbJsErrors || []).slice(),
+        quando: new Date().toISOString()
+      }
+    });
+  });
+}
+
+function _fbMeus() {
+  var body = document.querySelector('#fb-modal .card-body');
+  if (!body) return;
+  body.innerHTML = '<div class="spinner-ring" style="margin:20px auto"></div>';
+  google.script.run.withSuccessHandler(function (r) {
+    var lista = (r && r.ok && r.data) ? r.data : [];
+    var STATUS = { NOVO: '🆕 recebido', COMPILADO: '📤 enviado para análise', EM_ANALISE: '🔍 em análise',
+      APROVADO: '✅ aprovado', IMPLEMENTADO: '🎉 implementado', RECUSADO: '✖️ não será feito' };
+    var EMO = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
+    var html = '<button class="btn btn-ghost btn-sm" id="fb-voltar" style="margin-bottom:10px">← Voltar</button>';
+    if (!lista.length) {
+      html += '<div class="empty-state" style="padding:20px 0"><div class="empty-title">Você ainda não enviou relatos</div></div>';
+    } else {
+      for (var i = 0; i < lista.length; i++) {
+        var f = lista[i];
+        html += '<div style="padding:8px 0;border-bottom:1px solid #f1f5f9">' +
+          '<div style="font-size:13px"><b>' + (EMO[f.tipo] || '') + ' ' + escapeHtml(f.titulo) + '</b></div>' +
+          '<div style="font-size:12px;color:#475569;margin-top:2px">' + (STATUS[f.status] || f.status) +
+            (f.resolucao_nota ? ' — ' + escapeHtml(f.resolucao_nota) : '') + '</div>' +
+          '<div style="font-size:11px;color:#98a2b3">' + escapeHtml(f.id) + ' · ' + formatDate(f.criado_em) + '</div>' +
+        '</div>';
+      }
+    }
+    body.innerHTML = html;
+    document.getElementById('fb-voltar').addEventListener('click', _fbOpen);
+  }).withFailureHandler(function () {
+    body.innerHTML = '<p style="color:#b42318">Erro ao carregar.</p>';
+  }).Api_fbMeus();
+}
+</script>

@@ -16,6 +16,7 @@ var DRIVE_REGISTRY_COLS  = ['key', 'folder_id', 'path', 'created_at'];
 var DRIVE_TAXONOMY = {
   SISTEMA:            { parent: '',           name: '00-Sistema' },
   SISTEMA_BACKUPS:    { parent: 'SISTEMA',    name: 'Backups' },
+  SISTEMA_FEEDBACK:   { parent: 'SISTEMA',    name: 'Feedback' },
   ENGENHARIA:         { parent: '',           name: '01-Engenharia' },
   COMERCIAL:          { parent: '',           name: '02-Comercial' },
   PROPOSTAS:          { parent: 'COMERCIAL',  name: 'Propostas' },
