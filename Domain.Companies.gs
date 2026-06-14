@@ -15,6 +15,29 @@ var COMPANIES_HEADERS = [
   'address', 'lat', 'lng', 'distancia_base_km', 'tempo_viagem_min'
 ];
 
+/**
+ * Garante que a aba COMPANIES tenha todas as colunas de COMPANIES_HEADERS.
+ * Idempotente: abas criadas com as 10 colunas antigas ganham address/lat/lng/
+ * distancia_base_km/tempo_viagem_min sem perder dados. Corrige o bug em que o
+ * geocodificador gravava lat/lng em colunas inexistentes.
+ */
+function _companiesEnsureColumns() {
+  try {
+    var sh = getOrCreateSheet(COMPANIES_SHEET, COMPANIES_HEADERS);
+    if (sh.getLastColumn() === 0) return;
+    var atuais = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    var lastCol = sh.getLastColumn();
+    for (var i = 0; i < COMPANIES_HEADERS.length; i++) {
+      if (atuais.indexOf(COMPANIES_HEADERS[i]) === -1) {
+        lastCol += 1;
+        sh.getRange(1, lastCol).setValue(COMPANIES_HEADERS[i]);
+      }
+    }
+  } catch (e) {
+    Logger.log('_companiesEnsureColumns: ' + e.message);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers — Geocoding (NUNCA chamar em render)
 // ---------------------------------------------------------------------------

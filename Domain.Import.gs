@@ -10,7 +10,13 @@ const OPPORTUNITIES_SHEET    = 'OPPORTUNITIES';
 const QUOTE_HEADERS_SHEET    = 'QUOTE_HEADERS';
 
 // ── Colunas das abas de destino ────────────────────────────────────────────
-const COMPANIES_COLS     = ['id','name','state','city','client_type','active','normalized_name','legacy_name','import_source','created_at'];
+// COMPANIES: fonte ÚNICA é COMPANIES_HEADERS (Domain.Companies.gs), que inclui
+// address/lat/lng/distancia_base_km/tempo_viagem_min. Manter as duas listas em
+// paralelo fez a aba nascer sem as colunas de geolocalização e o geocodificador
+// gravar no limbo. COMPANIES_COLS vira um alias retrocompatível.
+var COMPANIES_COLS = (typeof COMPANIES_HEADERS !== 'undefined')
+  ? COMPANIES_HEADERS
+  : ['id','name','state','city','client_type','active','normalized_name','legacy_name','import_source','created_at','address','lat','lng','distancia_base_km','tempo_viagem_min'];
 const CONTACTS_COLS      = ['id','company_id','name','phone','email','role','active','import_source','created_at'];
 const OPPORTUNITIES_COLS = ['id','company_id','company_name','contact_id','representative','client_type','status','product','max_temp','qty_sensors_xt','qty_sensors_ht','qty_sensors_probe','installation_point','automation_detail','hydro_view','infra_distance','tech_notes','notes','form_date','legacy_quote_number','import_source','created_at'];
 const QUOTE_HEADERS_COLS = ['id','legacy_quote_number','legacy_quote_number_final','year','company_id','company_name','opportunity_id','representative','client_type','total_value_brl','status','closing_date','state','notes','import_source','created_at'];

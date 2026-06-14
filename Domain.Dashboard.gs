@@ -321,6 +321,7 @@ function Api_sysAtualizarTudo() {
     });
     rodar('Colunas de tickets/updates', function () { _tktEnsureColumns(); return 'ok'; });
     rodar('Aba de feedback', function () { initFeedbackSheet(); return 'ok'; });
+    rodar('Colunas de geolocalização (COMPANIES)', function () { _companiesEnsureColumns(); return 'ok'; });
 
     return { ok: true, data: { passos: passos } };
   } catch (e) {

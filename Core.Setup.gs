@@ -77,6 +77,7 @@ function setupAll() {
   try {
     initCoreSheets();              steps.push('initCoreSheets');
     initProposalsAddColumns();     steps.push('initProposalsAddColumns');
+    _companiesEnsureColumns();     steps.push('_companiesEnsureColumns');
     initOpportunitiesAddColumns(); steps.push('initOpportunitiesAddColumns');
     initResiliencia();             steps.push('initResiliencia');
     initKpiSnapshotSheet();        steps.push('initKpiSnapshotSheet');
