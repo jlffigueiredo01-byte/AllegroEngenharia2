@@ -279,6 +279,7 @@
     if (_chatbot_open) {
       panel.classList.add('open');
       btn.textContent = '×';
+      var _fbA = document.getElementById('fb-fab'); if (_fbA) _fbA.style.display = 'none';
       _chatbot_greet();
       setTimeout(function() {
         var ta = document.getElementById('allegro-chat-textarea');
@@ -287,6 +288,7 @@
     } else {
       panel.classList.remove('open');
       btn.textContent = '💬';
+      var _fbF = document.getElementById('fb-fab'); if (_fbF) _fbF.style.display = '';
     }
   }
 

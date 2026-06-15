@@ -19,8 +19,8 @@ function _fbInjectButton() {
   if (document.getElementById('fb-fab')) return;
   document.body.insertAdjacentHTML('beforeend',
     '<button id="fb-fab" title="Relatar erro, sugestão ou melhoria" ' +
-      'style="position:fixed;right:22px;bottom:22px;z-index:1190;width:52px;height:52px;border-radius:50%;' +
-      'border:none;cursor:pointer;background:#1a56db;color:#fff;font-size:22px;box-shadow:0 4px 14px rgba(16,24,40,.28)">💬</button>');
+      'style="position:fixed;right:24px;bottom:90px;z-index:9998;width:48px;height:48px;border-radius:50%;' +
+      'border:none;cursor:pointer;background:#7c3aed;color:#fff;font-size:20px;box-shadow:0 4px 14px rgba(16,24,40,.28)">💡</button>');
   document.getElementById('fb-fab').addEventListener('click', _fbOpen);
 }
 
