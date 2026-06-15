@@ -4,8 +4,10 @@
 
 function _acSendUrgentEmail(card) {
   try {
-    var recipient = PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL') ||
-                    getConfigValue('ALERT_EMAIL');
+    // ALERT_EMAIL: padrão SGA = aba CONFIG (dado não-sensível). Script
+    // Properties fica só como fallback retrocompatível.
+    var recipient = getConfigValue('ALERT_EMAIL') ||
+                    PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL');
     if (!recipient) return;
     var subject = '[URGENTE] ' + card.id + ' — ' + card.title;
     var body =

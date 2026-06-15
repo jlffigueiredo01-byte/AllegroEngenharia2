@@ -14,9 +14,9 @@
 // GitHub, sem token, sem fluxo novo. Os agentes seguem com `clasp pull` para
 // o CÓDIGO; o feedback é DADO e mora no Drive, junto com os prints.
 //
-// Configuração em Script Properties (Projeto → Configurações):
+// Configuração na aba CONFIG (padrão do SGA para dados não-sensíveis):
 //   FEEDBACK_HORA  hora do lote diário 0-23 (default: 19)
-// ALERT_EMAIL (já usado pelos Action Cards) recebe os relatos urgentes.
+//   ALERT_EMAIL    e-mail que recebe os relatos urgentes (já usado por Action Cards)
 // =============================================================================
 
 var FEEDBACK_SHEET = 'FEEDBACKS';
@@ -97,7 +97,7 @@ function fbSvcCriar(data) {
   // urgente: e-mail imediato para o diretor técnico (não espera o lote)
   if (data.urgente) {
     try {
-      var to = PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL') || getConfigValue('ALERT_EMAIL');
+      var to = getConfigValue('ALERT_EMAIL');
       if (to) {
         MailApp.sendEmail(to, '🚨 SGA — feedback URGENTE de ' + rec.criado_por_nome,
           rec.titulo + '\n\n' + rec.descricao + '\n\nTela: ' + rec.tela + '\nRelato: ' + id +
@@ -222,7 +222,7 @@ function _fbGravarNoDrive(nomeArq, content) {
 
 /** Cria o trigger diário do lote (idempotente). Hora via FEEDBACK_HORA. */
 function instalarTriggerFeedback() {
-  var hora = parseInt(PropertiesService.getScriptProperties().getProperty('FEEDBACK_HORA') || '19', 10);
+  var hora = parseInt(getConfigValue('FEEDBACK_HORA') || '19', 10);
   var existentes = ScriptApp.getProjectTriggers();
   for (var i = 0; i < existentes.length; i++) {
     if (existentes[i].getHandlerFunction() === 'fbCompilarECommitar') ScriptApp.deleteTrigger(existentes[i]);
