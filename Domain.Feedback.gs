@@ -1,7 +1,9 @@
 // =============================================================================
 // Domain.Feedback.gs — SGA
-// Ciclo de construção colaborativa (fase 1): captura → compilação diária →
-// commit do .md no repositório (onde os agentes do Claude Code trabalham).
+// Ciclo de construção colaborativa (fase 1): captura → o .md do dia é
+// reescrito A CADA relato (imediato, consolidado, com dedupe) na pasta do
+// Drive → no fim do dia, e-mail de resumo para o João. Os agentes do Claude
+// Code leem o .md do dia quando rodam a triagem.
 //
 // Entidades:
 //   FEEDBACKS         um relato por linha (erro/sugestão/melhoria)
@@ -105,6 +107,12 @@ function fbSvcCriar(data) {
       }
     } catch (eMail) { Logger.log('fbSvcCriar email: ' + eMail.message); }
   }
+
+  // GERAÇÃO IMEDIATA: reescreve o .md do dia com TODOS os relatos de hoje,
+  // já consolidado e deduplicado. O agente sempre tem o arquivo do dia
+  // atualizado, sem esperar o fim do dia. (best-effort — não derruba o relato)
+  try { _fbRegravarArquivoDoDia(); } catch (eMd) { Logger.log('fbSvcCriar md: ' + eMd.message); }
+
   return { id: id };
 }
 
@@ -116,39 +124,74 @@ function fbSvcMeus() {
   return rows.slice(0, 50);
 }
 
-/* ──────────────── Compilação diária + commit no repo ──────────────── */
+/* ──────────────── Geração imediata do .md (por ação) ──────────────── */
 
 /**
- * Agrupa os relatos NOVOS, gera o .md do dia, grava na pasta de feedback do
- * Drive e marca os relatos como COMPILADO. Roda no trigger diário,
- * mas também pode ser chamada manualmente (botão no dashboard).
+ * Reescreve o feedback-AAAA-MM-DD.md do dia com TODOS os relatos de hoje
+ * que ainda não foram triados (status NOVO). Chamado a cada novo relato:
+ * o arquivo é sempre o consolidado do dia, com dedupe. Idempotente.
  */
-function fbCompilarECommitar() {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
-    var novos = sheetToObjects(FEEDBACK_SHEET).filter(function (r) { return r.status === 'NOVO'; });
-    if (!novos.length) { Logger.log('[Feedback] nenhum relato novo.'); return { ok: true, compilados: 0 }; }
+function _fbRegravarArquivoDoDia() {
+  var hoje = new Date();
+  var dataStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
+  // relatos de hoje ainda não triados (NOVO). compilado_em vazio = não foi pego.
+  var doDia = sheetToObjects(FEEDBACK_SHEET).filter(function (r) {
+    return r.status === 'NOVO' && String(r.criado_em).slice(0, 10) === dataStr;
+  });
+  if (!doDia.length) return { ok: true, vazio: true };
+  var md = _fbMontarMarkdown(doDia, dataStr);
+  var nomeArq = 'feedback-' + dataStr + '.md';
+  return _fbGravarNoDrive(nomeArq, md);
+}
 
-    var hoje = new Date();
-    var dataStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
-    var md = _fbMontarMarkdown(novos, dataStr);
+/* ──────────────── Resumo diário por e-mail (por tempo) ──────────────── */
 
-    var nomeArq = 'feedback-' + dataStr + '.md';
-    var grav = _fbGravarNoDrive(nomeArq, md);
+/**
+ * Resumo do dia por e-mail. NÃO gera mais o arquivo (isso agora é por ação,
+ * em _fbRegravarArquivoDoDia). Só conta os relatos do dia por tipo e avisa o
+ * João. Roda no trigger diário. Garante também que o .md do dia esteja gravado
+ * (rede de segurança, caso alguma gravação por ação tenha falhado).
+ */
+function fbResumoDiario() {
+  var hoje = new Date();
+  var dataStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
+  var doDia = sheetToObjects(FEEDBACK_SHEET).filter(function (r) {
+    return r.status === 'NOVO' && String(r.criado_em).slice(0, 10) === dataStr;
+  });
 
-    // marca como COMPILADO só se gravou (senão tenta de novo amanhã)
-    if (grav.ok) {
-      var now = nowISO();
-      for (var i = 0; i < novos.length; i++) {
-        updateRowById(FEEDBACK_SHEET, novos[i].id, { status: 'COMPILADO', compilado_em: dataStr, atualizado_em: now });
-      }
-    }
-    Logger.log('[Feedback] ' + (grav.ok ? 'gravado ' + nomeArq + ' (' + grav.url + ')' : 'FALHA: ' + grav.error));
-    return { ok: grav.ok, compilados: grav.ok ? novos.length : 0, arquivo: nomeArq, url: grav.url, erro: grav.error };
-  } finally {
-    lock.releaseLock();
+  // rede de segurança: garante o arquivo do dia atualizado
+  try { _fbRegravarArquivoDoDia(); } catch (e) { Logger.log('[Feedback] resumo md: ' + e.message); }
+
+  if (!doDia.length) { Logger.log('[Feedback] resumo: nenhum relato hoje.'); return { ok: true, total: 0 }; }
+
+  var cont = { ERRO: 0, SUGESTAO: 0, MELHORIA: 0, urgentes: 0 };
+  for (var i = 0; i < doDia.length; i++) {
+    cont[doDia[i].tipo] = (cont[doDia[i].tipo] || 0) + 1;
+    if (doDia[i].urgente === 'TRUE') cont.urgentes++;
   }
+
+  try {
+    var to = getConfigValue('ALERT_EMAIL');
+    if (to) {
+      var corpo = 'Resumo do feedback de ' + dataStr + ':\n\n' +
+        '🐛 Erros: ' + cont.ERRO + '\n' +
+        '💡 Sugestões: ' + cont.SUGESTAO + '\n' +
+        '⬆️ Melhorias: ' + cont.MELHORIA + '\n' +
+        (cont.urgentes ? '\n🚨 ' + cont.urgentes + ' marcado(s) como urgente.\n' : '') +
+        '\nTotal: ' + doDia.length + ' relato(s) aguardando triagem.\n' +
+        'O arquivo do dia está na pasta 00-Sistema/Feedback do Drive.';
+      MailApp.sendEmail(to, '📋 SGA — resumo do feedback (' + dataStr + ')', corpo);
+    }
+  } catch (eM) { Logger.log('[Feedback] resumo email: ' + eM.message); }
+
+  Logger.log('[Feedback] resumo enviado: ' + doDia.length + ' relato(s).');
+  return { ok: true, total: doDia.length, contagem: cont };
+}
+
+/** Compat: chamadas antigas a fbCompilarECommitar agora geram o arquivo do dia. */
+function fbCompilarECommitar() {
+  var r = _fbRegravarArquivoDoDia();
+  return { ok: r.ok !== false, arquivo: 'feedback do dia atualizado' };
 }
 
 function _fbMontarMarkdown(relatos, dataStr) {
@@ -225,9 +268,10 @@ function instalarTriggerFeedback() {
   var hora = parseInt(getConfigValue('FEEDBACK_HORA') || '19', 10);
   var existentes = ScriptApp.getProjectTriggers();
   for (var i = 0; i < existentes.length; i++) {
-    if (existentes[i].getHandlerFunction() === 'fbCompilarECommitar') ScriptApp.deleteTrigger(existentes[i]);
+    if (existentes[i].getHandlerFunction() === 'fbCompilarECommitar' ||
+        existentes[i].getHandlerFunction() === 'fbResumoDiario') ScriptApp.deleteTrigger(existentes[i]);
   }
-  ScriptApp.newTrigger('fbCompilarECommitar').timeBased().everyDays(1).atHour(hora).create();
+  ScriptApp.newTrigger('fbResumoDiario').timeBased().everyDays(1).atHour(hora).create();
   Logger.log('[Feedback] Trigger diário às ' + hora + 'h.');
   return { ok: true, hora: hora };
 }

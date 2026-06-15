@@ -23,11 +23,12 @@ function Api_fbMeus() {
   }
 }
 
-/** Dispara a compilação + commit agora (só diretor técnico). */
+/** Regrava o .md do dia agora (teste manual). O arquivo já é atualizado a
+ *  cada relato; isto força a regravação sob demanda. Só diretor técnico. */
 function Api_fbCompilarAgora() {
   try {
     requireRole(['DIRETOR_TECNICO']);
-    return { ok: true, data: fbCompilarECommitar() };
+    return { ok: true, data: _fbRegravarArquivoDoDia() };
   } catch (e) {
     return { ok: false, error: e.message };
   }

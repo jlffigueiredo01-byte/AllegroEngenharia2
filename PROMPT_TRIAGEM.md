@@ -15,6 +15,11 @@ do Drive) e — quando houver — erros JS capturados na sessão.
 O código-fonte vem por `clasp pull` do Apps Script (fluxo atual do João).
 Investigue o feedback contra esse código local.
 
+**Importante:** o `.md` do dia é reescrito a cada novo relato (geração por
+ação), contendo todos os relatos `NOVO` daquele dia já consolidados e
+deduplicados. Ao pegar um relato para triar, avance o `status` na aba
+FEEDBACKS (NOVO → EM_ANALISE) para ele sair do arquivo do dia seguinte.
+
 ## O que fazer
 Para cada relato (ou grupo de relatos duplicados):
 
