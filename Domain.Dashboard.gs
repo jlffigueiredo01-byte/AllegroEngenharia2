@@ -16,7 +16,6 @@ function Api_getDashboardStats() {
     var companies     = sheetToObjects('COMPANIES');
     var contacts      = sheetToObjects('CONTACTS');
     var opportunities = sheetToObjects('OPPORTUNITIES');
-    var quoteHeaders  = sheetToObjects('QUOTE_HEADERS');
     var actionCards   = sheetToObjects('ACTION_CARDS');
     var timeline      = sheetToObjects('TIMELINE');
     var expenses      = sheetToObjects('EXPENSES');
@@ -45,10 +44,12 @@ function Api_getDashboardStats() {
     });
 
     // --- Quotes ---
+    // QUOTE_HEADERS foi descontinuada (desenho legado substituído por PROPOSALS).
+    // KPIs de proposta vêm de PROPOSALS via Api_dashV2.
     var quotesTotalValue  = 0;
     var quotesClosedValue = 0;
-
-    quoteHeaders.forEach(function(r) {
+    var quotesTotal       = 0;
+    [].forEach(function(r) {
       var val = safeNumber(r.total_value_brl);
       quotesTotalValue += val;
       if (r.status === 'Proposta fechada') {
@@ -116,7 +117,7 @@ function Api_getDashboardStats() {
           totalActive: oppTotalActive
         },
         quotes: {
-          total:          quoteHeaders.length,
+          total:          quotesTotal,
           totalValueBRL:  quotesTotalValue,
           closedValueBRL: quotesClosedValue
         },
