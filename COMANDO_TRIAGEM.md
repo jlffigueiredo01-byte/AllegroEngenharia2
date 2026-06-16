@@ -16,8 +16,12 @@ Antes de começar, leia:
 3. PROMPT_TRIAGEM.md             (como triar)
 
 Depois:
-1. Liste os arquivos FB-*.md na pasta do Drive cujo FB-xxxxx ainda
-   NÃO aparece em nenhum PLANO-*.md (= ainda não triados).
+1. Verifique DUAS fontes na pasta do Drive:
+   a) TAREFA-FB-*.md na pasta 00-Sistema/Tarefas — são aprovações do João
+      (prioridade). Modo IMPLEMENTAR = corrija na /dev; modo PROPOR = só
+      escreva o plano. Siga a instrução dentro do arquivo.
+   b) FB-*.md na pasta 00-Sistema/Feedback cujo FB-xxxxx ainda NÃO aparece
+      em nenhum PLANO-*.md (= relatos novos para triar).
 2. Para CADA relato:
    - Classifique a camada: VERDE / AMARELO / VERMELHO.
    - VERDE   → corrija na /dev, registre o estado anterior (reversível),

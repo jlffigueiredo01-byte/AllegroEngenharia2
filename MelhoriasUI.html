@@ -156,7 +156,13 @@ function _melhDetalhe(id) {
     var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
     google.script.run.withSuccessHandler(function (r) {
       if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Salvar status'; return; }
-      showAlert('Status atualizado.', 'success');
+      var msg = 'Status atualizado.';
+      if (r.data && r.data.tarefa) {
+        msg += r.data.tarefa.modo === 'IMPLEMENTAR'
+          ? ' 📤 Tarefa enviada aos agentes (implementar na /dev).'
+          : ' 📤 Tarefa enviada aos agentes (propor — vermelho).';
+      }
+      showAlert(msg, 'success');
       f.status = novoStatus; f.resolucao_nota = nota;
       fechar(); _melhKpis(); _melhRender();
     }).withFailureHandler(function (e) {

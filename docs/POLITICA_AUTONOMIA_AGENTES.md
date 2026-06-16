@@ -96,6 +96,14 @@ A `resolucao_nota` é curta e escrita para o usuário, não para o dev.
 
 ---
 
+## 4b. Mesa de comando (aprovação pela guia de Melhorias)
+Quando o João muda um relato para APROVADO na guia de Melhorias, o SGA grava
+`TAREFA-FB-xxxxx.md` na pasta `00-Sistema/Tarefas` do Drive — a caixa de
+entrada dos agentes. A camada do relato decide o modo:
+- 🟢🟡 VERDE/AMARELO → **IMPLEMENTAR** na /dev (João revisa e publica);
+- 🔴 VERMELHO (ou sem camada) → **PROPOR** (escrever plano; não codar sem novo OK).
+O agente lê as TAREFA-*.md como prioridade, antes dos FB-*.md novos.
+
 ## 5. O que NÃO muda
 - O João pode, a qualquer momento, estreitar ou alargar estas faixas.
 - Usuários **nunca** trabalham na `/dev`.

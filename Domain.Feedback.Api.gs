@@ -66,7 +66,16 @@ function Api_fbMarcarStatus(id, novoStatus, nota) {
     if (nota !== undefined && nota !== null) patch.resolucao_nota = String(nota);
     updateRowById(FEEDBACK_SHEET, id, patch);
     appendAuditLog('FEEDBACK_STATUS', 'FEEDBACKS', id, novoStatus + (nota ? ' · ' + nota : ''));
-    return { ok: true, data: { id: id, status: novoStatus } };
+
+    // MESA DE COMANDO: ao APROVAR, gera uma tarefa para os agentes na pasta
+    // SISTEMA_TAREFAS do Drive (caixa de entrada deles). Verde/amarelo viram
+    // tarefa de IMPLEMENTAR; vermelho vira tarefa de PROPOR (salvaguarda — não
+    // vira código no impulso). best-effort: não derruba a marcação de status.
+    var tarefa = null;
+    if (novoStatus === 'APROVADO') {
+      try { tarefa = _fbGerarTarefaAgente(id, nota); } catch (eT) { Logger.log('tarefa: ' + eT.message); }
+    }
+    return { ok: true, data: { id: id, status: novoStatus, tarefa: tarefa } };
   } catch (e) {
     return { ok: false, error: e.message };
   }

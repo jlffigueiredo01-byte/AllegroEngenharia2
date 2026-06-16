@@ -124,6 +124,59 @@ function fbSvcMeus() {
   return rows.slice(0, 50);
 }
 
+/* ──────────────── Mesa de comando: tarefa para os agentes ──────────────── */
+
+/**
+ * Gera TAREFA-FB-xxxxx.md na pasta SISTEMA_TAREFAS do Drive quando o João
+ * aprova um relato na guia de Melhorias. A camada decide a instrução:
+ *   VERDE/AMARELO → IMPLEMENTAR na /dev (João revisa e publica);
+ *   VERMELHO      → PROPOR (escrever plano; NÃO implementar sem novo OK).
+ * Camada vazia (ainda não triada) → tratada como VERMELHO por segurança.
+ */
+function _fbGerarTarefaAgente(id, nota) {
+  var rec = null;
+  var rows = sheetToObjects(FEEDBACK_SHEET);
+  for (var i = 0; i < rows.length; i++) { if (rows[i].id === id) { rec = rows[i]; break; } }
+  if (!rec) return null;
+
+  var camada = String(rec.camada || '').toUpperCase();
+  // na dúvida, sobe de camada (regra de ouro da política de autonomia)
+  var modo = (camada === 'VERDE' || camada === 'AMARELO') ? 'IMPLEMENTAR' : 'PROPOR';
+  var emoji = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
+
+  var out = '# TAREFA — ' + rec.id + ' (' + (modo === 'IMPLEMENTAR' ? '🟢🟡 IMPLEMENTAR' : '🔴 PROPOR') + ')\\n\\n';
+  out += '> Aprovada pelo João na guia de Melhorias em ' + nowISO() + '.\\n';
+  out += '> Leia `docs/POLITICA_AUTONOMIA_AGENTES.md` e `PROMPT_TRIAGEM.md` antes.\\n\\n';
+  out += '## Decisão do João\\n';
+  out += '- **Camada:** ' + (camada || 'não classificada → tratar como VERMELHO') + '\\n';
+  out += '- **Modo:** ' + modo + '\\n';
+  if (nota) out += '- **Nota do João:** ' + nota + '\\n';
+  out += '\\n## O que fazer\\n';
+  if (modo === 'IMPLEMENTAR') {
+    out += '1. Implemente a correção/melhoria na `/dev`.\\n';
+    out += '2. Registre o estado anterior (reversível) e rode as validações.\\n';
+    out += '3. NÃO publique para `/exec` — o João revisa e publica.\\n';
+    out += '4. Atualize o status do ' + rec.id + ' na aba FEEDBACKS e cite o ' + rec.id + '.\\n';
+  } else {
+    out += '1. NÃO implemente. Escreva a proposta (causa, impacto pela Interligação\\n';
+    out += '   Total, esforço, risco, esboço da solução) em `PLANO-' + rec.id + '.md`.\\n';
+    out += '2. Aguarde novo OK explícito do João antes de tocar em código.\\n';
+  }
+  out += '\\n## Relato original\\n\\n';
+  out += '### ' + (emoji[rec.tipo] || '') + ' ' + (rec.titulo || '') + '\\n\\n';
+  out += '- **Tipo:** ' + rec.tipo + ' · **Tela:** ' + (rec.tela || '?') + ' · **Por:** ' + (rec.criado_por_nome || rec.criado_por) + '\\n\\n';
+  out += '> ' + String(rec.descricao || '').replace(/\\n/g, '\\n> ') + '\\n';
+  if (rec.anexo_url) out += '\\n📎 [anexo](' + rec.anexo_url + ')\\n';
+
+  var pasta = drvGetFolder('SISTEMA_TAREFAS');
+  if (!pasta) return null;
+  var nomeArq = 'TAREFA-' + rec.id + '.md';
+  var existentes = pasta.getFilesByName(nomeArq);
+  while (existentes.hasNext()) existentes.next().setTrashed(true);
+  var file = pasta.createFile(nomeArq, out, 'text/markdown');
+  return { arquivo: nomeArq, modo: modo, url: file.getUrl() };
+}
+
 /* ──────────────── Geração imediata do .md (um por relato) ──────────────── */
 
 /**
