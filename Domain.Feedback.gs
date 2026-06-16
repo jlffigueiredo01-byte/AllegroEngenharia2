@@ -28,7 +28,8 @@ var FEEDBACK_HEADERS = [
   'tela',                // seção ativa quando reportado
   'urgente',             // TRUE | FALSE
   'status',              // NOVO | COMPILADO | EM_ANALISE | APROVADO | IMPLEMENTADO | RECUSADO
-  'anexo_url', 'anexo_name',
+  'anexo_url', 'anexo_name',  // primeiro anexo (retrocompat)
+  'anexos_json',              // lista completa [{url,name}] (múltiplos anexos)
   'contexto_json',       // user-agent, papel, erros JS recentes, etc.
   'criado_por', 'criado_por_nome', 'criado_em',
   'compilado_em',        // data do .md em que entrou
@@ -48,7 +49,7 @@ function initFeedbackSheet() {
 /**
  * Registra um relato do usuário.
  * @param {Object} data {tipo, titulo, descricao, tela, urgente, contexto,
- *                        anexo:{base64,mime,name}}
+ *                        anexos:[{base64,mime,name}]}  (também aceita anexo único)
  */
 function fbSvcCriar(data) {
   var user = requireAuth();
@@ -57,25 +58,36 @@ function fbSvcCriar(data) {
   }
   var tipo = FEEDBACK_TIPOS[data.tipo] || 'SUGESTAO';
 
-  // anexo (print) → pasta de feedback no Drive
-  var anexoUrl = '', anexoName = '';
-  if (data.anexo && data.anexo.base64) {
+  // anexos (prints) → pasta de feedback no Drive. Aceita lista (data.anexos)
+  // ou um único (data.anexo, retrocompat). Salva todos; o 1º também vai nas
+  // colunas anexo_url/anexo_name para compatibilidade.
+  var lista = [];
+  if (data.anexos && data.anexos.length) lista = data.anexos;
+  else if (data.anexo && data.anexo.base64) lista = [data.anexo];
+
+  var anexos = [];
+  if (lista.length) {
     try {
       var base = drvGetFolder('SISTEMA_FEEDBACK');
       if (base) {
-        var blob = Utilities.newBlob(
-          Utilities.base64Decode(data.anexo.base64),
-          data.anexo.mime || 'image/png',
-          data.anexo.name || ('feedback-' + new Date().getTime() + '.png'));
-        var file = base.createFile(blob);
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        anexoUrl = file.getUrl();
-        anexoName = data.anexo.name || file.getName();
+        for (var ai = 0; ai < lista.length; ai++) {
+          var a = lista[ai];
+          if (!a || !a.base64) continue;
+          var blob = Utilities.newBlob(
+            Utilities.base64Decode(a.base64),
+            a.mime || 'image/png',
+            a.name || ('feedback-' + new Date().getTime() + '-' + ai + '.png'));
+          var file = base.createFile(blob);
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          anexos.push({ url: file.getUrl(), name: a.name || file.getName() });
+        }
       }
     } catch (eDrive) {
       Logger.log('fbSvcCriar anexo: ' + eDrive.message);
     }
   }
+  var anexoUrl = anexos.length ? anexos[0].url : '';
+  var anexoName = anexos.length ? anexos[0].name : '';
 
   var id = 'FB-' + String(getAndIncrementCounter('FEEDBACK_COUNTER')).padStart(5, '0');
   var now = nowISO();
@@ -87,6 +99,7 @@ function fbSvcCriar(data) {
     urgente: data.urgente ? 'TRUE' : 'FALSE',
     status: 'NOVO',
     anexo_url: anexoUrl, anexo_name: anexoName,
+    anexos_json: JSON.stringify(anexos),
     contexto_json: JSON.stringify(data.contexto || {}),
     criado_por: user.id, criado_por_nome: user.name || user.id, criado_em: now,
     compilado_em: '', camada: '', resolucao_nota: '', atualizado_em: now
@@ -201,7 +214,9 @@ function _fbMontarMarkdownRelato(r) {
   if (r.urgente === 'TRUE') out += '- 🚨 **URGENTE — está impedindo o trabalho**\n';
   out += '- **Status:** ' + r.status + '\n\n';
   out += '## Descrição\n\n> ' + String(r.descricao || '').replace(/\n/g, '\n> ') + '\n';
-  if (r.anexo_url) out += '\n📎 [anexo](' + r.anexo_url + ')\n';
+  var _anexos = []; try { _anexos = JSON.parse(r.anexos_json || '[]'); } catch (e) {}
+  if (!_anexos.length && r.anexo_url) _anexos = [{ url: r.anexo_url, name: r.anexo_name || 'anexo' }];
+  for (var _ai = 0; _ai < _anexos.length; _ai++) out += '\n📎 [' + (_anexos[_ai].name || 'anexo') + '](' + _anexos[_ai].url + ')\n';
   var ctx = {};
   try { ctx = JSON.parse(r.contexto_json || '{}'); } catch (e) {}
   if (ctx.jsErrors && ctx.jsErrors.length) {

@@ -24,12 +24,12 @@ function _fbInjectButton() {
   document.getElementById('fb-fab').addEventListener('click', _fbOpen);
 }
 
-var _fbAnexo = null;
+var _fbAnexos = [];
 
 function _fbOpen() {
   var old = document.getElementById('fb-modal');
   if (old) old.parentNode.removeChild(old);
-  _fbAnexo = null;
+  _fbAnexos = [];
   document.body.insertAdjacentHTML('beforeend',
     '<div class="modal-backdrop" id="fb-modal" style="display:flex;z-index:1200">' +
       '<div class="modal" style="max-width:520px;width:94%;max-height:92vh;overflow:auto">' +
@@ -45,7 +45,7 @@ function _fbOpen() {
           '<label style="font-size:12px;display:block">Título (opcional)<br><input class="form-input" id="fb-titulo" placeholder="resumo em poucas palavras"></label>' +
           '<label style="font-size:12px;display:block;margin-top:8px">O que aconteceu? *<br><textarea class="form-input" id="fb-desc" rows="4" placeholder="descreva o erro, a ideia ou a melhoria. quanto mais detalhe, melhor a análise."></textarea></label>' +
           '<div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
-            '<label class="btn btn-ghost btn-sm" style="cursor:pointer">📎 Anexar print<input type="file" id="fb-file" accept="image/*" style="display:none"></label>' +
+            '<label class="btn btn-ghost btn-sm" style="cursor:pointer">📎 Anexar prints<input type="file" id="fb-file" accept="image/*" multiple style="display:none"></label>' +
             '<span id="fb-file-name" style="font-size:12px;color:#98a2b3"></span>' +
             '<label style="font-size:12.5px;margin-left:auto;display:flex;align-items:center;gap:6px;cursor:pointer">' +
               '<input type="checkbox" id="fb-urgente"> 🚨 está me impedindo de trabalhar</label>' +
@@ -75,18 +75,25 @@ function _fbOpen() {
   }
 
   document.getElementById('fb-file').addEventListener('change', function () {
-    var f = this.files && this.files[0];
-    if (!f) return;
-    if (f.size > 6 * 1024 * 1024) { showAlert('Imagem acima de 6 MB.', 'warning'); this.value = ''; return; }
-    var reader = new FileReader();
-    reader.onload = function () {
-      _fbAnexo = { base64: String(reader.result).split(',')[1], mime: f.type, name: f.name };
-      document.getElementById('fb-file-name').textContent = f.name;
-    };
-    reader.readAsDataURL(f);
+    var files = this.files;
+    if (!files || !files.length) return;
+    var pendentes = files.length;
+    for (var i = 0; i < files.length; i++) {
+      (function (f) {
+        if (f.size > 6 * 1024 * 1024) { showAlert('"' + f.name + '" acima de 6 MB — ignorado.', 'warning'); pendentes--; _fbAtualizaListaAnexos(); return; }
+        var reader = new FileReader();
+        reader.onload = function () {
+          _fbAnexos.push({ base64: String(reader.result).split(',')[1], mime: f.type, name: f.name });
+          pendentes--; _fbAtualizaListaAnexos();
+        };
+        reader.readAsDataURL(f);
+      })(files[i]);
+    }
+    this.value = ''; // permite escolher mais arquivos depois
   });
 
   document.getElementById('fb-meus').addEventListener('click', _fbMeus);
+  _fbAtualizaListaAnexos();
   document.getElementById('fb-enviar').addEventListener('click', function () {
     var desc = document.getElementById('fb-desc').value;
     if (!desc.trim()) { showAlert('Descreva o que aconteceu.', 'warning'); return; }
@@ -103,7 +110,7 @@ function _fbOpen() {
       descricao: desc,
       tela: (typeof ALLEGRO !== 'undefined' ? ALLEGRO.activeSection : '') || '',
       urgente: document.getElementById('fb-urgente').checked,
-      anexo: _fbAnexo,
+      anexos: _fbAnexos,
       contexto: {
         userAgent: navigator.userAgent,
         papel: (typeof ALLEGRO !== 'undefined' && ALLEGRO.currentUser) ? ALLEGRO.currentUser.role : '',
@@ -113,6 +120,26 @@ function _fbOpen() {
       }
     });
   });
+}
+
+function _fbAtualizaListaAnexos() {
+  var span = document.getElementById('fb-file-name');
+  if (!span) return;
+  if (!_fbAnexos.length) { span.textContent = ''; return; }
+  span.innerHTML = '';
+  for (var i = 0; i < _fbAnexos.length; i++) {
+    (function (idx) {
+      var tag = document.createElement('span');
+      tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#eef2f7;border-radius:6px;padding:2px 6px;margin:2px;font-size:11px';
+      tag.appendChild(document.createTextNode('🖼️ ' + (_fbAnexos[idx].name || 'arquivo')));
+      var x = document.createElement('button');
+      x.textContent = '✕'; x.title = 'remover';
+      x.style.cssText = 'border:none;background:none;cursor:pointer;color:#94a3b8;font-size:11px';
+      x.addEventListener('click', function () { _fbAnexos.splice(idx, 1); _fbAtualizaListaAnexos(); });
+      tag.appendChild(x);
+      span.appendChild(tag);
+    })(i);
+  }
 }
 
 function _fbMeus() {
