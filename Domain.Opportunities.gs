@@ -148,7 +148,7 @@ function Api_updateOpportunityStatus(id, status, note) {
     if (!result.ok) throw new Error(result.error);
     var prevStatus = result.data.status || '';
 
-    updateRowById(OPPORTUNITIES_SHEET, id, { status: status });
+    updateRowByIdSafe(OPPORTUNITIES_SHEET, id, { status: status });
 
     var description = 'Status: ' + prevStatus + ' → ' + status;
     if (note) description += '. Note: ' + note;
@@ -181,7 +181,7 @@ function Api_updateOpportunity(id, data) {
       }
     }
 
-    updateRowById(OPPORTUNITIES_SHEET, id, updates);
+    updateRowByIdSafe(OPPORTUNITIES_SHEET, id, updates);
 
     appendAuditLog('UPDATE', 'OPPORTUNITY', id, 'Fields updated: ' + Object.keys(updates).join(', '));
 
@@ -211,7 +211,7 @@ function Api_oppSavePoints(oppId, points) {
         throw new Error('Ponto ' + (i + 1) + ': comprimento_m é obrigatório.');
       }
     }
-    updateRowById(OPPORTUNITIES_SHEET, oppId, {
+    updateRowByIdSafe(OPPORTUNITIES_SHEET, oppId, {
       points_json: JSON.stringify(points),
       updated_at: nowISO()
     });
@@ -328,7 +328,7 @@ function Api_oppGerarProposta(oppId, extras) {
     // --- Atualiza oportunidade com resumo de precificação ---
     var summary = 'R$' + pricingResult.total_proposta_brl.toFixed(2) +
       ' (margem: ' + (pricingResult.margem_global * 100).toFixed(1) + '%)';
-    updateRowById(OPPORTUNITIES_SHEET, oppId, {
+    updateRowByIdSafe(OPPORTUNITIES_SHEET, oppId, {
       pricing_summary: summary,
       updated_at: nowISO()
     });

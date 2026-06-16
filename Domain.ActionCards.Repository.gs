@@ -5,7 +5,7 @@
 ═══════════════════════════════════════════════════════════════ */
 
 function _nextCardId() {
-  return 'ACT-' + String(getAndIncrementCounter('ACTION_CARD_COUNTER')).padStart(5, '0');
+  return generateUniqueSequentialId(AC_SHEET, 'ACTION_CARD_COUNTER', function (n) { return 'ACT-' + String(n).padStart(5, '0'); });
 }
 
 function _nextHistoryId() {

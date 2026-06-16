@@ -93,7 +93,7 @@ function Api_usersUpdate(id, updates) {
       patch.role = updates.role;
     }
     if (!Object.keys(patch).length) throw new Error('Nada para atualizar.');
-    updateRowById(USERS_SHEET, id, patch);
+    updateRowByIdSafe(USERS_SHEET, id, patch);
     appendAuditLog('UPDATE', 'USERS', id, JSON.stringify(patch));
     return { ok: true, data: { id: id } };
   } catch (e) {
@@ -111,7 +111,7 @@ function Api_usersSetActive(id, active) {
     if (id === me.id && !active) throw new Error('Você não pode desativar a si mesmo.');
     var u = findRowByValue(USERS_SHEET, 'id', id);
     if (!u) throw new Error('Usuário não encontrado: ' + id);
-    updateRowById(USERS_SHEET, id, { active: active ? 'TRUE' : 'FALSE' });
+    updateRowByIdSafe(USERS_SHEET, id, { active: active ? 'TRUE' : 'FALSE' });
     appendAuditLog(active ? 'REACTIVATE' : 'DEACTIVATE', 'USERS', id, u.name);
     return { ok: true, data: { id: id, active: active } };
   } catch (e) {

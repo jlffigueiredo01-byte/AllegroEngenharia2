@@ -226,7 +226,7 @@ function Api_deleteExpense(id) {
   try {
     requireRole(['DIRETOR_TECNICO', 'FINANCEIRO_ADMIN']);
     if (!id) throw new Error('id é obrigatório.');
-    updateRowById(EXPENSES_SHEET, id, { status: 'DELETED', atualizado_em: nowISO() });
+    updateRowByIdSafe(EXPENSES_SHEET, id, { status: 'DELETED', atualizado_em: nowISO() });
     appendAuditLog('DELETE', 'EXPENSE', id, 'exclusão suave');
     return { ok: true, data: { id: id } };
   } catch (e) {

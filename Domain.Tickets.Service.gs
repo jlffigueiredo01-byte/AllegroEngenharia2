@@ -406,7 +406,7 @@ function _tktAddUpdate(ticketId, tipo, texto, anexoUrl, anexoName, valor) {
   for (var i = 0; i < TICKET_UPDATES_HEADERS.length; i++) row.push(rec[TICKET_UPDATES_HEADERS[i]]);
   sh.appendRow(row);
   // toca o updated_at do ticket
-  try { updateRowById(TICKETS_SHEET, ticketId, { updated_at: rec.timestamp }); } catch (e) {}
+  try { updateRowByIdSafe(TICKETS_SHEET, ticketId, { updated_at: rec.timestamp }); } catch (e) {}
   return rec;
 }
 
@@ -440,7 +440,7 @@ function tktSvcAnexar(ticketId, base64Data, mimeType, fileName) {
     var it = base.getFoldersByName(ticketId);
     var folder = it.hasNext() ? it.next() : base.createFolder(ticketId);
     folderId = folder.getId();
-    updateRowById(TICKETS_SHEET, ticketId, { drive_folder_id: folderId });
+    updateRowByIdSafe(TICKETS_SHEET, ticketId, { drive_folder_id: folderId });
   }
   var blob = Utilities.newBlob(
     Utilities.base64Decode(base64Data), mimeType || 'application/octet-stream',
@@ -487,7 +487,7 @@ function tktSvcLancarCusto(ticketId, descricao, valor) {
       total += Number(updates[i].valor || 0);
     }
   }
-  updateRowById(TICKETS_SHEET, ticketId, { custo_total: Math.round(total * 100) / 100, updated_at: nowISO() });
+  updateRowByIdSafe(TICKETS_SHEET, ticketId, { custo_total: Math.round(total * 100) / 100, updated_at: nowISO() });
   rec.custo_total = total;
   return rec;
 }
@@ -516,7 +516,7 @@ function tktSvcClassificarEFechar(ticketId, origemErro, cobrancaDe, licao) {
     ? (cobranca === 'ALLEGRO' ? 'ABSORVIDO' : 'PENDENTE')
     : 'ABSORVIDO';
 
-  updateRowById(TICKETS_SHEET, ticketId, {
+  updateRowByIdSafe(TICKETS_SHEET, ticketId, {
     origem_erro:     origemErro,
     cobranca_de:     cobranca,
     cobranca_status: cobrancaStatus,
@@ -540,7 +540,7 @@ function tktSvcMarcarCobrado(ticketId) {
   var t = rows[0];
   if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
   if (t.cobranca_status !== 'PENDENTE') throw new Error('Este chamado não tem cobrança pendente.');
-  updateRowById(TICKETS_SHEET, ticketId, { cobranca_status: 'COBRADO', updated_at: nowISO() });
+  updateRowByIdSafe(TICKETS_SHEET, ticketId, { cobranca_status: 'COBRADO', updated_at: nowISO() });
   _tktAddUpdate(ticketId, 'SISTEMA', '💸 Cobrança de R$ ' + Number(t.custo_total || 0).toFixed(2) +
     ' (' + t.cobranca_de + ') marcada como realizada.');
   return { id: ticketId, cobranca_status: 'COBRADO' };

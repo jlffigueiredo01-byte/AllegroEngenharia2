@@ -32,3 +32,20 @@ Agenda, BaseInstalada, Caixa, Compliance, Compras, Email, Engenharia, Estoque,
 Frota, Horas, NotasFiscais, Projetos (parcial).
 Ao ativar cada módulo, aplicar sanitizeForClient(...) no retorno (envolver o
 data: de listagens/getById). Padrão já estabelecido nos domínios vivos.
+
+## Concorrência — Níveis 1 e 2 (2026-06-16)
+4 usuários simultâneos. Auditoria de locks:
+- NÍVEL 1: criado updateRowByIdSafe (com lock) em Core.Spreadsheet.gs.
+  Aplicado SÓ nas escritas "soltas" (fora de lock): Companies, ConfigPanel,
+  Contacts, Expenses, Feedback.Api, Opportunities, Products, Tickets.Service,
+  Users, Workflow.Api. As escritas dentro dos Repository.gs continuam usando
+  updateRowById cru (já têm lock próprio — usar Safe lá causaria DEADLOCK,
+  pois o LockService do GAS não é reentrante).
+- NÍVEL 2: helper generateUniqueSequentialId (Core.Config.gs) generaliza a
+  guarda de unicidade dos tickets. Aplicado em: Proposals (inline, gera
+  id+number juntos), Companies, ActionCards (cards), Contacts.
+
+DÍVIDA (Nível 2 não aplicado — baixo volume/risco): Agenda, BaseInstalada,
+Caixa, Compliance, Compras, Engenharia, Horas, NotasFiscais, Projetos e os
+history/append-only (ACH, TKU). Aplicar generateUniqueSequentialId quando
+cada um entrar em uso intenso. Tickets já tinham a guarda própria.

@@ -64,7 +64,7 @@ function Api_fbMarcarStatus(id, novoStatus, nota) {
     if (validos.indexOf(novoStatus) === -1) throw new Error('Status inválido: ' + novoStatus);
     var patch = { status: novoStatus, atualizado_em: nowISO() };
     if (nota !== undefined && nota !== null) patch.resolucao_nota = String(nota);
-    updateRowById(FEEDBACK_SHEET, id, patch);
+    updateRowByIdSafe(FEEDBACK_SHEET, id, patch);
     appendAuditLog('FEEDBACK_STATUS', 'FEEDBACKS', id, novoStatus + (nota ? ' · ' + nota : ''));
 
     // MESA DE COMANDO: ao APROVAR, gera uma tarefa para os agentes na pasta

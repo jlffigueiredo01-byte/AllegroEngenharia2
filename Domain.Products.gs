@@ -212,7 +212,7 @@ function Api_updateProductPrice(code, fields) {
       return {ok: false, error: 'No valid price fields provided'};
     }
 
-    updateRowById(PRODUCTS_SHEET, target.id, updates);
+    updateRowByIdSafe(PRODUCTS_SHEET, target.id, updates);
     appendAuditLog('PRICE_UPDATE', 'PRODUCTS', code, JSON.stringify(updates));
     return {ok: true};
   } catch (e) {

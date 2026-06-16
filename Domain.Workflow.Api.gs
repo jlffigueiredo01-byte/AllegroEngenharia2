@@ -118,7 +118,7 @@ function Api_wfConcluirCard(cardId, nota) {
     }
 
     var agora = nowISO();
-    updateRowById('ACTION_CARDS', cardId, {
+    updateRowByIdSafe('ACTION_CARDS', cardId, {
       status:       'CONCLUIDO',
       closed_by:    user.id,
       closed_at:    agora,

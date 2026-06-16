@@ -97,7 +97,7 @@ function _companiesCalcDistancia(companyId, endereco) {
       var leg = directions.routes[0].legs[0];
       var distKm  = leg.distance.value / 1000;
       var tempoMin = Math.round(leg.duration.value / 60);
-      updateRowById(COMPANIES_SHEET, companyId, {
+      updateRowByIdSafe(COMPANIES_SHEET, companyId, {
         distancia_base_km: distKm,
         tempo_viagem_min:  tempoMin
       });
@@ -229,7 +229,7 @@ function Api_createCompany(data) {
     var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
     if (!data || !data.name) throw new Error('name é obrigatório');
 
-    var id = 'EMP-' + getAndIncrementCounter('COMPANY_COUNTER');
+    var id = generateUniqueSequentialId(COMPANIES_SHEET, 'COMPANY_COUNTER', function (n) { return 'EMP-' + n; });
     var now = nowISO();
     var address = String(data.address || '').trim();
 
@@ -258,7 +258,7 @@ function Api_createCompany(data) {
     if (address) {
       var geo = _companiesGeocode(address);
       if (geo) {
-        updateRowById(COMPANIES_SHEET, id, { lat: geo.lat, lng: geo.lng });
+        updateRowByIdSafe(COMPANIES_SHEET, id, { lat: geo.lat, lng: geo.lng });
       }
       _companiesCalcDistancia(id, address);
     }
@@ -293,14 +293,14 @@ function Api_updateCompany(id, data) {
 
     if (Object.keys(updates).length === 0) throw new Error('Nenhum campo para atualizar');
 
-    updateRowById(COMPANIES_SHEET, id, updates);
+    updateRowByIdSafe(COMPANIES_SHEET, id, updates);
     appendAuditLog('UPDATE', 'COMPANY', id, JSON.stringify(updates));
 
     // Re-geocodificar se endereço foi alterado
     if (updates.address) {
       var geo = _companiesGeocode(updates.address);
       if (geo) {
-        updateRowById(COMPANIES_SHEET, id, { lat: geo.lat, lng: geo.lng });
+        updateRowByIdSafe(COMPANIES_SHEET, id, { lat: geo.lat, lng: geo.lng });
       }
       _companiesCalcDistancia(id, updates.address);
     }
@@ -321,7 +321,7 @@ function Api_deactivateCompany(id) {
     var user = requireRole(['DIRETOR_TECNICO']);
     if (!id) throw new Error('id obrigatório');
 
-    updateRowById(COMPANIES_SHEET, id, { active: 'FALSE' });
+    updateRowByIdSafe(COMPANIES_SHEET, id, { active: 'FALSE' });
     appendAuditLog('DEACTIVATE', 'COMPANY', id, '');
 
     return { ok: true };
@@ -366,7 +366,7 @@ function Api_companiesGeocodeBatch() {
 
       var geo = _companiesGeocode(query);
       if (geo) {
-        updateRowById(COMPANIES_SHEET, c.id, { lat: geo.lat, lng: geo.lng });
+        updateRowByIdSafe(COMPANIES_SHEET, c.id, { lat: geo.lat, lng: geo.lng });
         count++;
       }
       Utilities.sleep(150);

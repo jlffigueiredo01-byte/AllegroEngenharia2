@@ -130,10 +130,22 @@ function propSvcCreate(data) {
     throw new Error('type inválido: ' + type + '. Esperado: ' + VALID_TYPES.join(', '));
   }
 
-  var counter  = getAndIncrementCounter('PROPOSAL_COUNTER');
+  // Guarda de unicidade (Nível 2): o counter tem lock, mas o cache do CONFIG
+  // pode defasar; garante que o id da proposta não colida com um já existente.
   var year     = new Date().getFullYear();
-  var id       = 'PROP-' + year + '-' + String(counter).padStart(4, '0');
-  var number   = String(year) + String(counter).padStart(4, '0');
+  var counter, id, number;
+  var _propIds = {};
+  try {
+    var _pr = sheetToObjects(PROPOSALS_SHEET);
+    for (var _pi = 0; _pi < _pr.length; _pi++) _propIds[String(_pr[_pi].id)] = true;
+  } catch (e) {}
+  var _guarda = 0;
+  do {
+    counter = getAndIncrementCounter('PROPOSAL_COUNTER');
+    id      = 'PROP-' + year + '-' + String(counter).padStart(4, '0');
+    number  = String(year) + String(counter).padStart(4, '0');
+    _guarda++;
+  } while (_propIds[id] && _guarda < 1000);
   var now      = nowISO();
 
   var items       = Array.isArray(data.items) ? data.items : [];

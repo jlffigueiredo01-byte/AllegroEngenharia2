@@ -71,7 +71,7 @@ function Api_cfgToggleUser(id) {
     }
     var currentActive = String(row.active).toUpperCase() === 'TRUE';
     var newActive = !currentActive;
-    updateRowById(USERS_SHEET, id, { active: newActive ? 'TRUE' : 'FALSE' });
+    updateRowByIdSafe(USERS_SHEET, id, { active: newActive ? 'TRUE' : 'FALSE' });
     appendAuditLog(
       'UPDATE',
       'USERS',
@@ -100,7 +100,7 @@ function Api_cfgUpdateUser(id, data) {
     if (data.name)  updates.name  = data.name.trim();
     if (data.email) updates.email = data.email.trim().toLowerCase();
     if (data.role)  updates.role  = data.role;
-    updateRowById(USERS_SHEET, id, updates);
+    updateRowByIdSafe(USERS_SHEET, id, updates);
     appendAuditLog('UPDATE', 'USERS', id, 'Dados do usuário atualizados pelo painel de config.');
     return { ok: true };
   } catch (e) {

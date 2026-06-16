@@ -134,7 +134,7 @@ function Api_createContact(data) {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
     if (!data || !data.name) throw new Error('name is required');
 
-    var id  = 'CNT-' + getAndIncrementCounter('CONTACT_COUNTER');
+    var id  = generateUniqueSequentialId(CONTACTS_SHEET, 'CONTACT_COUNTER', function (n) { return 'CNT-' + n; });
     var now = nowISO();
 
     var obj = {
@@ -179,7 +179,7 @@ function Api_updateContact(id, data) {
       }
     }
 
-    updateRowById(CONTACTS_SHEET, id, updates);
+    updateRowByIdSafe(CONTACTS_SHEET, id, updates);
     appendAuditLog('UPDATE', 'CONTACT', id, updates);
 
     return { ok: true };
@@ -198,7 +198,7 @@ function Api_deactivateContact(id) {
     requireRole(['DIRETOR_TECNICO']);
     if (!id) throw new Error('id is required');
 
-    updateRowById(CONTACTS_SHEET, id, { active: 'FALSE' });
+    updateRowByIdSafe(CONTACTS_SHEET, id, { active: 'FALSE' });
     appendAuditLog('DEACTIVATE', 'CONTACT', id, {});
 
     return { ok: true };

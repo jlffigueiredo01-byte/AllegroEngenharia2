@@ -88,3 +88,20 @@ function updateRowById(sheetName, id, updates) {
   }
   return false;
 }
+
+/**
+ * Versão protegida por lock de updateRowById. Use SOMENTE em escritas que NÃO
+ * estão dentro de um bloco que já segurou LockService.getScriptLock() — senão
+ * dá deadlock (o LockService do GAS não é reentrante). As funções nos
+ * Repository.gs que já pegam lock devem continuar chamando updateRowById cru.
+ * Serializa edições concorrentes (evita "lost update" com vários usuários).
+ */
+function updateRowByIdSafe(sheetName, id, updates) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    return updateRowById(sheetName, id, updates);
+  } finally {
+    lock.releaseLock();
+  }
+}
