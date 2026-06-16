@@ -128,7 +128,7 @@
         </a>
           </div>
         </div>
-        <div class="nav-group" data-group="operacoes">
+        <div class="nav-group open" data-group="operacoes">
           <button class="nav-group-head" onclick="toggleNavGroup(this)">
             <span>Operações</span><span class="nav-caret">▾</span>
           </button>
@@ -147,7 +147,7 @@
         </a>
           </div>
         </div>
-        <div class="nav-group" data-group="suprimentos">
+        <div class="nav-group open" data-group="suprimentos">
           <button class="nav-group-head" onclick="toggleNavGroup(this)">
             <span>Suprimentos</span><span class="nav-caret">▾</span>
           </button>
@@ -160,7 +160,7 @@
         </a>
           </div>
         </div>
-        <div class="nav-group" data-group="financeiro">
+        <div class="nav-group open" data-group="financeiro">
           <button class="nav-group-head" onclick="toggleNavGroup(this)">
             <span>Financeiro</span><span class="nav-caret">▾</span>
           </button>
@@ -177,6 +177,9 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="Alternar modo claro/escuro">
+          <span id="theme-toggle-icon">🌙</span> <span id="theme-toggle-label">Modo escuro</span>
+        </button>
         <div class="sidebar-user" id="sidebar-user">
           <div class="sidebar-user-avatar" id="sidebar-avatar">?</div>
           <div class="sidebar-user-info">

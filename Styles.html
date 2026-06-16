@@ -1410,8 +1410,8 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .nav-caret { transition: transform .18s ease; font-size: 10px; }
 .nav-group:not(.open) .nav-caret { transform: rotate(-90deg); }
 .nav-group-items { overflow: hidden; max-height: 0; transition: max-height .22s ease; }
-.nav-group.open .nav-group-items { max-height: 320px; }
-.nav-group-items .nav-item { padding-left: 22px; }
+.nav-group.open .nav-group-items { max-height: 500px; }
+.nav-group-items .nav-item { padding-left: 22px; padding-top: 7px; padding-bottom: 7px; font-size: 13.5px; }
 
 /* ── Dashboard v2 ─────────────────────────────────────── */
 .kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -1463,5 +1463,65 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .modal .card { box-shadow: 0 20px 60px rgba(16, 24, 40, 0.3); }
 @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modalSlideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ── Modo escuro (FB-00006) — overrides das variáveis de tema ── */
+body.theme-dark {
+  --color-bg:            #0f141b;
+  --color-surface:       #1a212b;
+  --color-border:        #2a3441;
+  --color-border-light:  #232d39;
+  --color-text:          #e4e9f0;
+  --color-text-muted:    #9aa7b8;
+  --color-text-faint:    #6b7888;
+  --color-primary-light: #1a2740;
+  --color-success-bg:    #0c2420;
+  --color-warning-bg:    #2a2310;
+  --color-danger-bg:     #2a1414;
+  --color-info-bg:       #0c2030;
+}
+body.theme-dark {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+/* Cobertura das cores claras mais comuns escritas inline nas telas.
+   Não é exaustivo (há tons pontuais hardcoded), mas cobre fundo, cartões,
+   tabelas e modais — o grosso da interface. */
+body.theme-dark .main-content,
+body.theme-dark .content-area,
+body.theme-dark #section-content { background: var(--color-bg); }
+body.theme-dark .card,
+body.theme-dark .kpi,
+body.theme-dark .modal .card,
+body.theme-dark .data-table,
+body.theme-dark .table-wrap { background: var(--color-surface); color: var(--color-text); }
+body.theme-dark .data-table th { background: #141b24; color: var(--color-text-muted); }
+body.theme-dark .data-table td,
+body.theme-dark .data-table th { border-color: var(--color-border); }
+body.theme-dark .data-table tr:hover td { background: #20293448; }
+body.theme-dark .form-input,
+body.theme-dark input,
+body.theme-dark textarea,
+body.theme-dark select {
+  background: #141b24; color: var(--color-text); border-color: var(--color-border);
+}
+body.theme-dark .form-input::placeholder { color: var(--color-text-faint); }
+body.theme-dark [style*="background:#fff"],
+body.theme-dark [style*="background:#ffffff"],
+body.theme-dark [style*="background:#f8fafc"],
+body.theme-dark [style*="background:#f4f6f8"],
+body.theme-dark [style*="background:#f1f5f9"] {
+  background: var(--color-surface) !important;
+}
+body.theme-dark [style*="background:#f8fafc"] { background: #141b24 !important; }
+body.theme-dark .btn-ghost { color: var(--color-text-muted); }
+
+/* Toggle de tema no rodapé da sidebar */
+.theme-toggle-btn {
+  width: 100%; display: flex; align-items: center; gap: 8px; justify-content: center;
+  background: none; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+  color: #a8bbd1; cursor: pointer; padding: 7px; margin-top: 8px;
+  font-family: inherit; font-size: 12px; transition: background .15s;
+}
+.theme-toggle-btn:hover { background: rgba(255,255,255,0.06); }
 
 </style>

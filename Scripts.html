@@ -219,6 +219,31 @@ function doLogout() {
 /**
  * Exibe a seção solicitada na área de conteúdo principal.
  */
+function toggleTheme() {
+  var dark = !document.body.classList.contains('theme-dark');
+  _applyTheme(dark);
+  try { localStorage.setItem('sga-theme', dark ? 'dark' : 'light'); } catch (e) {}
+}
+
+function _applyTheme(dark) {
+  document.body.classList.toggle('theme-dark', dark);
+  var icon = document.getElementById('theme-toggle-icon');
+  var label = document.getElementById('theme-toggle-label');
+  if (icon) icon.textContent = dark ? '☀️' : '🌙';
+  if (label) label.textContent = dark ? 'Modo claro' : 'Modo escuro';
+}
+
+// Aplica a preferência salva assim que a página carrega
+(function () {
+  try {
+    var saved = localStorage.getItem('sga-theme');
+    if (saved === 'dark') {
+      if (document.body) _applyTheme(true);
+      else document.addEventListener('DOMContentLoaded', function () { _applyTheme(true); });
+    }
+  } catch (e) {}
+})();
+
 function toggleNavGroup(head) {
   var g = head.parentNode;
   if (g) g.classList.toggle('open');
