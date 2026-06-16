@@ -23,12 +23,13 @@ function Api_fbMeus() {
   }
 }
 
-/** Regrava o .md do dia agora (teste manual). O arquivo já é atualizado a
- *  cada relato; isto força a regravação sob demanda. Só diretor técnico. */
+/** Regrava TODOS os relatos NOVO como arquivos FB-xxxxx.md (teste/recuperação).
+ *  Cada relato já gera seu .md na criação; isto força a regravação de todos os
+ *  pendentes de uma vez. Só diretor técnico. */
 function Api_fbCompilarAgora() {
   try {
     requireRole(['DIRETOR_TECNICO']);
-    return { ok: true, data: _fbRegravarArquivoDoDia() };
+    return { ok: true, data: _fbRegravarTodosNovos() };
   } catch (e) {
     return { ok: false, error: e.message };
   }

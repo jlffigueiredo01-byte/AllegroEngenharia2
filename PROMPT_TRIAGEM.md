@@ -5,20 +5,21 @@ nesta tarefa é **triar** o feedback dos usuários e **propor** um plano — nun
 implementar nem fazer merge sem aprovação explícita do João.
 
 ## Entrada
-Arquivos `feedback-AAAA-MM-DD.md` na pasta de feedback sincronizada do Drive
-(`00-Sistema/Feedback`, que o Google Drive para Desktop espelha na máquina do
-João) ainda não processados — isto é, sem um `PLANO-AAAA-MM-DD.md` ao lado.
-Cada arquivo agrupa os relatos do dia, classificados pelos usuários como
-🐛 ERRO, 💡 SUGESTÃO ou ⬆️ MELHORIA, com tela de origem, autor, anexos (links
-do Drive) e — quando houver — erros JS capturados na sessão.
+Arquivos **`FB-xxxxx.md`** (um por relato) na pasta de feedback sincronizada do
+Drive (`00-Sistema/Feedback`, espelhada pelo Google Drive para Desktop) ainda
+não triados. Um relato está pendente se o seu `FB-xxxxx` ainda não aparece em
+nenhum `PLANO-*.md`. Cada arquivo traz um relato — classificado pelo usuário
+como 🐛 ERRO, 💡 SUGESTÃO ou ⬆️ MELHORIA — com tela de origem, autor, anexo
+(link do Drive) e, quando houver, erros JS capturados na sessão.
 
 O código-fonte vem por `clasp pull` do Apps Script (fluxo atual do João).
 Investigue o feedback contra esse código local.
 
-**Importante:** o `.md` do dia é reescrito a cada novo relato (geração por
-ação), contendo todos os relatos `NOVO` daquele dia já consolidados e
-deduplicados. Ao pegar um relato para triar, avance o `status` na aba
-FEEDBACKS (NOVO → EM_ANALISE) para ele sair do arquivo do dia seguinte.
+**Importante:** cada relato vira um arquivo `FB-xxxxx.md` na hora em que é
+enviado (um por relato — robusto, fácil de detectar). Agrupe relatos
+semelhantes no seu PLANO (dedupe na triagem, não na captura). Ao triar um
+relato, avance o `status` na aba FEEDBACKS (NOVO → EM_ANALISE) e cite o
+`FB-xxxxx` no PLANO — assim ele deixa de ser pendente.
 
 ## O que fazer
 Para cada relato (ou grupo de relatos duplicados):

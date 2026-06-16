@@ -65,9 +65,9 @@ vínculos clicáveis, **lançamento manual** além de foto-IA, página dedicada)
 
 **Ciclo de feedback (fase 1)** — `Domain.Feedback.*` + `FeedbackUI.html`: botão
 flutuante 💬 captura erro/sugestão/melhoria com print e contexto automático;
-o `.md` do dia é reescrito **a cada relato** (imediato, consolidado, com
-dedupe) na pasta **`00-Sistema/Feedback` do Drive** (NÃO GitHub — ver §6); no
-fim do dia, **e-mail de resumo** para o João; "Meus reportes" fecha o ciclo. Triagem pelos
+**um arquivo `FB-xxxxx.md` por relato** é gravado na hora na pasta
+**`00-Sistema/Feedback` do Drive** (NÃO GitHub — ver §6; robusto, sem filtro de
+data); no fim do dia, **e-mail de resumo**; "Meus reportes" fecha o ciclo. Triagem pelos
 agentes via `PROMPT_TRIAGEM.md`.
 
 ---

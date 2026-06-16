@@ -16,8 +16,8 @@ Antes de começar, leia:
 3. PROMPT_TRIAGEM.md             (como triar)
 
 Depois:
-1. Liste os arquivos feedback-*.md NOVOS na pasta do Drive
-   (sem PLANO-*.md correspondente).
+1. Liste os arquivos FB-*.md na pasta do Drive cujo FB-xxxxx ainda
+   NÃO aparece em nenhum PLANO-*.md (= ainda não triados).
 2. Para CADA relato:
    - Classifique a camada: VERDE / AMARELO / VERMELHO.
    - VERDE   → corrija na /dev, registre o estado anterior (reversível),

@@ -1,9 +1,9 @@
 // =============================================================================
 // Domain.Feedback.gs — SGA
-// Ciclo de construção colaborativa (fase 1): captura → o .md do dia é
-// reescrito A CADA relato (imediato, consolidado, com dedupe) na pasta do
-// Drive → no fim do dia, e-mail de resumo para o João. Os agentes do Claude
-// Code leem o .md do dia quando rodam a triagem.
+// Ciclo de construção colaborativa (fase 1): captura → UM arquivo FB-xxxxx.md
+// por relato é gravado na hora na pasta do Drive (robusto, sem filtro de data)
+// → no fim do dia, e-mail de resumo para o João. Os agentes do Claude Code
+// leem os FB-*.md ainda não triados (sem PLANO correspondente).
 //
 // Entidades:
 //   FEEDBACKS         um relato por linha (erro/sugestão/melhoria)
@@ -108,10 +108,10 @@ function fbSvcCriar(data) {
     } catch (eMail) { Logger.log('fbSvcCriar email: ' + eMail.message); }
   }
 
-  // GERAÇÃO IMEDIATA: reescreve o .md do dia com TODOS os relatos de hoje,
-  // já consolidado e deduplicado. O agente sempre tem o arquivo do dia
-  // atualizado, sem esperar o fim do dia. (best-effort — não derruba o relato)
-  try { _fbRegravarArquivoDoDia(); } catch (eMd) { Logger.log('fbSvcCriar md: ' + eMd.message); }
+  // GERAÇÃO IMEDIATA, UM ARQUIVO POR RELATO: grava FB-xxxxx.md na hora.
+  // Mais robusto que reescrever um arquivo do dia (sem filtro de data/fuso),
+  // e o trigger detecta cada novo arquivo facilmente. (best-effort)
+  try { _fbGravarRelato(rec); } catch (eMd) { Logger.log('fbSvcCriar md: ' + eMd.message); }
 
   return { id: id };
 }
@@ -124,43 +124,69 @@ function fbSvcMeus() {
   return rows.slice(0, 50);
 }
 
-/* ──────────────── Geração imediata do .md (por ação) ──────────────── */
+/* ──────────────── Geração imediata do .md (um por relato) ──────────────── */
 
 /**
- * Reescreve o feedback-AAAA-MM-DD.md do dia com TODOS os relatos de hoje
- * que ainda não foram triados (status NOVO). Chamado a cada novo relato:
- * o arquivo é sempre o consolidado do dia, com dedupe. Idempotente.
+ * Grava UM arquivo por relato: FB-xxxxx.md na pasta de feedback do Drive.
+ * Robusto: sem filtro de data (que sofria com fuso horário) e o trigger
+ * detecta cada novo arquivo de forma simples. Idempotente (regrava se já existe).
  */
-function _fbRegravarArquivoDoDia() {
-  var hoje = new Date();
-  var dataStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
-  // relatos de hoje ainda não triados (NOVO). compilado_em vazio = não foi pego.
-  var doDia = sheetToObjects(FEEDBACK_SHEET).filter(function (r) {
-    return r.status === 'NOVO' && String(r.criado_em).slice(0, 10) === dataStr;
-  });
-  if (!doDia.length) return { ok: true, vazio: true };
-  var md = _fbMontarMarkdown(doDia, dataStr);
-  var nomeArq = 'feedback-' + dataStr + '.md';
-  return _fbGravarNoDrive(nomeArq, md);
+function _fbGravarRelato(rec) {
+  var md = _fbMontarMarkdownRelato(rec);
+  return _fbGravarNoDrive(rec.id + '.md', md);
+}
+
+/** Markdown de um único relato (formato amigável para o agente triar). */
+function _fbMontarMarkdownRelato(r) {
+  var emoji = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
+  var out = '# ' + (emoji[r.tipo] || '') + ' ' + r.id + ' — ' + (r.titulo || '') + '\n\n';
+  out += '> Relato de usuário do SGA. Triagem: ver `PROMPT_TRIAGEM.md`. Agente PROPÕE, decisão é do João.\n\n';
+  out += '- **Tipo (sugerido pelo usuário):** ' + r.tipo + '\n';
+  out += '- **Tela:** ' + (r.tela || 'não informada') + '\n';
+  out += '- **Por:** ' + (r.criado_por_nome || r.criado_por) + '\n';
+  out += '- **Quando:** ' + r.criado_em + '\n';
+  if (r.urgente === 'TRUE') out += '- 🚨 **URGENTE — está impedindo o trabalho**\n';
+  out += '- **Status:** ' + r.status + '\n\n';
+  out += '## Descrição\n\n> ' + String(r.descricao || '').replace(/\n/g, '\n> ') + '\n';
+  if (r.anexo_url) out += '\n📎 [anexo](' + r.anexo_url + ')\n';
+  var ctx = {};
+  try { ctx = JSON.parse(r.contexto_json || '{}'); } catch (e) {}
+  if (ctx.jsErrors && ctx.jsErrors.length) {
+    out += '\n<details><summary>erros JS capturados na sessão</summary>\n\n```\n' +
+      ctx.jsErrors.join('\n').slice(0, 1000) + '\n```\n</details>\n';
+  }
+  if (ctx.userAgent) out += '\n<sub>sessão: ' + (ctx.papel || '') + ' · ' + (ctx.viewport || '') + ' · ' + ctx.userAgent + '</sub>\n';
+  return out;
+}
+
+/**
+ * Regrava todos os relatos NOVO como arquivos individuais. Rede de segurança
+ * e correção retroativa (ex.: relatos que ficaram sem .md por bug anterior).
+ */
+function _fbRegravarTodosNovos() {
+  var novos = sheetToObjects(FEEDBACK_SHEET).filter(function (r) { return r.status === 'NOVO'; });
+  var n = 0;
+  for (var i = 0; i < novos.length; i++) {
+    try { _fbGravarRelato(novos[i]); n++; } catch (e) { Logger.log('regravar ' + novos[i].id + ': ' + e.message); }
+  }
+  return { ok: true, gravados: n };
 }
 
 /* ──────────────── Resumo diário por e-mail (por tempo) ──────────────── */
 
 /**
  * Resumo do dia por e-mail. NÃO gera mais o arquivo (isso agora é por ação,
- * em _fbRegravarArquivoDoDia). Só conta os relatos do dia por tipo e avisa o
+ * em _fbGravarRelato). Conta os relatos NOVO por tipo e avisa o
  * João. Roda no trigger diário. Garante também que o .md do dia esteja gravado
  * (rede de segurança, caso alguma gravação por ação tenha falhado).
  */
 function fbResumoDiario() {
   var hoje = new Date();
   var dataStr = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
-  var doDia = sheetToObjects(FEEDBACK_SHEET).filter(function (r) {
-    return r.status === 'NOVO' && String(r.criado_em).slice(0, 10) === dataStr;
-  });
+  var doDia = sheetToObjects(FEEDBACK_SHEET).filter(function (r) { return r.status === 'NOVO'; });
 
-  // rede de segurança: garante o arquivo do dia atualizado
-  try { _fbRegravarArquivoDoDia(); } catch (e) { Logger.log('[Feedback] resumo md: ' + e.message); }
+  // rede de segurança: garante que todo relato NOVO tem seu .md
+  try { _fbRegravarTodosNovos(); } catch (e) { Logger.log('[Feedback] resumo md: ' + e.message); }
 
   if (!doDia.length) { Logger.log('[Feedback] resumo: nenhum relato hoje.'); return { ok: true, total: 0 }; }
 
@@ -188,10 +214,9 @@ function fbResumoDiario() {
   return { ok: true, total: doDia.length, contagem: cont };
 }
 
-/** Compat: chamadas antigas a fbCompilarECommitar agora geram o arquivo do dia. */
+/** Compat: regrava todos os relatos NOVO como arquivos individuais. */
 function fbCompilarECommitar() {
-  var r = _fbRegravarArquivoDoDia();
-  return { ok: r.ok !== false, arquivo: 'feedback do dia atualizado' };
+  return _fbRegravarTodosNovos();
 }
 
 function _fbMontarMarkdown(relatos, dataStr) {
@@ -253,7 +278,7 @@ function _fbGravarNoDrive(nomeArq, content) {
   try {
     var pasta = drvGetFolder('SISTEMA_FEEDBACK');
     if (!pasta) return { ok: false, error: 'Pasta de feedback indisponível — configure ROOT_FOLDER_ID (setupAll).' };
-    // remove versão anterior do mesmo dia (idempotente)
+    // remove versão anterior de mesmo nome (idempotente)
     var existentes = pasta.getFilesByName(nomeArq);
     while (existentes.hasNext()) existentes.next().setTrashed(true);
     var file = pasta.createFile(nomeArq, content, 'text/markdown');
