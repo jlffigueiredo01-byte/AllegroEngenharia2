@@ -69,7 +69,7 @@ function Api_getContacts() {
         active.push(_enrichContact_(rows[i], companyMap));
       }
     }
-    return { ok: true, data: active };
+    return { ok: true, data: sanitizeForClient(active) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -96,7 +96,7 @@ function Api_getContactsByCompany(companyId) {
         result.push(_enrichContact_(r, companyMap));
       }
     }
-    return { ok: true, data: result };
+    return { ok: true, data: sanitizeForClient(result) };
   } catch (e) {
     return { ok: false, error: e.message };
   }

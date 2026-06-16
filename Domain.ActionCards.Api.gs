@@ -5,7 +5,7 @@
 function Api_acGetAll() {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
-    return { ok: true, data: acGetAll() };
+    return { ok: true, data: sanitizeForClient(acGetAll()) };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
@@ -21,7 +21,7 @@ function Api_acUpdateStatus(cardId, newStatus, member, note) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     var result = acSvcUpdateStatus(cardId, newStatus, member, note);
-    return { ok: true, data: result };
+    return { ok: true, data: sanitizeForClient(result) };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
@@ -36,7 +36,7 @@ function Api_acEdit(cardId, updates, member, note) {
 function Api_acGetHistory(cardId) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
-    return { ok: true, data: acGetHistory(cardId) };
+    return { ok: true, data: sanitizeForClient(acGetHistory(cardId)) };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
@@ -66,6 +66,6 @@ function Api_acGetActiveUsers() {
 function Api_acGetDashboardCards() {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
-    return { ok: true, data: acSvcGetDashboardCards() };
+    return { ok: true, data: sanitizeForClient(acSvcGetDashboardCards()) };
   } catch (e) { return { ok: false, error: e.message }; }
 }

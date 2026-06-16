@@ -156,7 +156,7 @@ function Api_getCompanies() {
     var active = rows.filter(function(r) {
       return String(r.active).toUpperCase() === 'TRUE' || r.active === true;
     });
-    return { ok: true, data: active };
+    return { ok: true, data: sanitizeForClient(active) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -189,7 +189,7 @@ function Api_searchCompanies(q) {
     });
     // Limit to 50
     results = results.slice(0, 50);
-    return { ok: true, data: results };
+    return { ok: true, data: sanitizeForClient(results) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -213,7 +213,7 @@ function Api_getCompany(id) {
       }
     }
     if (!found) throw new Error('Empresa não encontrada: ' + id);
-    return { ok: true, data: found };
+    return { ok: true, data: sanitizeForClient(found) };
   } catch (e) {
     return { ok: false, error: e.message };
   }

@@ -19,7 +19,7 @@
 function Api_propCreate(data) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'TECNICO']);
-    return { ok: true, data: propSvcCreate(data) };
+    return { ok: true, data: sanitizeForClient(propSvcCreate(data)) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -48,7 +48,7 @@ function Api_propUpdateStatus(id, novoStatus, opcoes) {
     if (novoStatus === 'APROVADA_ENVIO') {
       propSvcSubstituirAnterior(id);
     }
-    return { ok: true, data: result };
+    return { ok: true, data: sanitizeForClient(result) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -71,11 +71,14 @@ function Api_propGetAll(filters) {
     if (filters && filters.company_id) {
       proposals = proposals.filter(function(p) { return p.client_id === filters.company_id; });
     }
-    // Ordena decrescente por created_at (compatível com comportamento antigo)
+    // Ordena decrescente por created_at. Coerção a String porque células de
+    // data viram Date no Sheets, e Date não tem localeCompare (lançava exceção).
     proposals.sort(function(a, b) {
-      return (b.created_at || '').localeCompare(a.created_at || '');
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''));
     });
-    return { ok: true, data: proposals };
+    // sanitizeForClient: google.script.run não serializa Date (volta null
+    // silencioso) — as propostas importadas têm created_at como Date.
+    return { ok: true, data: sanitizeForClient(proposals) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -93,7 +96,7 @@ function Api_propGetById(id) {
     ]);
     var p = propRepoGetById(id);
     if (!p) return { ok: false, error: 'Proposta não encontrada: ' + id };
-    return { ok: true, data: p };
+    return { ok: true, data: sanitizeForClient(p) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -107,7 +110,7 @@ function Api_propGetById(id) {
 function Api_propCriarRevisao(proposalId) {
   try {
     var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL']);
-    return { ok: true, data: propSvcCriarRevisao(proposalId, user.id) };
+    return { ok: true, data: sanitizeForClient(propSvcCriarRevisao(proposalId, user.id)) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -257,7 +260,7 @@ function Api_updateProposal(id, updates) {
     sanitized.updated_at = nowISO();
     propRepoUpdate(id, sanitized);
     appendAuditLog('PROPOSAL_UPDATE', 'PROPOSALS', id, sanitized);
-    return { ok: true, data: propRepoGetById(id) };
+    return { ok: true, data: sanitizeForClient(propRepoGetById(id)) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -302,7 +305,7 @@ function Api_generateProposalHTML(proposalId) {
 function Api_propGetDefaultFlow(proposalId) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
-    return { ok: true, data: propSvcDefaultFlow(proposalId) };
+    return { ok: true, data: sanitizeForClient(propSvcDefaultFlow(proposalId)) };
   } catch (e) {
     return { ok: false, error: e.message };
   }

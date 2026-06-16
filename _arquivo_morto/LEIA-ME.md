@@ -20,3 +20,15 @@ Reversível: basta mover de volta e restaurar a extensão.
 ## Aba QUOTE_HEADERS na planilha
 Está vazia (0 linhas). Não é mais alimentada por código ativo. Pode ser deixada
 como está (não atrapalha) ou removida manualmente quando quiser.
+
+## Dívida — sanitizeForClient em endpoints de abas vazias (2026-06-16)
+O bug de serialização de Date (google.script.run não serializa Date → null)
+foi corrigido nos endpoints de abas VIVAS: Proposals, ActionCards, Companies,
+Contacts, Tickets, Expenses, Dashboard, Visao360, Feedback.
+
+Endpoints de abas hoje VAZIAS ainda retornam dados crus (risco latente, não
+ativo — só falham quando a aba tiver linhas com células de data):
+Agenda, BaseInstalada, Caixa, Compliance, Compras, Email, Engenharia, Estoque,
+Frota, Horas, NotasFiscais, Projetos (parcial).
+Ao ativar cada módulo, aplicar sanitizeForClient(...) no retorno (envolver o
+data: de listagens/getById). Padrão já estabelecido nos domínios vivos.
