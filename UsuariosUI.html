@@ -1,0 +1,150 @@
+<script>
+// =============================================================================
+// UsuariosUI.html — SGA
+// Gestão de usuários (só DIRETOR_TECNICO): listar, criar, editar papel/nome,
+// ativar/desativar. Login é por conta Google — o e-mail TEM que bater exato.
+// Prefixo _usr. ES5.
+// =============================================================================
+
+var _usrCache = [];
+var _USR_ROLES = {
+  DIRETOR_TECNICO:   'Diretor Técnico (admin — vê tudo)',
+  DIRETOR_COMERCIAL: 'Diretor Comercial (propostas, oportunidades)',
+  FINANCEIRO_ADMIN:  'Financeiro / Admin (despesas, cobranças)',
+  TECNICO:           'Técnico (vê só o que é dele)'
+};
+var _USR_ROLE_BADGE = {
+  DIRETOR_TECNICO: 'badge-blue', DIRETOR_COMERCIAL: 'badge-green',
+  FINANCEIRO_ADMIN: 'badge-yellow', TECNICO: 'badge-gray'
+};
+
+function renderUsuarios(area) {
+  area.innerHTML =
+    '<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">👥 Usuários</h1>' +
+        '<p class="page-subtitle">Quem acessa o SGA e com que papel. O login é pela conta Google — o e-mail precisa ser exatamente o da conta.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary" onclick="_usrFormOpen()">+ Novo usuário</button>' +
+    '</div>' +
+    '<div id="usr-list"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+  _usrLoad();
+}
+
+function _usrLoad() {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) {
+        document.getElementById('usr-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        return;
+      }
+      _usrCache = r.data || [];
+      _usrRender();
+    })
+    .withFailureHandler(function (e) {
+      document.getElementById('usr-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+    })
+    .Api_usersGetAll();
+}
+
+function _usrRender() {
+  var box = document.getElementById('usr-list');
+  if (!box) return;
+  if (!_usrCache.length) {
+    box.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:24px 0"><div class="empty-title">Nenhum usuário</div></div></div></div>';
+    return;
+  }
+  var rows = '';
+  for (var i = 0; i < _usrCache.length; i++) {
+    var u = _usrCache[i];
+    rows += '<tr' + (u.active ? '' : ' style="opacity:.5"') + '>' +
+      '<td><b>' + escapeHtml(u.name || '') + '</b></td>' +
+      '<td style="font-size:12px;color:#64748b">' + escapeHtml(u.email || '') + '</td>' +
+      '<td><span class="badge ' + (_USR_ROLE_BADGE[u.role] || 'badge-gray') + '" style="font-size:11px">' + escapeHtml(u.role || '') + '</span></td>' +
+      '<td>' + (u.active ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button class="btn btn-ghost btn-sm usr-edit" data-id="' + escapeHtml(u.id) + '">Editar</button>' +
+        '<button class="btn btn-ghost btn-sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="' + (u.active ? '1' : '0') + '">' + (u.active ? 'Desativar' : 'Reativar') + '</button>' +
+      '</td>' +
+    '</tr>';
+  }
+  box.innerHTML = '<div class="card"><div class="table-wrap"><table class="data-table">' +
+    '<thead><tr><th>Nome</th><th>E-mail (conta Google)</th><th>Papel</th><th>Status</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div></div>';
+
+  var edits = box.querySelectorAll('.usr-edit');
+  for (var a = 0; a < edits.length; a++) edits[a].addEventListener('click', function () { _usrFormOpen(this.getAttribute('data-id')); });
+  var togs = box.querySelectorAll('.usr-toggle');
+  for (var b = 0; b < togs.length; b++) togs[b].addEventListener('click', function () { _usrToggle(this.getAttribute('data-id'), this.getAttribute('data-active') === '1'); });
+}
+
+function _usrFormOpen(id) {
+  var u = null;
+  if (id) { for (var i = 0; i < _usrCache.length; i++) { if (_usrCache[i].id === id) { u = _usrCache[i]; break; } } }
+  var editando = !!u;
+
+  var old = document.getElementById('usr-modal');
+  if (old) old.parentNode.removeChild(old);
+  var roleOpts = '';
+  for (var k in _USR_ROLES) {
+    roleOpts += '<option value="' + k + '"' + (u && u.role === k ? ' selected' : '') + '>' + escapeHtml(_USR_ROLES[k]) + '</option>';
+  }
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="modal-backdrop" id="usr-modal" style="display:flex;z-index:1200">' +
+      '<div class="modal" style="max-width:480px;width:94%">' +
+        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title">' + (editando ? '✏️ Editar usuário' : '+ Novo usuário') + '</div>' +
+          '<button class="btn btn-ghost btn-sm" id="usr-close">✕</button>' +
+        '</div><div class="card-body">' +
+          '<label style="font-size:12px;display:block">Nome *<br><input class="form-input" id="usr-name" value="' + (u ? escapeHtml(u.name) : '') + '" placeholder="nome da pessoa"></label>' +
+          '<label style="font-size:12px;display:block;margin-top:8px">E-mail (conta Google de login) *<br>' +
+            '<input class="form-input" id="usr-email" value="' + (u ? escapeHtml(u.email) : '') + '" placeholder="pessoa@gmail.com"' + (editando ? ' disabled title="o e-mail não pode ser alterado — crie outro acesso se precisar"' : '') + '></label>' +
+          (editando ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">O e-mail é a chave do login e não pode ser alterado aqui.</div>' : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Precisa ser exatamente a conta Google que a pessoa usa para entrar.</div>') +
+          '<label style="font-size:12px;display:block;margin-top:8px">Papel *<br><select class="form-input" id="usr-role">' + roleOpts + '</select></label>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+            '<button class="btn btn-ghost btn-sm" id="usr-cancel">Cancelar</button>' +
+            '<button class="btn btn-primary" id="usr-save">' + (editando ? 'Salvar' : 'Criar usuário') + '</button>' +
+          '</div>' +
+        '</div></div>' +
+      '</div></div>');
+
+  var fechar = function () { var m = document.getElementById('usr-modal'); if (m) m.parentNode.removeChild(m); };
+  document.getElementById('usr-close').addEventListener('click', fechar);
+  document.getElementById('usr-cancel').addEventListener('click', fechar);
+  document.getElementById('usr-modal').addEventListener('click', function (e) { if (e.target === this) fechar(); });
+
+  document.getElementById('usr-save').addEventListener('click', function () {
+    var name = document.getElementById('usr-name').value;
+    var role = document.getElementById('usr-role').value;
+    if (!name.trim()) { showAlert('Informe o nome.', 'warning'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+
+    if (editando) {
+      google.script.run.withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Salvar'; return; }
+        showAlert('Usuário atualizado.', 'success'); fechar(); _usrLoad();
+      }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Salvar'; })
+      .Api_usersUpdate(u.id, { name: name.trim(), role: role });
+    } else {
+      var email = document.getElementById('usr-email').value;
+      if (!email.trim()) { showAlert('Informe o e-mail.', 'warning'); btn.disabled = false; btn.textContent = 'Criar usuário'; return; }
+      google.script.run.withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Criar usuário'; return; }
+        showAlert('Usuário criado.', 'success'); fechar(); _usrLoad();
+      }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Criar usuário'; })
+      .Api_usersCreate({ name: name.trim(), email: email.trim(), role: role });
+    }
+  });
+}
+
+function _usrToggle(id, isActive) {
+  var acao = isActive ? 'desativar' : 'reativar';
+  if (!confirm('Deseja ' + acao + ' este usuário?' + (isActive ? ' (o acesso dele será bloqueado, mas o histórico é preservado)' : ''))) return;
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); return; }
+    showAlert('Usuário ' + (isActive ? 'desativado' : 'reativado') + '.', 'success');
+    _usrLoad();
+  }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+  .Api_usersSetActive(id, !isActive);
+}
+</script>

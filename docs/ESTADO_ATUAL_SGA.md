@@ -123,7 +123,8 @@ STOCK… (ver `*_SHEET` nos modelos).
 
 ### Telas / seções do router
 dashboard, visao360, opportunities, quotes, companies, contacts, map, projetos,
-agenda, chamados, actioncards, compras, fornecedores, expenses, melhorias, config.
+agenda, chamados, actioncards, compras, fornecedores, expenses, melhorias,
+usuarios, config.
 
 ---
 
@@ -146,8 +147,15 @@ agenda, chamados, actioncards, compras, fornecedores, expenses, melhorias, confi
 3. Campo de **ROI do cliente** no sumário executivo da proposta (Gema, caso a caso).
 4. **Relatório de custo de não-qualidade por origem** no dashboard (quando houver
    volume de chamados classificados).
-5. **Tela de Usuários** em Configurações (cadastrar/desativar sem abrir a planilha).
-6. Ciclo de feedback **fase 2**: disparo automático da triagem pelos agentes.
+5. Ciclo de feedback **fase 2**: disparo automático da triagem pelos agentes.
+
+## 7c. Tela de Usuários — FEITA
+Seção `usuarios` (só DIRETOR_TECNICO): lista todos (ativos/inativos), cria,
+edita nome/papel e ativa/desativa (desativar preserva histórico; não exclui).
+Login é por conta Google — o e-mail é a chave e não é editável após criado.
+APIs: Api_usersGetAll, Api_usersCreate, Api_usersUpdate, Api_usersSetActive
+(todas DIRETOR_TECNICO; auditadas). Sem PIN — descartado: a conta Google já
+autentica.
 
 ## 7b. Guia de Melhorias (admin) — FEITA (FB-00004/FB-00012)
 Seção `melhorias` (só DIRETOR_TECNICO): vê todos os feedbacks de todos os
