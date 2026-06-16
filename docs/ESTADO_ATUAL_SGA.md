@@ -123,7 +123,7 @@ STOCK… (ver `*_SHEET` nos modelos).
 
 ### Telas / seções do router
 dashboard, visao360, opportunities, quotes, companies, contacts, map, projetos,
-agenda, chamados, actioncards, compras, fornecedores, expenses, config.
+agenda, chamados, actioncards, compras, fornecedores, expenses, melhorias, config.
 
 ---
 
@@ -148,6 +148,11 @@ agenda, chamados, actioncards, compras, fornecedores, expenses, config.
    volume de chamados classificados).
 5. **Tela de Usuários** em Configurações (cadastrar/desativar sem abrir a planilha).
 6. Ciclo de feedback **fase 2**: disparo automático da triagem pelos agentes.
+
+## 7b. Guia de Melhorias (admin) — FEITA (FB-00004/FB-00012)
+Seção `melhorias` (só DIRETOR_TECNICO): vê todos os feedbacks de todos os
+usuários, filtra por tipo/status, marca status com nota (Api_fbGetAll,
+Api_fbMarcarStatus — escrevem na aba FEEDBACKS com auditoria; RBAC estrito).
 
 ---
 

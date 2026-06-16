@@ -139,6 +139,13 @@ function enterApp(user) {
     else         { el.classList.add('hidden'); }
   });
 
+  // Guia de Melhorias: só DIRETOR_TECNICO
+  var melhItems = document.querySelectorAll('.nav-item-melhorias');
+  melhItems.forEach(function (el) {
+    if (user.role === 'DIRETOR_TECNICO') el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
+
   // Mostra o app shell
   document.getElementById('app-shell').classList.remove('hidden');
 
@@ -284,6 +291,7 @@ function showSection(section) {
     case 'agenda':        renderAgenda(area);         break;
     case 'chamados':      renderChamados(area);       break;
     case 'config':        renderConfig(area);        break;
+    case 'melhorias':     renderMelhorias(area);      break;
     default:
       area.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div>' +
         '<div class="empty-title">Módulo não encontrado</div></div>';

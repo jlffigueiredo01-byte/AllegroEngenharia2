@@ -1,0 +1,167 @@
+<script>
+// =============================================================================
+// MelhoriasUI.html — SGA
+// Guia de Melhorias (admin): todos os feedbacks de todos os usuários, com
+// filtros e marcação de status. Restrito a DIRETOR_TECNICO. Prefixo _melh. ES5.
+// (FB-00004 / FB-00012)
+// =============================================================================
+
+var _melhCache = [];
+var _melhFiltroTipo = '';
+var _melhFiltroStatus = '';
+
+var _MELH_STATUS = {
+  NOVO: { label: '🆕 Novo', badge: 'badge-blue' },
+  COMPILADO: { label: '📤 Compilado', badge: 'badge-gray' },
+  EM_ANALISE: { label: '🔍 Em análise', badge: 'badge-yellow' },
+  APROVADO: { label: '✅ Aprovado', badge: 'badge-green' },
+  IMPLEMENTADO: { label: '🎉 Implementado', badge: 'badge-green' },
+  RECUSADO: { label: '✖️ Recusado', badge: 'badge-gray' }
+};
+var _MELH_TIPO = { ERRO: '🐛 Erro', SUGESTAO: '💡 Sugestão', MELHORIA: '⬆️ Melhoria' };
+
+function renderMelhorias(area) {
+  area.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">🛠️ Melhorias do Sistema</h1>' +
+        '<p class="page-subtitle">Todos os relatos de todos os usuários — acompanhe, classifique e marque o que já foi feito.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid" id="melh-kpis" style="grid-template-columns:repeat(4,1fr)"></div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
+      '<select class="form-input" id="melh-f-tipo" style="width:170px"><option value="">Todos os tipos</option><option value="ERRO">🐛 Erro</option><option value="SUGESTAO">💡 Sugestão</option><option value="MELHORIA">⬆️ Melhoria</option></select>' +
+      '<select class="form-input" id="melh-f-status" style="width:190px"><option value="">Todos os status</option><option value="NOVO">🆕 Novo</option><option value="EM_ANALISE">🔍 Em análise</option><option value="APROVADO">✅ Aprovado</option><option value="IMPLEMENTADO">🎉 Implementado</option><option value="RECUSADO">✖️ Recusado</option></select>' +
+    '</div>' +
+    '<div id="melh-list"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+
+  document.getElementById('melh-f-tipo').addEventListener('change', function () { _melhFiltroTipo = this.value; _melhRender(); });
+  document.getElementById('melh-f-status').addEventListener('change', function () { _melhFiltroStatus = this.value; _melhRender(); });
+  _melhLoad();
+}
+
+function _melhLoad() {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) {
+        document.getElementById('melh-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        return;
+      }
+      _melhCache = r.data || [];
+      _melhKpis();
+      _melhRender();
+    })
+    .withFailureHandler(function (e) {
+      document.getElementById('melh-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+    })
+    .Api_fbGetAll();
+}
+
+function _melhKpis() {
+  var box = document.getElementById('melh-kpis');
+  if (!box) return;
+  var pend = 0, impl = 0, urg = 0;
+  for (var i = 0; i < _melhCache.length; i++) {
+    var s = _melhCache[i].status;
+    if (s === 'IMPLEMENTADO') impl++;
+    else if (s !== 'RECUSADO') pend++;
+    if (_melhCache[i].urgente === 'TRUE' && s !== 'IMPLEMENTADO' && s !== 'RECUSADO') urg++;
+  }
+  var kpi = function (l, v, sub) {
+    return '<div class="kpi"><div class="k-label"><span>' + l + '</span></div><div class="k-value">' + v + '</div>' + (sub ? '<div class="k-sub">' + sub + '</div>' : '') + '</div>';
+  };
+  box.innerHTML =
+    kpi('Total', String(_melhCache.length), 'relatos recebidos') +
+    kpi('Pendentes', String(pend), 'aguardando ação') +
+    kpi('Implementados', String(impl), 'já entregues') +
+    kpi('Urgentes abertos', String(urg), 'precisam de atenção');
+}
+
+function _melhRender() {
+  var box = document.getElementById('melh-list');
+  if (!box) return;
+  var lista = _melhCache.filter(function (f) {
+    if (_melhFiltroTipo && f.tipo !== _melhFiltroTipo) return false;
+    if (_melhFiltroStatus && f.status !== _melhFiltroStatus) return false;
+    return true;
+  });
+  if (!lista.length) {
+    box.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:24px 0"><div class="empty-title">Nenhum relato neste filtro</div></div></div></div>';
+    return;
+  }
+  var rows = '';
+  for (var i = 0; i < lista.length; i++) {
+    var f = lista[i];
+    var st = _MELH_STATUS[f.status] || { label: f.status, badge: 'badge-gray' };
+    rows += '<tr>' +
+      '<td><code style="font-size:11px">' + escapeHtml(f.id) + '</code></td>' +
+      '<td>' + (_MELH_TIPO[f.tipo] || escapeHtml(f.tipo)) + (f.urgente === 'TRUE' ? ' <span title="urgente">🚨</span>' : '') + '</td>' +
+      '<td><b>' + escapeHtml(f.titulo || '') + '</b><div style="font-size:11px;color:#94a3b8">' + escapeHtml(f.tela || '') + ' · ' + escapeHtml(f.criado_por_nome || f.criado_por || '') + '</div></td>' +
+      '<td><span class="badge ' + st.badge + '">' + st.label + '</span></td>' +
+      '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm melh-ver" data-id="' + escapeHtml(f.id) + '">Ver / marcar</button></td>' +
+    '</tr>';
+  }
+  box.innerHTML = '<div class="card"><div class="table-wrap"><table class="data-table">' +
+    '<thead><tr><th>ID</th><th>Tipo</th><th>Relato</th><th>Status</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div></div>';
+  var vers = box.querySelectorAll('.melh-ver');
+  for (var b = 0; b < vers.length; b++) vers[b].addEventListener('click', function () { _melhDetalhe(this.getAttribute('data-id')); });
+}
+
+function _melhDetalhe(id) {
+  var f = null;
+  for (var i = 0; i < _melhCache.length; i++) { if (_melhCache[i].id === id) { f = _melhCache[i]; break; } }
+  if (!f) return;
+  var ctx = {};
+  try { ctx = JSON.parse(f.contexto_json || '{}'); } catch (e) {}
+
+  var old = document.getElementById('melh-modal');
+  if (old) old.parentNode.removeChild(old);
+  var opt = function (s, atual) {
+    var st = _MELH_STATUS[s];
+    return '<option value="' + s + '"' + (s === atual ? ' selected' : '') + '>' + st.label + '</option>';
+  };
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="modal-backdrop" id="melh-modal" style="display:flex;z-index:1200">' +
+      '<div class="modal" style="max-width:560px;width:94%">' +
+        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div class="card-title">' + (_MELH_TIPO[f.tipo] || '') + ' — ' + escapeHtml(f.id) + '</div>' +
+          '<button class="btn btn-ghost btn-sm" id="melh-close">✕</button>' +
+        '</div><div class="card-body">' +
+          '<div style="font-weight:700;font-size:15px;margin-bottom:4px">' + escapeHtml(f.titulo || '') + '</div>' +
+          '<div style="font-size:12px;color:#94a3b8;margin-bottom:10px">' + escapeHtml(f.tela || '') + ' · ' + escapeHtml(f.criado_por_nome || f.criado_por || '') + ' · ' + formatDate(f.criado_em) + (f.urgente === 'TRUE' ? ' · 🚨 urgente' : '') + '</div>' +
+          '<div style="background:#f8fafc;border-radius:8px;padding:10px 14px;font-size:13px;white-space:pre-wrap">' + escapeHtml(f.descricao || '') + '</div>' +
+          (f.anexo_url ? '<div style="margin-top:8px"><a href="' + escapeHtml(f.anexo_url) + '" target="_blank" class="btn btn-ghost btn-sm">📎 Ver anexo</a></div>' : '') +
+          (ctx.jsErrors && ctx.jsErrors.length ? '<details style="margin-top:8px;font-size:12px"><summary>erros JS na sessão</summary><pre style="white-space:pre-wrap;font-size:11px">' + escapeHtml(ctx.jsErrors.join('\\n')) + '</pre></details>' : '') +
+          '<hr style="margin:14px 0;border:none;border-top:1px solid #eef2f7">' +
+          '<label style="font-size:12px;font-weight:700">Status<br><select class="form-input" id="melh-status" style="margin-top:4px">' +
+            opt('NOVO', f.status) + opt('EM_ANALISE', f.status) + opt('APROVADO', f.status) + opt('IMPLEMENTADO', f.status) + opt('RECUSADO', f.status) +
+          '</select></label>' +
+          '<label style="font-size:12px;font-weight:700;display:block;margin-top:8px">Nota para o usuário (aparece em "Meus reportes")<br>' +
+            '<input class="form-input" id="melh-nota" style="margin-top:4px" value="' + escapeHtml(f.resolucao_nota || '') + '" placeholder="ex.: corrigido — atualize com Ctrl+Shift+R"></label>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+            '<button class="btn btn-ghost btn-sm" id="melh-cancel">Cancelar</button>' +
+            '<button class="btn btn-primary" id="melh-salvar">Salvar status</button>' +
+          '</div>' +
+        '</div></div>' +
+      '</div></div>');
+
+  var fechar = function () { var m = document.getElementById('melh-modal'); if (m) m.parentNode.removeChild(m); };
+  document.getElementById('melh-close').addEventListener('click', fechar);
+  document.getElementById('melh-cancel').addEventListener('click', fechar);
+  document.getElementById('melh-modal').addEventListener('click', function (e) { if (e.target === this) fechar(); });
+  document.getElementById('melh-salvar').addEventListener('click', function () {
+    var novoStatus = document.getElementById('melh-status').value;
+    var nota = document.getElementById('melh-nota').value;
+    var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Salvar status'; return; }
+      showAlert('Status atualizado.', 'success');
+      f.status = novoStatus; f.resolucao_nota = nota;
+      fechar(); _melhKpis(); _melhRender();
+    }).withFailureHandler(function (e) {
+      showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Salvar status';
+    }).Api_fbMarcarStatus(id, novoStatus, nota);
+  });
+}
+</script>

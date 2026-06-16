@@ -34,3 +34,40 @@ function Api_fbCompilarAgora() {
     return { ok: false, error: e.message };
   }
 }
+
+/**
+ * GUIA DE MELHORIAS (admin): todos os feedbacks de todos os usuários.
+ * Restrito a DIRETOR_TECNICO — quebra deliberada do isolamento do "Meus
+ * reportes", por isso o RBAC estrito. (FB-00004/FB-00012)
+ */
+function Api_fbGetAll() {
+  try {
+    requireRole(['DIRETOR_TECNICO']);
+    var rows = sheetToObjects(FEEDBACK_SHEET);
+    rows.sort(function (a, b) { return String(b.criado_em).localeCompare(String(a.criado_em)); });
+    return { ok: true, data: sanitizeForClient(rows) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * Marca o status de um relato (admin). Escreve na aba FEEDBACKS + auditoria.
+ * O usuário que criou o relato vê o novo status em "Meus reportes" (ciclo
+ * fechado). Só DIRETOR_TECNICO.
+ */
+function Api_fbMarcarStatus(id, novoStatus, nota) {
+  try {
+    requireRole(['DIRETOR_TECNICO']);
+    if (!id) throw new Error('id é obrigatório.');
+    var validos = ['NOVO', 'COMPILADO', 'EM_ANALISE', 'APROVADO', 'IMPLEMENTADO', 'RECUSADO'];
+    if (validos.indexOf(novoStatus) === -1) throw new Error('Status inválido: ' + novoStatus);
+    var patch = { status: novoStatus, atualizado_em: nowISO() };
+    if (nota !== undefined && nota !== null) patch.resolucao_nota = String(nota);
+    updateRowById(FEEDBACK_SHEET, id, patch);
+    appendAuditLog('FEEDBACK_STATUS', 'FEEDBACKS', id, novoStatus + (nota ? ' · ' + nota : ''));
+    return { ok: true, data: { id: id, status: novoStatus } };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
