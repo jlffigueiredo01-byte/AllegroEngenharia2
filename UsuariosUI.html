@@ -63,8 +63,10 @@ function _usrRender() {
       '<td><span class="badge ' + (_USR_ROLE_BADGE[u.role] || 'badge-gray') + '" style="font-size:11px">' + escapeHtml(u.role || '') + '</span></td>' +
       '<td>' + (u.active ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>') + '</td>' +
       '<td style="white-space:nowrap">' +
-        '<button class="btn btn-ghost btn-sm usr-edit" data-id="' + escapeHtml(u.id) + '">Editar</button>' +
-        '<button class="btn btn-ghost btn-sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="' + (u.active ? '1' : '0') + '">' + (u.active ? 'Desativar' : 'Reativar') + '</button>' +
+        '<button class="btn btn-ghost btn-sm usr-edit" data-id="' + escapeHtml(u.id) + '">✏️ Editar</button> ' +
+        (u.active
+          ? '<button class="btn btn-sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="1" style="background:#fef2f2;color:#b42318;border:1px solid #fecaca">⛔ Desativar</button>'
+          : '<button class="btn btn-sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="0" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">✅ Reativar</button>') +
       '</td>' +
     '</tr>';
   }
@@ -98,8 +100,8 @@ function _usrFormOpen(id) {
         '</div><div class="card-body">' +
           '<label style="font-size:12px;display:block">Nome *<br><input class="form-input" id="usr-name" value="' + (u ? escapeHtml(u.name) : '') + '" placeholder="nome da pessoa"></label>' +
           '<label style="font-size:12px;display:block;margin-top:8px">E-mail (conta Google de login) *<br>' +
-            '<input class="form-input" id="usr-email" value="' + (u ? escapeHtml(u.email) : '') + '" placeholder="pessoa@gmail.com"' + (editando ? ' disabled title="o e-mail não pode ser alterado — crie outro acesso se precisar"' : '') + '></label>' +
-          (editando ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">O e-mail é a chave do login e não pode ser alterado aqui.</div>' : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Precisa ser exatamente a conta Google que a pessoa usa para entrar.</div>') +
+            '<input class="form-input" id="usr-email" value="' + (u ? escapeHtml(u.email || '') : '') + '" placeholder="pessoa@gmail.com"' + ((editando && u.email) ? ' disabled title="o e-mail não pode ser alterado — crie outro acesso se precisar"' : '') + '></label>' +
+          ((editando && u.email) ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">O e-mail é a chave do login e não pode ser alterado aqui.</div>' : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Precisa ser exatamente a conta Google que a pessoa usa para entrar.</div>') +
           '<label style="font-size:12px;display:block;margin-top:8px">Papel *<br><select class="form-input" id="usr-role">' + roleOpts + '</select></label>' +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
             '<button class="btn btn-ghost btn-sm" id="usr-cancel">Cancelar</button>' +
@@ -120,11 +122,18 @@ function _usrFormOpen(id) {
     var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
 
     if (editando) {
+      var emailEl = document.getElementById('usr-email');
+      var updates = { name: name.trim(), role: role };
+      // se o campo de e-mail está habilitado (usuário sem e-mail), exige e envia
+      if (emailEl && !emailEl.disabled) {
+        if (!emailEl.value.trim()) { showAlert('Informe o e-mail da conta Google.', 'warning'); btn.disabled = false; btn.textContent = 'Salvar'; return; }
+        updates.email = emailEl.value.trim();
+      }
       google.script.run.withSuccessHandler(function (r) {
         if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Salvar'; return; }
         showAlert('Usuário atualizado.', 'success'); fechar(); _usrLoad();
       }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Salvar'; })
-      .Api_usersUpdate(u.id, { name: name.trim(), role: role });
+      .Api_usersUpdate(u.id, updates);
     } else {
       var email = document.getElementById('usr-email').value;
       if (!email.trim()) { showAlert('Informe o e-mail.', 'warning'); btn.disabled = false; btn.textContent = 'Criar usuário'; return; }

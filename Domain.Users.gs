@@ -92,6 +92,21 @@ function Api_usersUpdate(id, updates) {
       if (VALID_ROLES.indexOf(updates.role) === -1) throw new Error('Papel inválido.');
       patch.role = updates.role;
     }
+    // E-mail: só pode ser DEFINIDO quando ainda está vazio (corrige usuários
+    // criados sem e-mail). Se já houver um e-mail, ele é imutável (é a chave
+    // do login — trocar seria criar outro acesso).
+    if (updates && updates.email && String(updates.email).trim()) {
+      var emailAtual = String(u.email || '').trim();
+      var emailNovo = String(updates.email).trim().toLowerCase();
+      if (emailAtual && emailAtual.toLowerCase() !== emailNovo) {
+        throw new Error('O e-mail não pode ser alterado depois de definido. Crie outro usuário se precisar de outro acesso.');
+      }
+      if (!emailAtual) {
+        var jaUsado = findRowByValue(USERS_SHEET, 'email', emailNovo);
+        if (jaUsado && jaUsado.id !== id) throw new Error('Já existe um usuário com este e-mail.');
+        patch.email = emailNovo;
+      }
+    }
     if (!Object.keys(patch).length) throw new Error('Nada para atualizar.');
     updateRowByIdSafe(USERS_SHEET, id, patch);
     appendAuditLog('UPDATE', 'USERS', id, JSON.stringify(patch));
