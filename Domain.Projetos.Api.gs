@@ -54,10 +54,41 @@ function Api_projLancarRdo(data) {
     var user = requireRole(['DIRETOR_TECNICO', 'TECNICO']);
     if (!data.tecnico_id)   data.tecnico_id   = user.id;
     if (!data.tecnico_nome) data.tecnico_nome = user.name;
+    // FB-028: anexos do RDO (fotos/PDFs) vêm como base64 do front → sobem pro Drive
+    // e viram fotos_json [{file_id,url,caption,name}]. Usa o campo fotos_json já
+    // existente no schema (sem mudança de planilha).
+    if (data.fotos && data.fotos.length) {
+      data.fotos_json = _projUploadRdoFotos(data.fotos, data.project_id);
+    }
     return { ok: true, data: projSvcLancarRdo(data) };
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+
+/**
+ * Sobe anexos (base64) do RDO para o Drive e devolve a lista de referências.
+ * @param {Object[]} fotos  — [{ base64, mime, name }]
+ * @param {string}   projectId
+ * @return {Object[]} [{ file_id, url, caption, name }]
+ */
+function _projUploadRdoFotos(fotos, projectId) {
+  var out = [];
+  var pasta = null;
+  try { pasta = drvGetFolder('SISTEMA_FEEDBACK'); } catch (e) { pasta = null; }
+  if (!pasta) return out;
+  for (var i = 0; i < fotos.length; i++) {
+    var a = fotos[i];
+    if (!a || !a.base64) continue;
+    try {
+      var nome = a.name || ('rdo-' + (projectId || '') + '-' + new Date().getTime() + '-' + i);
+      var blob = Utilities.newBlob(Utilities.base64Decode(a.base64), a.mime || 'application/octet-stream', nome);
+      var file = pasta.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      out.push({ file_id: file.getId(), url: file.getUrl(), caption: a.name || '', name: a.name || file.getName() });
+    } catch (eU) { Logger.log('[Projetos] upload RDO foto: ' + eU.message); }
+  }
+  return out;
 }
 
 /**

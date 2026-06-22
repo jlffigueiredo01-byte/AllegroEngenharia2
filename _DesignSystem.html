@@ -1,0 +1,1200 @@
+<!--
+  ============================================================================
+  SGA Design System — base CSS + JS (window.SGA)
+  ----------------------------------------------------------------------------
+  Inclua no Index.html via: <?!= include('_DesignSystem'); ?>
+  Não toque em telas existentes — este arquivo SÓ ADICIONA o sistema novo.
+  Spec completa em _DESIGN-SYSTEM.md
+  ============================================================================
+-->
+
+<!-- ============================ TOKENS + COMPONENTES ============================ -->
+<style>
+/* ============================================================
+   1. TOKENS (variaveis CSS)
+   ============================================================ */
+:root {
+  /* Cores primarias */
+  --sga-color-primary:        #1a56db;
+  --sga-color-primary-hover:  #1747b8;
+  --sga-color-primary-light:  #eaf1fe;
+  --sga-color-primary-dark:   #14335f;
+
+  /* Superficies */
+  --sga-bg-page:              #f7f8fa;
+  --sga-bg-surface:           #ffffff;
+  --sga-bg-surface-alt:       #fafbfc;
+  --sga-bg-overlay:           rgba(15, 23, 42, 0.55);
+
+  /* Texto */
+  --sga-text-strong:          #0f172a;
+  --sga-text-default:         #1f2937;
+  --sga-text-muted:           #6b7280;
+  --sga-text-soft:            #9ca3af;
+  --sga-text-on-primary:      #ffffff;
+
+  /* Bordas */
+  --sga-border-default:       #e5e7eb;
+  --sga-border-strong:        #d1d5db;
+  --sga-border-focus:         #1a56db;
+
+  /* Semanticas */
+  --sga-color-success:        #16a34a;
+  --sga-color-success-bg:     #ecfdf5;
+  --sga-color-success-border: #86efac;
+  --sga-color-warning:        #d97706;
+  --sga-color-warning-bg:     #fffbeb;
+  --sga-color-warning-border: #fcd34d;
+  --sga-color-danger:         #dc2626;
+  --sga-color-danger-bg:      #fef2f2;
+  --sga-color-danger-border:  #fca5a5;
+  --sga-color-info:           #0284c7;
+  --sga-color-info-bg:        #eff6ff;
+  --sga-color-info-border:    #93c5fd;
+
+  /* Espacamento (escala 8px) */
+  --sga-space-0: 0;
+  --sga-space-1: 4px;
+  --sga-space-2: 8px;
+  --sga-space-3: 12px;
+  --sga-space-4: 16px;
+  --sga-space-5: 20px;
+  --sga-space-6: 24px;
+  --sga-space-8: 32px;
+  --sga-space-10: 40px;
+  --sga-space-12: 48px;
+
+  /* Raios */
+  --sga-radius-sm: 6px;
+  --sga-radius-md: 10px;
+  --sga-radius-lg: 14px;
+  --sga-radius-pill: 999px;
+
+  /* Sombras */
+  --sga-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --sga-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --sga-shadow-lg: 0 20px 60px rgba(15, 23, 42, 0.18);
+  --sga-shadow-focus: 0 0 0 3px rgba(26, 86, 219, 0.25);
+
+  /* Tipografia */
+  --sga-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --sga-font-mono:   'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace;
+  --sga-font-size-xs: 11px;
+  --sga-font-size-sm: 12px;
+  --sga-font-size-md: 14px;
+  --sga-font-size-lg: 16px;
+  --sga-font-size-xl: 18px;
+  --sga-font-size-2xl: 22px;
+  --sga-font-size-3xl: 28px;
+  --sga-line-height-tight: 1.25;
+  --sga-line-height-normal: 1.5;
+  --sga-line-height-relaxed: 1.7;
+
+  /* Transicoes */
+  --sga-transition-fast:   120ms ease;
+  --sga-transition-normal: 200ms ease;
+  --sga-transition-slow:   320ms ease;
+
+  /* Z-index */
+  --sga-z-dropdown: 100;
+  --sga-z-sticky: 200;
+  --sga-z-modal-backdrop: 1000;
+  --sga-z-modal: 1001;
+  --sga-z-toast: 2000;
+  --sga-z-tooltip: 3000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sga-transition-fast: 0ms;
+    --sga-transition-normal: 0ms;
+    --sga-transition-slow: 0ms;
+  }
+}
+
+/* ============================================================
+   2. FONTE INTER (Google Fonts)
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ============================================================
+   3. BOTOES — 4 variantes x 2 tamanhos
+   ============================================================ */
+.sga-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sga-space-2);
+  height: 40px;
+  padding: 0 var(--sga-space-4);
+  font-family: var(--sga-font-family);
+  font-size: var(--sga-font-size-md);
+  font-weight: 500;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--sga-radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  transition: background var(--sga-transition-fast), border-color var(--sga-transition-fast), color var(--sga-transition-fast), box-shadow var(--sga-transition-fast);
+}
+.sga-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sga-shadow-focus);
+}
+.sga-btn:disabled,
+.sga-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Primary — azul cheio */
+.sga-btn--primary {
+  background: var(--sga-color-primary);
+  color: var(--sga-text-on-primary);
+}
+.sga-btn--primary:hover {
+  background: var(--sga-color-primary-hover);
+}
+
+/* Secondary — outline azul */
+.sga-btn--secondary {
+  background: var(--sga-bg-surface);
+  color: var(--sga-color-primary);
+  border-color: var(--sga-color-primary);
+}
+.sga-btn--secondary:hover {
+  background: var(--sga-color-primary-light);
+}
+
+/* Ghost — texto cinza, sem borda */
+.sga-btn--ghost {
+  background: transparent;
+  color: var(--sga-text-muted);
+}
+.sga-btn--ghost:hover {
+  background: var(--sga-bg-surface-alt);
+  color: var(--sga-text-default);
+}
+
+/* Danger — vermelho cheio */
+.sga-btn--danger {
+  background: var(--sga-color-danger);
+  color: var(--sga-text-on-primary);
+}
+.sga-btn--danger:hover {
+  background: #b91c1c;
+}
+
+/* Tamanho small */
+.sga-btn--sm {
+  height: 32px;
+  padding: 0 var(--sga-space-3);
+  font-size: var(--sga-font-size-sm);
+  border-radius: var(--sga-radius-sm);
+}
+
+/* Botao so com icone */
+.sga-btn--icon {
+  width: 40px;
+  padding: 0;
+}
+.sga-btn--icon.sga-btn--sm {
+  width: 32px;
+}
+
+/* ============================================================
+   4. MODAIS
+   ============================================================ */
+.sga-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--sga-bg-overlay);
+  z-index: var(--sga-z-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sga-space-4);
+  opacity: 0;
+  animation: sgaFadeIn var(--sga-transition-normal) forwards;
+}
+@keyframes sgaFadeIn {
+  to { opacity: 1; }
+}
+
+.sga-modal {
+  background: var(--sga-bg-surface);
+  border-radius: var(--sga-radius-lg);
+  box-shadow: var(--sga-shadow-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  z-index: var(--sga-z-modal);
+  transform: translateY(8px);
+  opacity: 0;
+  animation: sgaModalIn var(--sga-transition-normal) forwards;
+}
+@keyframes sgaModalIn {
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.sga-modal--sm   { max-width: 480px; }
+.sga-modal--md   { max-width: 640px; }
+.sga-modal--lg   { max-width: 840px; }
+.sga-modal--full { max-width: 95vw; max-height: 95vh; }
+
+.sga-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sga-space-5) var(--sga-space-6);
+  border-bottom: 1px solid var(--sga-border-default);
+}
+.sga-modal__title {
+  font-size: var(--sga-font-size-xl);
+  font-weight: 600;
+  color: var(--sga-text-strong);
+  margin: 0;
+  line-height: var(--sga-line-height-tight);
+}
+.sga-modal__close {
+  background: transparent;
+  border: none;
+  color: var(--sga-text-muted);
+  font-size: var(--sga-font-size-xl);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--sga-radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--sga-transition-fast);
+}
+.sga-modal__close:hover {
+  background: var(--sga-bg-surface-alt);
+  color: var(--sga-text-default);
+}
+.sga-modal__close:focus-visible {
+  outline: none;
+  box-shadow: var(--sga-shadow-focus);
+}
+
+.sga-modal__body {
+  padding: var(--sga-space-6);
+  overflow-y: auto;
+  flex: 1;
+  color: var(--sga-text-default);
+  font-size: var(--sga-font-size-md);
+  line-height: var(--sga-line-height-normal);
+}
+
+.sga-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sga-space-2);
+  padding: var(--sga-space-4) var(--sga-space-6);
+  border-top: 1px solid var(--sga-border-default);
+  background: var(--sga-bg-surface-alt);
+  border-bottom-left-radius: var(--sga-radius-lg);
+  border-bottom-right-radius: var(--sga-radius-lg);
+}
+
+/* ============================================================
+   5. FORMS
+   ============================================================ */
+.sga-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sga-space-1);
+  margin-bottom: var(--sga-space-4);
+}
+.sga-form-label {
+  font-size: var(--sga-font-size-sm);
+  font-weight: 500;
+  color: var(--sga-text-default);
+}
+.sga-form-required {
+  color: var(--sga-color-danger);
+  margin-left: 2px;
+}
+.sga-form-input,
+.sga-form-select,
+.sga-form-textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: var(--sga-space-2) var(--sga-space-3);
+  font-family: var(--sga-font-family);
+  font-size: var(--sga-font-size-md);
+  color: var(--sga-text-default);
+  background: var(--sga-bg-surface);
+  border: 1px solid var(--sga-border-default);
+  border-radius: var(--sga-radius-sm);
+  transition: border-color var(--sga-transition-fast), box-shadow var(--sga-transition-fast);
+  box-sizing: border-box;
+}
+.sga-form-input:hover,
+.sga-form-select:hover,
+.sga-form-textarea:hover {
+  border-color: var(--sga-border-strong);
+}
+.sga-form-input:focus,
+.sga-form-select:focus,
+.sga-form-textarea:focus {
+  outline: none;
+  border-color: var(--sga-border-focus);
+  box-shadow: var(--sga-shadow-focus);
+}
+.sga-form-input:disabled,
+.sga-form-select:disabled,
+.sga-form-textarea:disabled {
+  background: var(--sga-bg-surface-alt);
+  color: var(--sga-text-muted);
+  cursor: not-allowed;
+}
+.sga-form-textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: var(--sga-line-height-normal);
+}
+.sga-form-help {
+  font-size: var(--sga-font-size-xs);
+  color: var(--sga-text-muted);
+}
+.sga-form-error {
+  font-size: var(--sga-font-size-xs);
+  color: var(--sga-color-danger);
+}
+.sga-form-group--error .sga-form-input,
+.sga-form-group--error .sga-form-select,
+.sga-form-group--error .sga-form-textarea {
+  border-color: var(--sga-color-danger);
+}
+.sga-form-group--error .sga-form-input:focus,
+.sga-form-group--error .sga-form-select:focus,
+.sga-form-group--error .sga-form-textarea:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+}
+
+.sga-form-row {
+  display: flex;
+  gap: var(--sga-space-3);
+  flex-wrap: wrap;
+}
+.sga-form-row > .sga-form-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.sga-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sga-space-3);
+}
+.sga-col-1  { grid-column: span 1; }
+.sga-col-2  { grid-column: span 2; }
+.sga-col-3  { grid-column: span 3; }
+.sga-col-4  { grid-column: span 4; }
+.sga-col-5  { grid-column: span 5; }
+.sga-col-6  { grid-column: span 6; }
+.sga-col-7  { grid-column: span 7; }
+.sga-col-8  { grid-column: span 8; }
+.sga-col-9  { grid-column: span 9; }
+.sga-col-10 { grid-column: span 10; }
+.sga-col-11 { grid-column: span 11; }
+.sga-col-12 { grid-column: span 12; }
+
+/* Checkbox e radio inline */
+.sga-form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sga-space-2);
+  font-size: var(--sga-font-size-md);
+  cursor: pointer;
+}
+.sga-form-check input[type="checkbox"],
+.sga-form-check input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* ============================================================
+   6. SKELETON
+   ============================================================ */
+.sga-skeleton {
+  background: linear-gradient(90deg, #eef0f3 25%, #f7f8fa 50%, #eef0f3 75%);
+  background-size: 200% 100%;
+  border-radius: var(--sga-radius-sm);
+  animation: sgaShimmer 1.4s ease infinite;
+}
+@keyframes sgaShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.sga-skeleton--line {
+  height: 12px;
+  margin-bottom: var(--sga-space-2);
+  width: 100%;
+}
+.sga-skeleton--row {
+  height: 48px;
+  margin-bottom: var(--sga-space-2);
+}
+.sga-skeleton--card {
+  height: 160px;
+  border-radius: var(--sga-radius-md);
+}
+.sga-skeleton--avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--sga-radius-pill);
+}
+.sga-skeleton-list {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sga-skeleton { animation: none; background: #eef0f3; }
+}
+
+/* Spinner inline (uso em botoes) */
+.sga-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: sgaSpin 0.8s linear infinite;
+}
+.sga-spinner--sm { width: 12px; height: 12px; border-width: 1.5px; }
+.sga-spinner--lg { width: 24px; height: 24px; border-width: 2.5px; }
+@keyframes sgaSpin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sga-spinner { animation: none; }
+}
+
+/* ============================================================
+   7. TOAST
+   ============================================================ */
+.sga-toast-container {
+  position: fixed;
+  top: var(--sga-space-4);
+  right: var(--sga-space-4);
+  z-index: var(--sga-z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sga-space-2);
+  pointer-events: none;
+  max-width: 380px;
+}
+.sga-toast {
+  pointer-events: auto;
+  background: var(--sga-bg-surface);
+  border-radius: var(--sga-radius-md);
+  box-shadow: var(--sga-shadow-lg);
+  padding: var(--sga-space-3) var(--sga-space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sga-space-3);
+  border-left: 4px solid var(--sga-color-info);
+  font-size: var(--sga-font-size-md);
+  color: var(--sga-text-default);
+  cursor: pointer;
+  transform: translateX(100%);
+  opacity: 0;
+  animation: sgaToastIn var(--sga-transition-normal) forwards;
+  min-width: 280px;
+}
+@keyframes sgaToastIn {
+  to { transform: translateX(0); opacity: 1; }
+}
+.sga-toast--closing {
+  animation: sgaToastOut var(--sga-transition-normal) forwards;
+}
+@keyframes sgaToastOut {
+  to { transform: translateX(100%); opacity: 0; }
+}
+.sga-toast--success { border-left-color: var(--sga-color-success); }
+.sga-toast--error   { border-left-color: var(--sga-color-danger); }
+.sga-toast--warning { border-left-color: var(--sga-color-warning); }
+.sga-toast--info    { border-left-color: var(--sga-color-info); }
+
+.sga-toast__icon {
+  font-size: var(--sga-font-size-lg);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.sga-toast__body {
+  flex: 1;
+  line-height: var(--sga-line-height-normal);
+}
+
+/* ============================================================
+   8. EMPTY STATE
+   ============================================================ */
+.sga-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--sga-space-12) var(--sga-space-6);
+  color: var(--sga-text-muted);
+  gap: var(--sga-space-3);
+}
+.sga-empty__icon {
+  font-size: 48px;
+  opacity: 0.6;
+  line-height: 1;
+}
+.sga-empty__title {
+  font-size: var(--sga-font-size-lg);
+  font-weight: 600;
+  color: var(--sga-text-default);
+  margin: 0;
+}
+.sga-empty__text {
+  font-size: var(--sga-font-size-md);
+  margin: 0;
+  max-width: 360px;
+}
+.sga-empty--compact {
+  padding: var(--sga-space-6) var(--sga-space-4);
+}
+.sga-empty--compact .sga-empty__icon {
+  font-size: 28px;
+}
+.sga-empty--error .sga-empty__title { color: var(--sga-color-danger); }
+
+/* ============================================================
+   9. TABELAS
+   ============================================================ */
+.sga-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--sga-radius-md);
+  border: 1px solid var(--sga-border-default);
+  background: var(--sga-bg-surface);
+}
+.sga-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--sga-font-size-md);
+  color: var(--sga-text-default);
+}
+.sga-table__th {
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--sga-font-size-sm);
+  color: var(--sga-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: var(--sga-space-3) var(--sga-space-4);
+  border-bottom: 1px solid var(--sga-border-default);
+  background: var(--sga-bg-surface-alt);
+  white-space: nowrap;
+}
+.sga-table__th--sortable { cursor: pointer; user-select: none; }
+.sga-table__th--sortable:hover { background: #f1f3f5; }
+.sga-table__th--actions { text-align: right; width: 1%; }
+.sga-table__td {
+  padding: var(--sga-space-3) var(--sga-space-4);
+  border-bottom: 1px solid var(--sga-border-default);
+  vertical-align: middle;
+}
+.sga-table__td--actions { text-align: right; white-space: nowrap; }
+.sga-table__td-meta {
+  display: block;
+  color: var(--sga-text-muted);
+  font-size: var(--sga-font-size-xs);
+  margin-top: 2px;
+}
+.sga-table__row:hover {
+  background: var(--sga-bg-surface-alt);
+}
+.sga-table__row:last-child .sga-table__td {
+  border-bottom: none;
+}
+.sga-table--compact .sga-table__th,
+.sga-table--compact .sga-table__td {
+  padding: var(--sga-space-2) var(--sga-space-3);
+}
+
+/* ============================================================
+   10. CARDS
+   ============================================================ */
+.sga-card {
+  background: var(--sga-bg-surface);
+  border-radius: var(--sga-radius-md);
+  padding: var(--sga-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sga-space-3);
+}
+.sga-card--bordered { border: 1px solid var(--sga-border-default); }
+.sga-card--elevated { box-shadow: var(--sga-shadow-md); }
+.sga-card--interactive {
+  cursor: pointer;
+  transition: transform var(--sga-transition-fast), box-shadow var(--sga-transition-fast);
+}
+.sga-card--interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sga-shadow-md);
+}
+.sga-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sga-space-3);
+}
+.sga-card__title {
+  margin: 0;
+  font-size: var(--sga-font-size-lg);
+  font-weight: 600;
+  color: var(--sga-text-strong);
+}
+.sga-card__body  { color: var(--sga-text-default); line-height: var(--sga-line-height-normal); }
+.sga-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sga-space-2);
+}
+
+/* ============================================================
+   11. BADGES
+   ============================================================ */
+.sga-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sga-space-1);
+  padding: 2px var(--sga-space-2);
+  border-radius: var(--sga-radius-pill);
+  font-size: var(--sga-font-size-xs);
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.sga-badge--success { background: var(--sga-color-success-bg); color: var(--sga-color-success); border: 1px solid var(--sga-color-success-border); }
+.sga-badge--warning { background: var(--sga-color-warning-bg); color: var(--sga-color-warning); border: 1px solid var(--sga-color-warning-border); }
+.sga-badge--danger  { background: var(--sga-color-danger-bg);  color: var(--sga-color-danger);  border: 1px solid var(--sga-color-danger-border); }
+.sga-badge--info    { background: var(--sga-color-info-bg);    color: var(--sga-color-info);    border: 1px solid var(--sga-color-info-border); }
+.sga-badge--neutral { background: var(--sga-bg-surface-alt);   color: var(--sga-text-muted);    border: 1px solid var(--sga-border-default); }
+
+/* ============================================================
+   12. ACTIVE STATE no sidebar (substitui o legacy .nav-item.active)
+   ============================================================ */
+.sidebar-nav .nav-item {
+  position: relative;
+  transition: background var(--sga-transition-fast), color var(--sga-transition-fast);
+}
+.sidebar-nav .nav-item.active {
+  background: var(--sga-color-primary-light) !important;
+  color: var(--sga-color-primary) !important;
+  font-weight: 600;
+}
+.sidebar-nav .nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  background: var(--sga-color-primary);
+  border-radius: 0 var(--sga-radius-sm) var(--sga-radius-sm) 0;
+}
+.sidebar-nav .nav-item:hover:not(.active) {
+  background: var(--sga-bg-surface-alt);
+}
+/* TopBar nav button active state (consistencia visual) */
+.topbar-nav-btn.active {
+  background: var(--sga-color-primary) !important;
+  color: var(--sga-text-on-primary) !important;
+  box-shadow: var(--sga-shadow-sm);
+}
+
+/* ============================================================
+   13. SECTION TRANSITION (fade-in suave ao trocar de aba)
+   Aplica SO em elementos de conteudo. EXCLUI overlays/modais
+   (eles tem animacao propria e precisam de opacity controlada).
+   ============================================================ */
+.section-content > *:not(.sga-modal-backdrop):not(.modal-backdrop):not([id*="overlay"]):not([id*="modal"]) {
+  animation: sgaSectionIn var(--sga-transition-normal) ease forwards;
+}
+@keyframes sgaSectionIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .section-content > * { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+/* ============================================================
+   14. STICKY TABLE HEADER (cabecalho gruda ao scrollar listas longas)
+   ============================================================ */
+.sga-table-wrap--sticky {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.sga-table-wrap--sticky .sga-table__th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--sga-border-default);
+}
+.sga-table-wrap--sticky.scrolled .sga-table__th {
+  box-shadow: var(--sga-shadow-sm);
+}
+
+/* ============================================================
+   15. FORM VALIDATION VISUAL (refinos extras pro feedback onBlur)
+   ============================================================ */
+.sga-form-group--valid .sga-form-input,
+.sga-form-group--valid .sga-form-select,
+.sga-form-group--valid .sga-form-textarea {
+  border-color: var(--sga-color-success);
+}
+.sga-form-group--valid .sga-form-input:focus,
+.sga-form-group--valid .sga-form-select:focus,
+.sga-form-group--valid .sga-form-textarea:focus {
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+}
+
+/* ============================================================
+   16. UTILS / TIPOGRAFIA
+   ============================================================ */
+.sga-text-strong { color: var(--sga-text-strong); }
+.sga-text-muted  { color: var(--sga-text-muted); }
+.sga-text-soft   { color: var(--sga-text-soft); }
+.sga-text-success { color: var(--sga-color-success); }
+.sga-text-danger  { color: var(--sga-color-danger); }
+.sga-text-xs   { font-size: var(--sga-font-size-xs); }
+.sga-text-sm   { font-size: var(--sga-font-size-sm); }
+.sga-text-md   { font-size: var(--sga-font-size-md); }
+.sga-text-lg   { font-size: var(--sga-font-size-lg); }
+.sga-font-medium    { font-weight: 500; }
+.sga-font-semibold  { font-weight: 600; }
+.sga-font-bold      { font-weight: 700; }
+
+.sga-divider {
+  height: 1px;
+  background: var(--sga-border-default);
+  border: 0;
+  margin: var(--sga-space-4) 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+</style>
+
+
+<!-- ============================ HELPERS JS (window.SGA) ============================ -->
+<script>
+(function(){
+  'use strict';
+
+  // --------------------------- estado interno ---------------------------
+  var modalStack = [];   // array de { id, backdropEl, prevFocus, onClose }
+  var toastContainer = null;
+  var toastIdSeq = 0;
+
+  // --------------------------- helpers basicos ---------------------------
+  function esc(str){
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, function(c){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+
+  function ensureToastContainer(){
+    if (toastContainer && document.body.contains(toastContainer)) return toastContainer;
+    toastContainer = document.createElement('div');
+    toastContainer.className = 'sga-toast-container';
+    toastContainer.setAttribute('aria-live', 'polite');
+    toastContainer.setAttribute('role', 'status');
+    document.body.appendChild(toastContainer);
+    return toastContainer;
+  }
+
+  function focusableElements(container){
+    if (!container) return [];
+    return Array.prototype.slice.call(container.querySelectorAll(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ));
+  }
+
+  // --------------------------- TOAST ---------------------------
+  function toast(message, type, opts){
+    type = type || 'info';
+    opts = opts || {};
+    var icons = { success: '✓', error: '⚠', warning: '⚠', info: 'ℹ' };
+    var container = ensureToastContainer();
+
+    // limit a 3 toasts visiveis
+    while (container.children.length >= 3){
+      container.removeChild(container.firstChild);
+    }
+
+    var el = document.createElement('div');
+    el.className = 'sga-toast sga-toast--' + type;
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    el.innerHTML =
+      '<div class="sga-toast__icon">' + icons[type] + '</div>' +
+      '<div class="sga-toast__body">' + esc(message) + '</div>';
+    container.appendChild(el);
+
+    var duration = opts.duration || (type === 'error' ? 6000 : 4000);
+    var timeoutId = setTimeout(close, duration);
+
+    el.addEventListener('click', close);
+    function close(){
+      clearTimeout(timeoutId);
+      el.classList.add('sga-toast--closing');
+      setTimeout(function(){
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 220);
+    }
+    return { close: close };
+  }
+
+  // --------------------------- MODAL ---------------------------
+  function openModal(config){
+    config = config || {};
+    var id = config.id || ('sga-modal-' + Date.now());
+    var size = config.size || 'md';
+    var prevFocus = document.activeElement;
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'sga-modal-backdrop';
+    backdrop.setAttribute('data-sga-modal-id', id);
+
+    var modal = document.createElement('div');
+    modal.className = 'sga-modal sga-modal--' + size;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    if (config.title) modal.setAttribute('aria-labelledby', 'sga-title-' + id);
+
+    // header
+    var headerHtml = '';
+    if (config.title || !config.hideHeader){
+      headerHtml =
+        '<header class="sga-modal__header">' +
+          '<h2 class="sga-modal__title" id="sga-title-' + id + '">' + esc(config.title || '') + '</h2>' +
+          (config.showClose !== false
+            ? '<button class="sga-modal__close" type="button" aria-label="Fechar">✕</button>'
+            : '') +
+        '</header>';
+    }
+
+    // body
+    var bodyContent = '';
+    if (typeof config.body === 'string'){
+      bodyContent = config.body;
+    } // se body for Node, anexamos depois
+
+    var bodyHtml = '<div class="sga-modal__body">' + bodyContent + '</div>';
+
+    // footer
+    var footerHtml = '';
+    if (Array.isArray(config.footer) && config.footer.length){
+      footerHtml = '<footer class="sga-modal__footer">';
+      config.footer.forEach(function(btn, idx){
+        var variant = btn.variant || (btn.primary ? 'primary' : 'ghost');
+        footerHtml +=
+          '<button class="sga-btn sga-btn--' + variant + '" type="button" data-sga-footer-idx="' + idx + '"' +
+          (btn.disabled ? ' disabled' : '') + '>' + esc(btn.label || 'OK') + '</button>';
+      });
+      footerHtml += '</footer>';
+    }
+
+    modal.innerHTML = headerHtml + bodyHtml + footerHtml;
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+
+    // se body for Node, anexa
+    if (config.body && typeof config.body !== 'string' && config.body.nodeType){
+      var bodyEl = modal.querySelector('.sga-modal__body');
+      bodyEl.innerHTML = '';
+      bodyEl.appendChild(config.body);
+    }
+
+    // wire close
+    function close(){
+      if (config.onClose) {
+        try { config.onClose(); } catch(e){ /* swallow */ }
+      }
+      if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+      modalStack = modalStack.filter(function(m){ return m.id !== id; });
+      document.removeEventListener('keydown', handleKey);
+      if (prevFocus && typeof prevFocus.focus === 'function'){
+        try { prevFocus.focus(); } catch(e){}
+      }
+    }
+
+    // close button
+    var closeBtn = modal.querySelector('.sga-modal__close');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+
+    // backdrop click
+    if (!config.locked){
+      backdrop.addEventListener('click', function(e){
+        if (e.target === backdrop) close();
+      });
+    }
+
+    // footer buttons
+    var footerBtns = modal.querySelectorAll('[data-sga-footer-idx]');
+    Array.prototype.forEach.call(footerBtns, function(btnEl){
+      var idx = parseInt(btnEl.getAttribute('data-sga-footer-idx'), 10);
+      var btnDef = config.footer[idx];
+      btnEl.addEventListener('click', function(){
+        if (btnDef.onClick === 'close'){ close(); return; }
+        if (typeof btnDef.onClick === 'function'){
+          var ret = btnDef.onClick({ close: close, modal: modal });
+          if (ret === false) return; // handler pode bloquear close
+          if (btnDef.closeAfter !== false) close();
+        }
+      });
+    });
+
+    // ESC e tab trap
+    function handleKey(e){
+      // so processa se este modal e o topo da pilha
+      if (!modalStack.length || modalStack[modalStack.length-1].id !== id) return;
+      if (e.key === 'Escape' && !config.locked){
+        e.preventDefault();
+        close();
+      } else if (e.key === 'Tab'){
+        var focusables = focusableElements(modal);
+        if (!focusables.length) return;
+        var first = focusables[0];
+        var last  = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first){
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last){
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+
+    modalStack.push({ id: id, backdropEl: backdrop, prevFocus: prevFocus, onClose: config.onClose });
+
+    // focus inicial
+    setTimeout(function(){
+      var initial = modal.querySelector('[data-sga-autofocus]');
+      if (!initial){
+        var focusables = focusableElements(modal);
+        // pula o close button
+        initial = focusables.find(function(el){ return !el.classList.contains('sga-modal__close'); }) || focusables[0];
+      }
+      if (initial) try { initial.focus(); } catch(e){}
+    }, 50);
+
+    if (typeof config.onOpen === 'function'){
+      try { config.onOpen({ modal: modal, close: close }); } catch(e){}
+    }
+
+    return { close: close, modal: modal, id: id };
+  }
+
+  function closeModal(id){
+    var item = modalStack.find(function(m){ return m.id === id; });
+    if (item && item.backdropEl && item.backdropEl.parentNode){
+      item.backdropEl.parentNode.removeChild(item.backdropEl);
+      modalStack = modalStack.filter(function(m){ return m.id !== id; });
+    }
+  }
+
+  // --------------------------- SGA.confirm — substitui confirm() nativo ---------------------------
+  function sgaConfirm(message, opts){
+    opts = opts || {};
+    return new Promise(function(resolve){
+      openModal({
+        title: opts.title || 'Confirmar',
+        size: 'sm',
+        body: '<p>' + esc(message) + '</p>',
+        footer: [
+          { label: opts.cancelLabel || 'Cancelar', variant: 'ghost', onClick: function(){ resolve(false); } },
+          { label: opts.okLabel || 'Confirmar', variant: opts.danger ? 'danger' : 'primary', primary: true, onClick: function(){ resolve(true); } }
+        ],
+        onClose: function(){ resolve(false); }
+      });
+    });
+  }
+
+  // --------------------------- SKELETON ---------------------------
+  function skeleton(container, opts){
+    if (!container) return;
+    opts = opts || {};
+    var type = opts.type || 'list';
+    var count = opts.count || 3;
+    var html = '';
+    if (type === 'list'){
+      html = '<div class="sga-skeleton-list">';
+      for (var i = 0; i < count; i++) html += '<div class="sga-skeleton sga-skeleton--row"></div>';
+      html += '</div>';
+    } else if (type === 'card'){
+      html = '<div class="sga-skeleton sga-skeleton--card"></div>';
+    } else if (type === 'lines'){
+      for (var j = 0; j < count; j++){
+        var w = (j === count - 1) ? '60%' : '100%';
+        html += '<div class="sga-skeleton sga-skeleton--line" style="width:' + w + '"></div>';
+      }
+    }
+    container.innerHTML = html;
+  }
+  function skeletonRemove(container){
+    if (container) container.innerHTML = '';
+  }
+
+  // --------------------------- EMPTY ---------------------------
+  function empty(container, config){
+    if (!container) return;
+    config = config || {};
+    var icon = config.icon || '📭';
+    var title = config.title || 'Nada por aqui';
+    var text = config.text || '';
+    var variant = config.variant || '';
+    var actionHtml = '';
+    if (config.action && config.action.label){
+      actionHtml = '<button class="sga-btn sga-btn--primary" type="button" data-sga-empty-action>' + esc(config.action.label) + '</button>';
+    }
+    container.innerHTML =
+      '<div class="sga-empty ' + (variant ? 'sga-empty--' + variant : '') + '">' +
+        '<div class="sga-empty__icon">' + esc(icon) + '</div>' +
+        '<h3 class="sga-empty__title">' + esc(title) + '</h3>' +
+        (text ? '<p class="sga-empty__text">' + esc(text) + '</p>' : '') +
+        actionHtml +
+      '</div>';
+    if (config.action && typeof config.action.onClick === 'function'){
+      var btn = container.querySelector('[data-sga-empty-action]');
+      if (btn) btn.addEventListener('click', config.action.onClick);
+    }
+  }
+
+  // --------------------------- formValidate ---------------------------
+  function formValidate(formEl){
+    if (!formEl) return false;
+    var groups = formEl.querySelectorAll('.sga-form-group');
+    var allOk = true;
+    Array.prototype.forEach.call(groups, function(group){
+      var input = group.querySelector('.sga-form-input, .sga-form-select, .sga-form-textarea');
+      if (!input) return;
+      var required = input.hasAttribute('required');
+      var val = (input.value || '').trim();
+      if (required && !val){
+        group.classList.add('sga-form-group--error');
+        input.setAttribute('aria-invalid', 'true');
+        allOk = false;
+      } else if (input.type === 'email' && val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)){
+        group.classList.add('sga-form-group--error');
+        input.setAttribute('aria-invalid', 'true');
+        allOk = false;
+      } else {
+        group.classList.remove('sga-form-group--error');
+        input.removeAttribute('aria-invalid');
+      }
+    });
+    return allOk;
+  }
+
+  // --------------------------- VALIDATE FIELD onBlur (auto-feedback visual) ---------------------------
+  function validateField(input){
+    if (!input) return true;
+    var group = input.closest('.sga-form-group');
+    if (!group) return true;
+    var required = input.hasAttribute('required');
+    var val = (input.value || '').trim();
+    var errorMsg = group.querySelector('.sga-form-error');
+    var ok = true;
+    var msg = '';
+    if (required && !val){ ok = false; msg = 'Campo obrigatório'; }
+    else if (val && input.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)){ ok = false; msg = 'E-mail inválido'; }
+    else if (val && input.type === 'number'){
+      var min = input.getAttribute('min'); var max = input.getAttribute('max');
+      var num = parseFloat(val);
+      if (isNaN(num)){ ok = false; msg = 'Número inválido'; }
+      else if (min !== null && num < parseFloat(min)){ ok = false; msg = 'Mínimo ' + min; }
+      else if (max !== null && num > parseFloat(max)){ ok = false; msg = 'Máximo ' + max; }
+    }
+    group.classList.remove('sga-form-group--error', 'sga-form-group--valid');
+    if (errorMsg) errorMsg.remove();
+    if (ok){
+      if (val) group.classList.add('sga-form-group--valid');
+      input.removeAttribute('aria-invalid');
+    } else {
+      group.classList.add('sga-form-group--error');
+      input.setAttribute('aria-invalid', 'true');
+      var err = document.createElement('small');
+      err.className = 'sga-form-error';
+      err.textContent = msg;
+      group.appendChild(err);
+    }
+    return ok;
+  }
+
+  // Liga validacao automatica via EVENT DELEGATION (1 listener, sem MutationObserver).
+  // Captura blur globalmente e valida se o target estiver dentro de .sga-form-group.
+  function attachAutoValidation(/* scope ignored — global delegation */){
+    if (window._sgaAutoValBound) return;
+    window._sgaAutoValBound = true;
+    document.addEventListener('blur', function(e){
+      var t = e.target;
+      if (!t || !t.classList) return;
+      if (t.classList.contains('sga-form-input') ||
+          t.classList.contains('sga-form-select') ||
+          t.classList.contains('sga-form-textarea')) {
+        validateField(t);
+      }
+    }, true); // capture true porque blur nao bubbla
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attachAutoValidation);
+  else attachAutoValidation();
+
+  // Sticky table scroll-shadow via EVENT DELEGATION no document (scroll captura).
+  function bootStickyTables(){
+    if (window._sgaStickyBound) return;
+    window._sgaStickyBound = true;
+    document.addEventListener('scroll', function(e){
+      var w = e.target;
+      if (!w || !w.classList || !w.classList.contains('sga-table-wrap--sticky')) return;
+      if (w.scrollTop > 4) w.classList.add('scrolled');
+      else w.classList.remove('scrolled');
+    }, true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootStickyTables);
+  else bootStickyTables();
+
+  // --------------------------- expor window.SGA ---------------------------
+  window.SGA = {
+    openModal: openModal,
+    closeModal: closeModal,
+    confirm: sgaConfirm,
+    toast: toast,
+    skeleton: skeleton,
+    skeletonRemove: skeletonRemove,
+    empty: empty,
+    formValidate: formValidate,
+    validateField: validateField,
+    attachAutoValidation: attachAutoValidation,
+    // helpers de escape para uso em HTML inline
+    escapeHtml: esc
+  };
+})();
+</script>

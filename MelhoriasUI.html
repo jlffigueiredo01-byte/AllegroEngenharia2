@@ -30,13 +30,15 @@ function renderMelhorias(area) {
     '</div>' +
     '<div class="kpi-grid" id="melh-kpis" style="grid-template-columns:repeat(4,1fr)"></div>' +
     '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
-      '<select class="form-input" id="melh-f-tipo" style="width:170px"><option value="">Todos os tipos</option><option value="ERRO">🐛 Erro</option><option value="SUGESTAO">💡 Sugestão</option><option value="MELHORIA">⬆️ Melhoria</option></select>' +
-      '<select class="form-input" id="melh-f-status" style="width:190px"><option value="">Todos os status</option><option value="NOVO">🆕 Novo</option><option value="EM_ANALISE">🔍 Em análise</option><option value="APROVADO">✅ Aprovado</option><option value="IMPLEMENTADO">🎉 Implementado</option><option value="RECUSADO">✖️ Recusado</option></select>' +
+      '<select class="sga-form-select" id="melh-f-tipo" style="width:170px"><option value="">Todos os tipos</option><option value="ERRO">🐛 Erro</option><option value="SUGESTAO">💡 Sugestão</option><option value="MELHORIA">⬆️ Melhoria</option></select>' +
+      '<select class="sga-form-select" id="melh-f-status" style="width:190px"><option value="">Todos os status</option><option value="NOVO">🆕 Novo</option><option value="EM_ANALISE">🔍 Em análise</option><option value="APROVADO">✅ Aprovado</option><option value="IMPLEMENTADO">🎉 Implementado</option><option value="RECUSADO">✖️ Recusado</option></select>' +
     '</div>' +
-    '<div id="melh-list"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+    '<div id="melh-list"></div>';
 
   document.getElementById('melh-f-tipo').addEventListener('change', function () { _melhFiltroTipo = this.value; _melhRender(); });
   document.getElementById('melh-f-status').addEventListener('change', function () { _melhFiltroStatus = this.value; _melhRender(); });
+
+  if (window.SGA && SGA.skeleton) SGA.skeleton(document.getElementById('melh-list'), { type: 'list', count: 5 });
   _melhLoad();
 }
 
@@ -44,7 +46,12 @@ function _melhLoad() {
   google.script.run
     .withSuccessHandler(function (r) {
       if (!r || !r.ok) {
-        document.getElementById('melh-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        var box = document.getElementById('melh-list');
+        if (window.SGA && SGA.empty) {
+          SGA.empty(box, { icon: '⚠️', title: 'Não foi possível carregar', text: (r && r.error) || 'sem resposta', variant: 'error' });
+        } else {
+          box.innerHTML = '<div class="card"><div class="card-body" style="color:var(--sga-color-danger)">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        }
         return;
       }
       _melhCache = r.data || [];
@@ -52,7 +59,12 @@ function _melhLoad() {
       _melhRender();
     })
     .withFailureHandler(function (e) {
-      document.getElementById('melh-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+      var box = document.getElementById('melh-list');
+      if (window.SGA && SGA.empty) {
+        SGA.empty(box, { icon: '⚠️', title: 'Falha ao carregar', text: e.message || String(e), variant: 'error' });
+      } else {
+        box.innerHTML = '<div class="card"><div class="card-body" style="color:var(--sga-color-danger)">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+      }
     })
     .Api_fbGetAll();
 }
@@ -85,25 +97,50 @@ function _melhRender() {
     if (_melhFiltroStatus && f.status !== _melhFiltroStatus) return false;
     return true;
   });
+  // FB-030: ordem de criação garantida — ordena pelo NÚMERO do FB (robusto mesmo
+  // se criado_em vier inconsistente/desalinhado na planilha). Mais recente no topo.
+  lista.sort(function (a, b) {
+    var na = parseInt(String(a.id).replace(/\D/g, ''), 10) || 0;
+    var nb = parseInt(String(b.id).replace(/\D/g, ''), 10) || 0;
+    return nb - na;
+  });
   if (!lista.length) {
-    box.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:24px 0"><div class="empty-title">Nenhum relato neste filtro</div></div></div></div>';
+    var hasAny = _melhCache && _melhCache.length > 0;
+    if (window.SGA && SGA.empty) {
+      if (hasAny) {
+        SGA.empty(box, {
+          icon: '🔍',
+          title: 'Nenhum relato neste filtro',
+          text: 'Ajuste os filtros de tipo ou status para ver mais relatos.',
+          variant: 'filtered'
+        });
+      } else {
+        SGA.empty(box, {
+          icon: '💡',
+          title: 'Nenhuma melhoria registrada ainda',
+          text: 'Quando os usuários enviarem sugestões, melhorias ou reportarem erros pelo módulo de Feedback, eles aparecerão aqui para você acompanhar.'
+        });
+      }
+    } else {
+      box.innerHTML = '<div class="sga-empty"><div class="sga-empty__icon">' + (hasAny ? '🔍' : '💡') + '</div><h3 class="sga-empty__title">' + (hasAny ? 'Nenhum relato neste filtro' : 'Nenhuma melhoria registrada ainda') + '</h3></div>';
+    }
     return;
   }
   var rows = '';
   for (var i = 0; i < lista.length; i++) {
     var f = lista[i];
     var st = _MELH_STATUS[f.status] || { label: f.status, badge: 'badge-gray' };
-    rows += '<tr>' +
-      '<td><code style="font-size:11px">' + escapeHtml(f.id) + '</code></td>' +
-      '<td>' + (_MELH_TIPO[f.tipo] || escapeHtml(f.tipo)) + (f.urgente === 'TRUE' ? ' <span title="urgente">🚨</span>' : '') + '</td>' +
-      '<td><b>' + escapeHtml(f.titulo || '') + '</b><div style="font-size:11px;color:#94a3b8">' + escapeHtml(f.tela || '') + ' · ' + escapeHtml(f.criado_por_nome || f.criado_por || '') + '</div></td>' +
-      '<td><span class="badge ' + st.badge + '">' + st.label + '</span></td>' +
-      '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm melh-ver" data-id="' + escapeHtml(f.id) + '">Ver / marcar</button></td>' +
+    rows += '<tr class="sga-table__row">' +
+      '<td class="sga-table__td"><code style="font-size:var(--sga-font-size-xs)">' + escapeHtml(f.id) + '</code></td>' +
+      '<td class="sga-table__td">' + (_MELH_TIPO[f.tipo] || escapeHtml(f.tipo)) + (f.urgente === 'TRUE' ? ' <span title="urgente">🚨</span>' : '') + '</td>' +
+      '<td class="sga-table__td"><b>' + escapeHtml(f.titulo || '') + '</b><small class="sga-table__td-meta">' + escapeHtml(f.tela || '') + ' · ' + escapeHtml(f.criado_por_nome || f.criado_por || '') + '</small></td>' +
+      '<td class="sga-table__td"><span class="badge ' + st.badge + '">' + st.label + '</span></td>' +
+      '<td class="sga-table__td sga-table__td--actions"><button class="sga-btn sga-btn--ghost sga-btn--sm melh-ver" data-id="' + escapeHtml(f.id) + '">Ver / marcar</button></td>' +
     '</tr>';
   }
-  box.innerHTML = '<div class="card"><div class="table-wrap"><table class="data-table">' +
-    '<thead><tr><th>ID</th><th>Tipo</th><th>Relato</th><th>Status</th><th></th></tr></thead>' +
-    '<tbody>' + rows + '</tbody></table></div></div>';
+  box.innerHTML = '<div class="sga-table-wrap"><table class="sga-table">' +
+    '<thead><tr><th class="sga-table__th">ID</th><th class="sga-table__th">Tipo</th><th class="sga-table__th">Relato</th><th class="sga-table__th">Status</th><th class="sga-table__th sga-table__th--actions"></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
   var vers = box.querySelectorAll('.melh-ver');
   for (var b = 0; b < vers.length; b++) vers[b].addEventListener('click', function () { _melhDetalhe(this.getAttribute('data-id')); });
 }
@@ -115,7 +152,7 @@ function _melhAnexosHtml(f) {
   if (!anexos.length) return '';
   var links = '';
   for (var i = 0; i < anexos.length; i++) {
-    links += '<a href="' + escapeHtml(anexos[i].url) + '" target="_blank" class="btn btn-ghost btn-sm" style="margin:2px">📎 ' + escapeHtml(anexos[i].name || ('anexo ' + (i + 1))) + '</a>';
+    links += '<a href="' + escapeHtml(anexos[i].url) + '" target="_blank" class="sga-btn sga-btn--ghost sga-btn--sm" style="margin:2px">📎 ' + escapeHtml(anexos[i].name || ('anexo ' + (i + 1))) + '</a>';
   }
   return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:2px">' + links + '</div>';
 }
@@ -134,28 +171,34 @@ function _melhDetalhe(id) {
     return '<option value="' + s + '"' + (s === atual ? ' selected' : '') + '>' + st.label + '</option>';
   };
   document.body.insertAdjacentHTML('beforeend',
-    '<div class="modal-backdrop" id="melh-modal" style="display:flex;z-index:1200">' +
-      '<div class="modal" style="max-width:560px;width:94%">' +
-        '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
-          '<div class="card-title">' + (_MELH_TIPO[f.tipo] || '') + ' — ' + escapeHtml(f.id) + '</div>' +
-          '<button class="btn btn-ghost btn-sm" id="melh-close">✕</button>' +
-        '</div><div class="card-body">' +
-          '<div style="font-weight:700;font-size:15px;margin-bottom:4px">' + escapeHtml(f.titulo || '') + '</div>' +
-          '<div style="font-size:12px;color:#94a3b8;margin-bottom:10px">' + escapeHtml(f.tela || '') + ' · ' + escapeHtml(f.criado_por_nome || f.criado_por || '') + ' · ' + formatDate(f.criado_em) + (f.urgente === 'TRUE' ? ' · 🚨 urgente' : '') + '</div>' +
-          '<div style="background:#f8fafc;border-radius:8px;padding:10px 14px;font-size:13px;white-space:pre-wrap">' + escapeHtml(f.descricao || '') + '</div>' +
+    '<div class="sga-modal-backdrop" id="melh-modal" data-modal-id="melh-modal">' +
+      '<div class="sga-modal sga-modal--md" role="dialog" aria-modal="true" aria-labelledby="melh-modal-title">' +
+        '<header class="sga-modal__header">' +
+          '<h2 class="sga-modal__title" id="melh-modal-title">' + (_MELH_TIPO[f.tipo] || '') + ' — ' + escapeHtml(f.id) + '</h2>' +
+          '<button class="sga-modal__close" type="button" aria-label="Fechar" id="melh-close">✕</button>' +
+        '</header>' +
+        '<div class="sga-modal__body">' +
+          '<div style="font-weight:700;font-size:var(--sga-font-size-md);margin-bottom:4px">' + escapeHtml(f.titulo || '') + '</div>' +
+          '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft);margin-bottom:10px">' + escapeHtml(f.tela || '') + ' · ' + escapeHtml(f.criado_por_nome || f.criado_por || '') + ' · ' + formatDate(f.criado_em) + (f.urgente === 'TRUE' ? ' · 🚨 urgente' : '') + '</div>' +
+          '<div style="background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-md);padding:10px 14px;font-size:var(--sga-font-size-md);white-space:pre-wrap">' + escapeHtml(f.descricao || '') + '</div>' +
           _melhAnexosHtml(f) +
-          (ctx.jsErrors && ctx.jsErrors.length ? '<details style="margin-top:8px;font-size:12px"><summary>erros JS na sessão</summary><pre style="white-space:pre-wrap;font-size:11px">' + escapeHtml(ctx.jsErrors.join('\\n')) + '</pre></details>' : '') +
-          '<hr style="margin:14px 0;border:none;border-top:1px solid #eef2f7">' +
-          '<label style="font-size:12px;font-weight:700">Status<br><select class="form-input" id="melh-status" style="margin-top:4px">' +
-            opt('NOVO', f.status) + opt('EM_ANALISE', f.status) + opt('APROVADO', f.status) + opt('IMPLEMENTADO', f.status) + opt('RECUSADO', f.status) +
-          '</select></label>' +
-          '<label style="font-size:12px;font-weight:700;display:block;margin-top:8px">Nota para o usuário (aparece em "Meus reportes")<br>' +
-            '<input class="form-input" id="melh-nota" style="margin-top:4px" value="' + escapeHtml(f.resolucao_nota || '') + '" placeholder="ex.: corrigido — atualize com Ctrl+Shift+R"></label>' +
-          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
-            '<button class="btn btn-ghost btn-sm" id="melh-cancel">Cancelar</button>' +
-            '<button class="btn btn-primary" id="melh-salvar">Salvar status</button>' +
+          (ctx.jsErrors && ctx.jsErrors.length ? '<details style="margin-top:8px;font-size:var(--sga-font-size-sm)"><summary>erros JS na sessão</summary><pre style="white-space:pre-wrap;font-size:var(--sga-font-size-xs)">' + escapeHtml(ctx.jsErrors.join('\\n')) + '</pre></details>' : '') +
+          '<hr class="sga-divider">' +
+          '<div class="sga-form-group">' +
+            '<label class="sga-form-label" for="melh-status">Status</label>' +
+            '<select class="sga-form-select" id="melh-status">' +
+              opt('NOVO', f.status) + opt('EM_ANALISE', f.status) + opt('APROVADO', f.status) + opt('IMPLEMENTADO', f.status) + opt('RECUSADO', f.status) +
+            '</select>' +
           '</div>' +
-        '</div></div>' +
+          '<div class="sga-form-group">' +
+            '<label class="sga-form-label" for="melh-nota">Nota para o usuário (aparece em "Meus reportes")</label>' +
+            '<input class="sga-form-input" id="melh-nota" value="' + escapeHtml(f.resolucao_nota || '') + '" placeholder="ex.: corrigido — atualize com Ctrl+Shift+R">' +
+          '</div>' +
+        '</div>' +
+        '<footer class="sga-modal__footer">' +
+          '<button class="sga-btn sga-btn--ghost" id="melh-cancel">Cancelar</button>' +
+          '<button class="sga-btn sga-btn--primary" id="melh-salvar">Salvar status</button>' +
+        '</footer>' +
       '</div></div>');
 
   var fechar = function () { var m = document.getElementById('melh-modal'); if (m) m.parentNode.removeChild(m); };

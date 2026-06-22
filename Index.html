@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SGA — Sistema de Gestão Allegro</title>
   <?!= include('Styles'); ?>
+  <?!= include('_DesignSystem'); ?>
 </head>
 <body>
 
@@ -111,9 +112,8 @@
             <span>Comercial</span><span class="nav-caret">▾</span>
           </button>
           <div class="nav-group-items">
-        <a class="nav-item " data-section="opportunities" onclick="showSection('opportunities')">
-          <span class="nav-icon">🎯</span><span class="nav-label">Oportunidades</span>
-        </a>
+        <!-- FB-26/27: Oportunidades removida — tudo vira Proposta direto via Wizard.
+             Levantamento técnico migrou para Step 1 da Proposta (collapsible). -->
         <a class="nav-item " data-section="quotes" onclick="showSection('quotes')">
           <span class="nav-icon">📄</span><span class="nav-label">Propostas</span>
         </a>
@@ -171,6 +171,9 @@
           </div>
         </div>
         <div class="nav-divider"></div>
+        <a class="nav-item nav-item-melhorias hidden" id="nav-triagens" data-section="triagens" onclick="showSection('triagens')">
+          <span class="nav-icon">🧠</span><span class="nav-label">Triagens</span>
+        </a>
         <a class="nav-item nav-item-melhorias hidden" id="nav-melhorias" data-section="melhorias" onclick="showSection('melhorias')">
           <span class="nav-icon">🛠️</span><span class="nav-label">Melhorias</span>
         </a>
@@ -209,7 +212,9 @@
         <button class="topbar-nav-btn" data-section="dashboard" onclick="showSection('dashboard')" title="Dashboard">◈</button>
         <button class="topbar-nav-btn" data-section="companies" onclick="showSection('companies')" title="Empresas">🏢</button>
         <button class="topbar-nav-btn" data-section="contacts" onclick="showSection('contacts')" title="Contatos">👤</button>
-        <button class="topbar-nav-btn" data-section="opportunities" onclick="showSection('opportunities')" title="Oportunidades">🎯</button>
+        <!-- FB-26/27: Oportunidades removida — substituída pelo Wizard de Proposta -->
+        <!-- <button class="topbar-nav-btn" data-section="opportunities" onclick="showSection('opportunities')" title="Oportunidades">🎯</button> -->
+
         <button class="topbar-nav-btn" data-section="quotes" onclick="showSection('quotes')" title="Propostas">📄</button>
         <button class="topbar-nav-btn" data-section="expenses" onclick="showSection('expenses')" title="Despesas">💰</button>
         <button class="topbar-nav-btn" data-section="actioncards" onclick="showSection('actioncards')" title="Action Cards">🗂</button>
@@ -232,9 +237,10 @@
   <?!= include('Scripts'); ?>
   <?!= include('CompaniesUI'); ?>
   <?!= include('ContactsUI'); ?>
-  <?!= include('OpportunitiesUI'); ?>
+  <?!= include('PricingEngineUI'); ?>
   <?!= include('ConfigUI'); ?>
   <?!= include('ProposalBuilderUI'); ?>
+  <?!= include('PropostaVisaoUI'); ?>
   <?!= include('MapUI'); ?>
   <?!= include('Visao360UI'); ?>
   <?!= include('DashboardUI'); ?>
@@ -245,6 +251,7 @@
   <?!= include('ChamadosUI'); ?>
   <?!= include('FeedbackUI'); ?>
   <?!= include('MelhoriasUI'); ?>
+  <?!= include('TriagensUI'); ?>
   <?!= include('UsuariosUI'); ?>
   <?!= include('HelpSystem'); ?>
   <?!= include('ChatBotWidget'); ?>

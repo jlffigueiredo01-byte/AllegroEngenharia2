@@ -31,29 +31,29 @@ function _fbOpen() {
   if (old) old.parentNode.removeChild(old);
   _fbAnexos = [];
   document.body.insertAdjacentHTML('beforeend',
-    '<div class="modal-backdrop" id="fb-modal" style="display:flex;z-index:1200">' +
+    '<div class="sga-modal-backdrop" id="fb-modal" style="display:flex;z-index:1200">' +
       '<div class="modal" style="max-width:520px;width:94%;max-height:92vh;overflow:auto">' +
         '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
           '<div class="card-title">💬 Sua opinião constrói o sistema</div>' +
-          '<button class="btn btn-ghost btn-sm" id="fb-close">✕</button>' +
+          '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="fb-close">✕</button>' +
         '</div><div class="card-body">' +
           '<div style="display:flex;gap:6px;margin-bottom:10px" id="fb-tipos">' +
-            '<button class="btn btn-ghost btn-sm fb-tipo" data-t="ERRO">🐛 Erro</button>' +
-            '<button class="btn btn-primary btn-sm fb-tipo" data-t="SUGESTAO">💡 Sugestão</button>' +
-            '<button class="btn btn-ghost btn-sm fb-tipo" data-t="MELHORIA">⬆️ Melhoria</button>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm fb-tipo" data-t="ERRO">🐛 Erro</button>' +
+            '<button class="sga-btn sga-btn--primary sga-btn--sm fb-tipo" data-t="SUGESTAO">💡 Sugestão</button>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm fb-tipo" data-t="MELHORIA">⬆️ Melhoria</button>' +
           '</div>' +
           '<label style="font-size:12px;display:block">Título (opcional)<br><input class="form-input" id="fb-titulo" placeholder="resumo em poucas palavras"></label>' +
           '<label style="font-size:12px;display:block;margin-top:8px">O que aconteceu? *<br><textarea class="form-input" id="fb-desc" rows="4" placeholder="descreva o erro, a ideia ou a melhoria. quanto mais detalhe, melhor a análise."></textarea></label>' +
           '<div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
-            '<label class="btn btn-ghost btn-sm" style="cursor:pointer">📎 Anexar prints<input type="file" id="fb-file" accept="image/*" multiple style="display:none"></label>' +
-            '<span id="fb-file-name" style="font-size:12px;color:#98a2b3"></span>' +
+            '<label class="sga-btn sga-btn--ghost sga-btn--sm" style="cursor:pointer">📎 Anexar prints<input type="file" id="fb-file" accept="image/*" multiple style="display:none"></label>' +
+            '<span id="fb-file-name" style="font-size:12px;color:var(--sga-text-soft)"></span>' +
             '<label style="font-size:12.5px;margin-left:auto;display:flex;align-items:center;gap:6px;cursor:pointer">' +
               '<input type="checkbox" id="fb-urgente"> 🚨 está me impedindo de trabalhar</label>' +
           '</div>' +
-          '<div style="font-size:11px;color:#98a2b3;margin-top:8px">Vai junto automaticamente: a tela atual e detalhes técnicos da sessão — você não precisa descrevê-los.</div>' +
+          '<div style="font-size:11px;color:var(--sga-text-soft);margin-top:8px">Vai junto automaticamente: a tela atual e detalhes técnicos da sessão — você não precisa descrevê-los.</div>' +
           '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
-            '<button class="btn btn-ghost btn-sm" id="fb-meus">Meus reportes</button>' +
-            '<button class="btn btn-primary" id="fb-enviar">Enviar</button>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="fb-meus">Meus reportes</button>' +
+            '<button class="sga-btn sga-btn--primary" id="fb-enviar">Enviar</button>' +
           '</div>' +
         '</div></div>' +
       '</div></div>');
@@ -68,9 +68,9 @@ function _fbOpen() {
     tipos[i].addEventListener('click', function () {
       tipoSel = this.getAttribute('data-t');
       for (var j = 0; j < tipos.length; j++) {
-        tipos[j].className = 'btn btn-ghost btn-sm fb-tipo';
+        tipos[j].className = 'sga-btn sga-btn--ghost sga-btn--sm fb-tipo';
       }
-      this.className = 'btn btn-primary btn-sm fb-tipo';
+      this.className = 'sga-btn sga-btn--primary sga-btn--sm fb-tipo';
     });
   }
 
@@ -130,11 +130,11 @@ function _fbAtualizaListaAnexos() {
   for (var i = 0; i < _fbAnexos.length; i++) {
     (function (idx) {
       var tag = document.createElement('span');
-      tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#eef2f7;border-radius:6px;padding:2px 6px;margin:2px;font-size:11px';
+      tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-sm);padding:2px 6px;margin:2px;font-size:11px';
       tag.appendChild(document.createTextNode('🖼️ ' + (_fbAnexos[idx].name || 'arquivo')));
       var x = document.createElement('button');
       x.textContent = '✕'; x.title = 'remover';
-      x.style.cssText = 'border:none;background:none;cursor:pointer;color:#94a3b8;font-size:11px';
+      x.style.cssText = 'border:none;background:none;cursor:pointer;color:var(--sga-text-soft);font-size:11px';
       x.addEventListener('click', function () { _fbAnexos.splice(idx, 1); _fbAtualizaListaAnexos(); });
       tag.appendChild(x);
       span.appendChild(tag);
@@ -145,30 +145,37 @@ function _fbAtualizaListaAnexos() {
 function _fbMeus() {
   var body = document.querySelector('#fb-modal .card-body');
   if (!body) return;
-  body.innerHTML = '<div class="spinner-ring" style="margin:20px auto"></div>';
+  if (window.SGA && SGA.skeleton) { SGA.skeleton(body, { type: 'list', count: 3 }); } else { body.innerHTML = '<div class="spinner-ring" style="margin:20px auto"></div>'; }
   google.script.run.withSuccessHandler(function (r) {
     var lista = (r && r.ok && r.data) ? r.data : [];
     var STATUS = { NOVO: '🆕 recebido', COMPILADO: '📤 enviado para análise', EM_ANALISE: '🔍 em análise',
       APROVADO: '✅ aprovado — entra em breve', IMPLEMENTADO: '🎉 implementado', RECUSADO: '✖️ não será feito' };
     var EMO = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
-    var html = '<button class="btn btn-ghost btn-sm" id="fb-voltar" style="margin-bottom:10px">← Voltar</button>';
+    var html = '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="fb-voltar" style="margin-bottom:10px">← Voltar</button>';
     if (!lista.length) {
-      html += '<div class="empty-state" style="padding:20px 0"><div class="empty-title">Você ainda não enviou relatos</div></div>';
+      html += '<div class="sga-empty">' +
+        '<div class="sga-empty__icon">💬</div>' +
+        '<h3 class="sga-empty__title">Você ainda não enviou relatos</h3>' +
+        '<p class="sga-empty__text">Relate um erro, sugira uma melhoria ou peça uma nova funcionalidade — sua contribuição ajuda a evoluir o sistema.</p>' +
+        '<button class="sga-btn sga-btn--primary" type="button" id="fb-enviar-primeiro">+ Enviar primeiro relato</button>' +
+      '</div>';
     } else {
       for (var i = 0; i < lista.length; i++) {
         var f = lista[i];
-        html += '<div style="padding:8px 0;border-bottom:1px solid #f1f5f9">' +
+        html += '<div style="padding:8px 0;border-bottom:1px solid var(--sga-border-default)">' +
           '<div style="font-size:13px"><b>' + (EMO[f.tipo] || '') + ' ' + escapeHtml(f.titulo) + '</b></div>' +
-          '<div style="font-size:12px;color:#475569;margin-top:2px">' + (STATUS[f.status] || f.status) +
+          '<div style="font-size:12px;color:var(--sga-text-default);margin-top:2px">' + (STATUS[f.status] || f.status) +
             (f.resolucao_nota ? ' — ' + escapeHtml(f.resolucao_nota) : '') + '</div>' +
-          '<div style="font-size:11px;color:#98a2b3">' + escapeHtml(f.id) + ' · ' + formatDate(f.criado_em) + '</div>' +
+          '<div style="font-size:11px;color:var(--sga-text-soft)">' + escapeHtml(f.id) + ' · ' + formatDate(f.criado_em) + '</div>' +
         '</div>';
       }
     }
     body.innerHTML = html;
     document.getElementById('fb-voltar').addEventListener('click', _fbOpen);
+    var btnPrimeiro = document.getElementById('fb-enviar-primeiro');
+    if (btnPrimeiro) btnPrimeiro.addEventListener('click', _fbOpen);
   }).withFailureHandler(function () {
-    body.innerHTML = '<p style="color:#b42318">Erro ao carregar.</p>';
+    body.innerHTML = '<p style="color:var(--sga-color-danger)">Erro ao carregar.</p>';
   }).Api_fbMeus();
 }
 </script>

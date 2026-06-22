@@ -55,6 +55,41 @@ function Api_propUpdateStatus(id, novoStatus, opcoes) {
 }
 
 /**
+ * "Eu reviso este card" — bypass de alçada COMPLETA pela diretoria.
+ *
+ * Permite que um DIRETOR feche o card REVISAO_FINANCEIRO desta proposta SEM ser
+ * FINANCEIRO_ADMIN, destravando a transição EM_REVISAO → APROVADA_ENVIO quando a
+ * Maria (FINANCEIRO_ADMIN) está indisponível.
+ *
+ * Decisões (auditoria 2026-06-18):
+ *   - Apenas DIRETOR_TECNICO e DIRETOR_COMERCIAL podem acionar.
+ *   - Auto-aprovação permitida (1 pessoa só) — sem checagem de autor.
+ *   - Registra quem/quando (audit + timeline); NÃO exige texto de motivo.
+ *
+ * @param {string} proposalId
+ * @return {{ok:boolean, message?:string}|{ok:boolean, error:string}}
+ */
+function Api_propRevisarFinanceiroBypass(proposalId) {
+  try {
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL']);
+    if (!proposalId) throw new Error('proposalId é obrigatório.');
+
+    // Idempotente: se já existe revisão financeira concluída, nada a fazer.
+    if (_hasRevisaoAprovadaFinanceiro(proposalId)) {
+      return { ok: true, message: 'Revisão financeira já estava liberada.' };
+    }
+
+    // Fecha o card REVISAO_FINANCEIRO (se houver) + auditoria — mesmo helper
+    // usado pelo bypass inline no "Avançar status".
+    _fecharRevisaoFinanceiroBypass(proposalId, user.id, user.role);
+
+    return { ok: true, message: 'Revisão financeira liberada pela diretoria. Você já pode aprovar o envio.' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
  * Lista todas as propostas, com filtros opcionais por status e company_id.
  * @param {Object} [filters]  — { status?, company_id? }
  * @return {{ok:boolean, data?:Object[], error?:string}}
@@ -246,7 +281,7 @@ function Api_updateProposal(id, updates) {
     }
 
     var ALLOWED = [
-      'scope_text', 'items_json', 'startup_value',
+      'scope_text', 'items_json', 'startup_value', 'flow_json', 'ai_review',
       'payment_terms', 'delivery_days', 'validity_days',
       'observations', 'location', 'responsible', 'type'
     ];
@@ -260,6 +295,18 @@ function Api_updateProposal(id, updates) {
     sanitized.updated_at = nowISO();
     propRepoUpdate(id, sanitized);
     appendAuditLog('PROPOSAL_UPDATE', 'PROPOSALS', id, sanitized);
+    // FB-23 Timeline DNA: emite eventos por categoria de mudanca pra histórico ficar rico
+    try {
+      var changed = Object.keys(sanitized).filter(function (k) { return k !== 'updated_at'; });
+      if (changed.indexOf('scope_text') !== -1)    appendTimelineEvent('Proposta', id, 'EDIT_ESCOPO',   'Escopo técnico editado');
+      if (changed.indexOf('flow_json') !== -1)     appendTimelineEvent('Proposta', id, 'EDIT_FLUXO',    'Fluxograma editado');
+      if (changed.indexOf('items_json') !== -1)    appendTimelineEvent('Proposta', id, 'EDIT_ITENS',    'Itens da proposta editados');
+      if (changed.indexOf('startup_value') !== -1) appendTimelineEvent('Proposta', id, 'EDIT_STARTUP',  'Valor de Start-up alterado');
+      if (changed.indexOf('responsible') !== -1)   appendTimelineEvent('Proposta', id, 'EDIT_RESP',     'Responsável alterado');
+      var resumoCampos = ['payment_terms','delivery_days','validity_days','observations','location','type'];
+      var mexeuResumo = resumoCampos.some(function (f) { return changed.indexOf(f) !== -1; });
+      if (mexeuResumo) appendTimelineEvent('Proposta', id, 'EDIT_RESUMO', 'Resumo da proposta editado: ' + resumoCampos.filter(function (f) { return changed.indexOf(f) !== -1; }).join(', '));
+    } catch (eT) { /* nao bloqueia update se timeline falhar */ }
     return { ok: true, data: sanitizeForClient(propRepoGetById(id)) };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -276,10 +323,10 @@ function Api_getProposalStats() {
 /**
  * Retrocompat: Api_reviewProposalScope → propSvcRevisarEscopoPorIA
  */
-function Api_reviewProposalScope(proposalId, scopeText) {
+function Api_reviewProposalScope(proposalId, scopeText, intensity) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
-    return propSvcRevisarEscopoPorIA(proposalId, scopeText);
+    return propSvcRevisarEscopoPorIA(proposalId, scopeText, intensity);
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -299,6 +346,32 @@ function Api_generateProposalHTML(proposalId) {
 
 
 /**
+ * FB-26/27: lista todas as propostas vinculadas a uma oportunidade.
+ * Usado pelo detalhe da oportunidade para mostrar o histórico de propostas.
+ * @param {string} oppId
+ * @return {{ok:true,data:Array}|{ok:false,error:string}}
+ */
+function Api_getProposalsByOpportunity(oppId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    if (!oppId) throw new Error('oppId é obrigatório.');
+    var all = sheetToObjects(PROPOSALS_SHEET);
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].opportunity_id || '').trim() === String(oppId).trim()) {
+        out.push(all[i]);
+      }
+    }
+    out.sort(function (a, b) {
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    });
+    return { ok: true, data: sanitizeForClient(out) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
  * Fluxograma padrão (automático) de uma proposta — usado pelo editor.
  * @param {string} proposalId
  */
@@ -306,6 +379,20 @@ function Api_propGetDefaultFlow(proposalId) {
   try {
     requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
     return { ok: true, data: sanitizeForClient(propSvcDefaultFlow(proposalId)) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * FB-23: enviar proposta por e-mail com PDF anexo.
+ * Roles autorizados: DIRETOR_TECNICO, DIRETOR_COMERCIAL, FINANCEIRO_ADMIN.
+ * Maria (FINANCEIRO_ADMIN) ganha esta permissao por decisao do Joao.
+ */
+function Api_propEnviarPorEmail(proposalId, opts) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
+    return { ok: true, data: propSvcEnviarPorEmail(proposalId, opts) };
   } catch (e) {
     return { ok: false, error: e.message };
   }

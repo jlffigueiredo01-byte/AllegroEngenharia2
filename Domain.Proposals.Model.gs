@@ -55,7 +55,7 @@ var PROPOSAL_TRANSITIONS = {
   },
   APROVADA_ENVIO: {
     next:  ['ENVIADA', 'CANCELADA'],
-    roles: ['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL']
+    roles: ['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN'] // FB-23: Maria (FINANCEIRO_ADMIN) pode aprovar envio
   },
   ENVIADA: {
     next:  ['FECHADA', 'RECUSADA', 'SUBSTITUIDA'],
@@ -83,7 +83,22 @@ var PROPOSALS_NEW_COLS = [
   'closed_at',      // timestamp quando passou para FECHADA/RECUSADA
   'motivo_perda',   // obrigatório ao entrar em RECUSADA
   'alcada_nivel',   // 'SIMPLIFICADA' ou 'COMPLETA'
-  'import_origem'   // 'IMPORT_LEGADO' quando veio da base histórica
+  'import_origem',  // 'IMPORT_LEGADO' quando veio da base histórica
+  'contact_id',     // FB-19: FK para CONTACTS — responsavel selecionado nos contatos da empresa
+  'contact_phone',  // FB-19: snapshot do telefone do contato no momento da criacao
+  'contact_email',  // FB-19: snapshot do email do contato (para envio automatico futuro)
+  // FB-20/26/27 — Levantamento tecnico migrado de Oportunidade (guia OPPORTUNITIES sera deletada)
+  'product',           // produto/sensor identificado no levantamento
+  'max_temp',          // temperatura maxima do processo
+  'qty_sensors_xt',    // quantidade de sensores XT
+  'qty_sensors_ht',    // quantidade de sensores HT
+  'qty_sensors_probe', // quantidade de sensores Probe
+  'installation_point',// ponto de instalacao
+  'automation_detail', // detalhe de automacao
+  'hydro_view',        // configuracao Hydro View
+  'infra_distance',    // distancia de Curitiba em km (entrada da calculadora de custos)
+  'tamanho_infra',     // FB-20: tamanho da infra em metros (NOVO campo — nao existia em OPPORTUNITIES)
+  'tech_notes'         // notas tecnicas livres do levantamento
 ];
 
 /**

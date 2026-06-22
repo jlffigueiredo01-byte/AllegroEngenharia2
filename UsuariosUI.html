@@ -25,9 +25,10 @@ function renderUsuarios(area) {
         '<h1 class="page-title">👥 Usuários</h1>' +
         '<p class="page-subtitle">Quem acessa o SGA e com que papel. O login é pela conta Google — o e-mail precisa ser exatamente o da conta.</p>' +
       '</div>' +
-      '<button class="btn btn-primary" onclick="_usrFormOpen()">+ Novo usuário</button>' +
+      '<button class="sga-btn sga-btn--primary" onclick="_usrFormOpen()">+ Novo usuário</button>' +
     '</div>' +
-    '<div id="usr-list"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+    '<div id="usr-list"></div>';
+  if (window.SGA && SGA.skeleton) SGA.skeleton(document.getElementById('usr-list'), { type: 'list', count: 5 });
   _usrLoad();
 }
 
@@ -35,14 +36,24 @@ function _usrLoad() {
   google.script.run
     .withSuccessHandler(function (r) {
       if (!r || !r.ok) {
-        document.getElementById('usr-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        var box = document.getElementById('usr-list');
+        if (window.SGA && SGA.empty) {
+          SGA.empty(box, { icon: '⚠️', title: 'Não foi possível carregar', text: (r && r.error) || 'sem resposta', variant: 'error' });
+        } else {
+          box.innerHTML = '<div class="card"><div class="card-body" style="color:var(--sga-color-danger)">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        }
         return;
       }
       _usrCache = r.data || [];
       _usrRender();
     })
     .withFailureHandler(function (e) {
-      document.getElementById('usr-list').innerHTML = '<div class="card"><div class="card-body" style="color:#b42318">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+      var box = document.getElementById('usr-list');
+      if (window.SGA && SGA.empty) {
+        SGA.empty(box, { icon: '⚠️', title: 'Falha ao carregar', text: e.message || String(e), variant: 'error' });
+      } else {
+        box.innerHTML = '<div class="card"><div class="card-body" style="color:var(--sga-color-danger)">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+      }
     })
     .Api_usersGetAll();
 }
@@ -51,7 +62,7 @@ function _usrRender() {
   var box = document.getElementById('usr-list');
   if (!box) return;
   if (!_usrCache.length) {
-    box.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:24px 0"><div class="empty-title">Nenhum usuário</div></div></div></div>';
+    box.innerHTML = '<div class="sga-empty"><div class="sga-empty__icon">👥</div><h3 class="sga-empty__title">Nenhum usuário</h3></div>';
     return;
   }
   var rows = '';
@@ -59,14 +70,14 @@ function _usrRender() {
     var u = _usrCache[i];
     rows += '<tr' + (u.active ? '' : ' style="opacity:.5"') + '>' +
       '<td><b>' + escapeHtml(u.name || '') + '</b></td>' +
-      '<td style="font-size:12px;color:#64748b">' + escapeHtml(u.email || '') + '</td>' +
+      '<td style="font-size:12px;color:var(--sga-text-muted)">' + escapeHtml(u.email || '') + '</td>' +
       '<td><span class="badge ' + (_USR_ROLE_BADGE[u.role] || 'badge-gray') + '" style="font-size:11px">' + escapeHtml(u.role || '') + '</span></td>' +
       '<td>' + (u.active ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>') + '</td>' +
       '<td style="white-space:nowrap">' +
-        '<button class="btn btn-ghost btn-sm usr-edit" data-id="' + escapeHtml(u.id) + '">✏️ Editar</button> ' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm usr-edit" data-id="' + escapeHtml(u.id) + '">✏️ Editar</button> ' +
         (u.active
-          ? '<button class="btn btn-sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="1" style="background:#fef2f2;color:#b42318;border:1px solid #fecaca">⛔ Desativar</button>'
-          : '<button class="btn btn-sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="0" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">✅ Reativar</button>') +
+          ? '<button class="sga-btn sga-btn--danger sga-btn--sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="1">⛔ Desativar</button>'
+          : '<button class="sga-btn sga-btn--secondary sga-btn--sm usr-toggle" data-id="' + escapeHtml(u.id) + '" data-active="0">✅ Reativar</button>') +
       '</td>' +
     '</tr>';
   }
@@ -92,20 +103,20 @@ function _usrFormOpen(id) {
     roleOpts += '<option value="' + k + '"' + (u && u.role === k ? ' selected' : '') + '>' + escapeHtml(_USR_ROLES[k]) + '</option>';
   }
   document.body.insertAdjacentHTML('beforeend',
-    '<div class="modal-backdrop" id="usr-modal" style="display:flex;z-index:1200">' +
+    '<div class="sga-modal-backdrop" id="usr-modal" style="display:flex;z-index:1200">' +
       '<div class="modal" style="max-width:480px;width:94%">' +
         '<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
           '<div class="card-title">' + (editando ? '✏️ Editar usuário' : '+ Novo usuário') + '</div>' +
-          '<button class="btn btn-ghost btn-sm" id="usr-close">✕</button>' +
+          '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="usr-close">✕</button>' +
         '</div><div class="card-body">' +
           '<label style="font-size:12px;display:block">Nome *<br><input class="form-input" id="usr-name" value="' + (u ? escapeHtml(u.name) : '') + '" placeholder="nome da pessoa"></label>' +
           '<label style="font-size:12px;display:block;margin-top:8px">E-mail (conta Google de login) *<br>' +
             '<input class="form-input" id="usr-email" value="' + (u ? escapeHtml(u.email || '') : '') + '" placeholder="pessoa@gmail.com"' + ((editando && u.email) ? ' disabled title="o e-mail não pode ser alterado — crie outro acesso se precisar"' : '') + '></label>' +
-          ((editando && u.email) ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">O e-mail é a chave do login e não pode ser alterado aqui.</div>' : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Precisa ser exatamente a conta Google que a pessoa usa para entrar.</div>') +
+          ((editando && u.email) ? '<div style="font-size:11px;color:var(--sga-text-soft);margin-top:2px">O e-mail é a chave do login e não pode ser alterado aqui.</div>' : '<div style="font-size:11px;color:var(--sga-text-soft);margin-top:2px">Precisa ser exatamente a conta Google que a pessoa usa para entrar.</div>') +
           '<label style="font-size:12px;display:block;margin-top:8px">Papel *<br><select class="form-input" id="usr-role">' + roleOpts + '</select></label>' +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
-            '<button class="btn btn-ghost btn-sm" id="usr-cancel">Cancelar</button>' +
-            '<button class="btn btn-primary" id="usr-save">' + (editando ? 'Salvar' : 'Criar usuário') + '</button>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="usr-cancel">Cancelar</button>' +
+            '<button class="sga-btn sga-btn--primary" id="usr-save">' + (editando ? 'Salvar' : 'Criar usuário') + '</button>' +
           '</div>' +
         '</div></div>' +
       '</div></div>');
@@ -146,9 +157,16 @@ function _usrFormOpen(id) {
   });
 }
 
-function _usrToggle(id, isActive) {
+async function _usrToggle(id, isActive) {
   var acao = isActive ? 'desativar' : 'reativar';
-  if (!confirm('Deseja ' + acao + ' este usuário?' + (isActive ? ' (o acesso dele será bloqueado, mas o histórico é preservado)' : ''))) return;
+  var msg = 'Deseja ' + acao + ' este usuário?' + (isActive ? ' (o acesso dele será bloqueado, mas o histórico é preservado)' : '');
+  var ok;
+  if (window.SGA && SGA.confirm) {
+    ok = await SGA.confirm(msg, { danger: isActive });
+  } else {
+    ok = confirm(msg);
+  }
+  if (!ok) return;
   google.script.run.withSuccessHandler(function (r) {
     if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); return; }
     showAlert('Usuário ' + (isActive ? 'desativado' : 'reativado') + '.', 'success');

@@ -70,6 +70,49 @@ function _hasRevisaoAprovadaFinanceiro(proposalId) {
 }
 
 /**
+ * Bypass de alçada COMPLETA pela diretoria ("Eu reviso este card").
+ * Fecha o card REVISAO_FINANCEIRO aberto (se houver) e registra auditoria
+ * (quem/quando). Funciona com ou sem card — quando não há card, apenas
+ * registra o bypass (o avanço de status usa force_revisao_bloqueante).
+ *
+ * Decisões (auditoria 2026-06-18): só DIRETOR; auto-aprovação permitida;
+ * grava quem/quando sem exigir texto de motivo.
+ *
+ * @param {string} proposalId
+ * @param {string} userId
+ * @param {string} userRole
+ */
+function _fecharRevisaoFinanceiroBypass(proposalId, userId, userRole) {
+  var agora = nowISO();
+  var nota = 'Revisão financeira dispensada pela diretoria (bypass de alçada — FINANCEIRO_ADMIN indisponível).';
+  try {
+    var cards = acGetAll();
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      if (String(c.quote_id) === String(proposalId) &&
+          c.tipo === 'REVISAO_FINANCEIRO' &&
+          c.status !== AC_STATUS.CONCLUIDO &&
+          c.status !== 'CANCELADO') {
+        updateRowByIdSafe('ACTION_CARDS', c.id, {
+          status:       AC_STATUS.CONCLUIDO,
+          closed_by:    userId,
+          closed_at:    agora,
+          close_reason: nota,
+          last_member:  userId,
+          last_note:    nota,
+          updated_at:   agora
+        });
+        break;
+      }
+    }
+  } catch (e) { /* não bloqueia o avanço se o fechamento do card falhar */ }
+  appendAuditLog('PROPOSAL_REVISAO_BYPASS', 'PROPOSALS', proposalId,
+    'Bypass de alçada COMPLETA por ' + userId + ' (' + userRole + ')');
+  appendTimelineEvent('Proposta', proposalId, 'REVISAO_BYPASS',
+    'Revisão financeira dispensada pela diretoria (' + userId + ')');
+}
+
+/**
  * Fecha automaticamente o card de ação vinculado à etapa anterior
  * quando o estado avança (autocomplete de cards — VALIDACAO_V3 §3.2).
  * Usa acGetAll() e acUpdateStatus() do ActionCards Repository — sem acesso direto à sheet.
@@ -162,6 +205,22 @@ function propSvcCreate(data) {
     client_name:    data.client_name || title,
     location:       data.location       || '',
     responsible:    data.responsible    || '',
+    // FB-19: snapshot do contato-responsavel selecionado em Contatos da empresa
+    contact_id:     data.contact_id     || '',
+    contact_phone:  data.contact_phone  || '',
+    contact_email:  data.contact_email  || '',
+    // FB-20/26/27 — Levantamento tecnico (migrado de Oportunidade)
+    product:           data.product           || '',
+    max_temp:          data.max_temp          || '',
+    qty_sensors_xt:    data.qty_sensors_xt    || 0,
+    qty_sensors_ht:    data.qty_sensors_ht    || 0,
+    qty_sensors_probe: data.qty_sensors_probe || 0,
+    installation_point:data.installation_point|| '',
+    automation_detail: data.automation_detail || '',
+    hydro_view:        data.hydro_view        || '',
+    infra_distance:    data.infra_distance    || 0,
+    tamanho_infra:     data.tamanho_infra     || 0,
+    tech_notes:        data.tech_notes        || '',
     status:         PROPOSAL_STATUS.DEMANDA,
     items_json:     JSON.stringify(items),
     scope_text:     data.scope_text     || '',
@@ -247,8 +306,15 @@ function propSvcUpdateStatus(id, novoStatus, userId, userRole, opcoes) {
 
   // 3. Regra de alçada: EM_REVISAO → APROVADA_ENVIO
   if (statusAtual === 'EM_REVISAO' && novoStatus === 'APROVADA_ENVIO') {
-    if (proposta.alcada_nivel === 'COMPLETA' && !opcoes.force_revisao_bloqueante) {
-      if (!_hasRevisaoAprovadaFinanceiro(id)) {
+    if (proposta.alcada_nivel === 'COMPLETA' && !_hasRevisaoAprovadaFinanceiro(id)) {
+      if (opcoes.force_revisao_bloqueante) {
+        // Bypass de diretoria: só DIRETOR_TECNICO/DIRETOR_COMERCIAL podem dispensar
+        // a revisão da Maria (FINANCEIRO_ADMIN indisponível). Auto-aprovação permitida.
+        if (userRole !== 'DIRETOR_TECNICO' && userRole !== 'DIRETOR_COMERCIAL') {
+          throw new Error('Apenas a diretoria pode dispensar a revisão financeira (bypass de alçada COMPLETA).');
+        }
+        _fecharRevisaoFinanceiroBypass(id, userId, userRole);
+      } else {
         throw new Error(
           'Proposta com alçada COMPLETA requer card de revisão fechado por FINANCEIRO_ADMIN antes de aprovar envio.'
         );
@@ -260,12 +326,8 @@ function propSvcUpdateStatus(id, novoStatus, userId, userRole, opcoes) {
     );
   }
 
-  // 4. motivo_perda obrigatório em RECUSADA
-  if (novoStatus === 'RECUSADA') {
-    if (!opcoes.motivo_perda) {
-      throw new Error('motivo_perda é obrigatório ao marcar proposta como RECUSADA.');
-    }
-  }
+  // 4. motivo_perda é OPCIONAL em RECUSADA (decisão João, auditoria 2026-06-18).
+  //    Se vier preenchido, é gravado abaixo; se não, a recusa segue sem motivo.
 
   // 5. Monta os campos a atualizar
   var now = nowISO();
@@ -317,16 +379,29 @@ function propSvcUpdateStatus(id, novoStatus, userId, userRole, opcoes) {
     Logger.log('[propSvc] wfSvcProcessarTransicao falhou: ' + e.message);
   }
 
-  return propRepoGetById(id);
-
-  // Sincroniza o funil da oportunidade (CONCEITO_FLUXO.md) — nunca bloqueia a transição
+  // 10. FB-26/27: Sincroniza o funil da oportunidade (CONCEITO_FLUXO.md)
+  //     CORRIGIDO: este bloco estava DEPOIS do return e nunca era executado.
+  //     Agora sempre que a proposta avança status, a Oportunidade reflete:
+  //       PROPOSTA_GERADA -> "Elaborando proposta"
+  //       ENVIADA         -> "Proposta enviada"
+  //       FECHADA         -> "Proposta fechada"
+  //       RECUSADA        -> "Proposta recusada"
   try {
     var pSync = propRepoGetById(id);
     if (pSync && pSync.opportunity_id) {
-      var mapa = { 'ENVIADA': 'Proposta enviada', 'FECHADA': 'Proposta fechada', 'RECUSADA': 'Proposta recusada' };
+      var mapa = {
+        'PROPOSTA_GERADA': 'Elaborando proposta',
+        'EM_REVISAO':      'Elaborando proposta',
+        'APROVADA_ENVIO':  'Elaborando proposta',
+        'ENVIADA':         'Proposta enviada',
+        'FECHADA':         'Proposta fechada',
+        'RECUSADA':        'Proposta recusada'
+      };
       if (mapa[novoStatus]) _propSyncOppStatus(pSync.opportunity_id, mapa[novoStatus]);
     }
-  } catch (eSync) { Logger.log('Sync opp falhou: ' + eSync.message); }
+  } catch (eSync) { Logger.log('[propSvc] Sync opp falhou: ' + eSync.message); }
+
+  return propRepoGetById(id);
 }
 
 // -------------------------------------------------------
@@ -510,7 +585,8 @@ function propSvcGerarHTML(proposalId) {
 
     var css = [
       '@page { size: A4; margin: 16mm 14mm; }',
-      '@media print { body { margin: 0; } .no-print { display: none; } .prod-card, .price-table, .cond-grid, .flow, .cta, .exec .box, .badges, .contact-grid, .meta { page-break-inside: avoid; } .sec { page-break-after: avoid; page-break-inside: avoid; } img { -webkit-print-color-adjust: exact; print-color-adjust: exact; } p { orphans: 3; widows: 3; } }',
+      // FB-22 sub-item 2: tabela de precos quebra MELHOR no PDF (cada linha mantida inteira em vez de tentar caber a tabela toda na pagina, o que truncava)
+      '@media print { body { margin: 0; } .no-print { display: none; } .prod-card, .cond-grid, .flow, .cta, .exec .box, .badges, .contact-grid, .meta { page-break-inside: avoid; } .price-table tr { page-break-inside: avoid; } .price-table thead { display: table-header-group; } .sec { page-break-after: avoid; page-break-inside: avoid; } img { -webkit-print-color-adjust: exact; print-color-adjust: exact; } p { orphans: 3; widows: 3; } table, th, td { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }',
       '* { box-sizing: border-box; }',
       'body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1f2937; margin: 1.4cm; line-height: 1.55; }',
       // header
@@ -545,13 +621,19 @@ function propSvcGerarHTML(proposalId) {
       '.prod-cols li { font-size: 9pt; line-height: 1.5; color: #374151; }',
       '.prod-foot { margin-top: 8px; font-size: 8.5pt; color: #6b7280; display: flex; gap: 16px; }',
       '.prod-foot a { color: #1a56db; }',
-      // preços
-      '.price-table { width: 100%; border-collapse: collapse; margin: 10px 0 6px; }',
-      '.price-table th { background: #14335f; color: #fff; padding: 8px 10px; text-align: left; font-size: 9.5pt; letter-spacing: .4px; }',
-      '.price-table td { border-bottom: 1px solid #e5e7eb; padding: 7px 10px; font-size: 10pt; }',
+      // precos (FB-22 sub-item 2: bordas completas em todas as celulas, alinhamento monetario explicito)
+      '.price-table { width: 100%; border-collapse: collapse; margin: 10px 0 6px; border: 1px solid #14335f; }',
+      '.price-table th { background: #14335f; color: #fff; padding: 8px 10px; text-align: left; font-size: 9.5pt; letter-spacing: .4px; border: 1px solid #14335f; vertical-align: middle; }',
+      '.price-table td { border: 1px solid #c9d3e0; padding: 7px 10px; font-size: 10pt; vertical-align: top; }',
+      '.price-table td.num, .price-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }',
+      '.price-table td.cen, .price-table th.cen { text-align: center; }',
       '.price-table tbody tr:nth-child(even):not(.total) td { background: #f8fafc; }',
       '.price-table .srv td { font-style: italic; color: #374151; }',
-      '.price-table tbody tr.total td { background: #1a56db !important; color: #fff; font-weight: 800; font-size: 11pt; border: none; }',
+      '.price-table tbody tr.total td { background: #1a56db !important; color: #fff; font-weight: 800; font-size: 11pt; border: 1px solid #14335f; }',
+      '.price-table colgroup col.col-code { width: 78px; }',
+      '.price-table colgroup col.col-ncm  { width: 70px; }',
+      '.price-table colgroup col.col-qty  { width: 50px; }',
+      '.price-table colgroup col.col-prc  { width: 110px; }',
       '.price-note { font-size: 8.5pt; color: #6b7280; text-align: justify; }',
       // condições
       '.cond-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 10px 0; }',
@@ -681,26 +763,31 @@ function propSvcGerarHTML(proposalId) {
       var pr2 = productRows[k];
       priceRowsHtml +=
         '<tr' + (pr2.isService ? ' class="srv"' : '') + '>' +
-        '<td style="white-space:nowrap"><code style="font-size:9pt">' + _propEsc(pr2.code || '') + '</code></td>' +
+        '<td><code style="font-size:9pt">' + _propEsc(pr2.code || '') + '</code></td>' +
         '<td>' + _propEsc(pr2.name) + '</td>' +
         '<td>' + _propEsc(pr2.ncm) + '</td>' +
-        '<td style="text-align:center">' + pr2.qty + '</td>' +
-        '<td style="text-align:right">' + _propFmtCurrency(pr2.unit_price) + '</td>' +
-        '<td style="text-align:right">' + _propFmtCurrency(pr2.total) + '</td></tr>';
+        '<td class="cen">' + pr2.qty + '</td>' +
+        '<td class="num">' + _propFmtCurrency(pr2.unit_price) + '</td>' +
+        '<td class="num">' + _propFmtCurrency(pr2.total) + '</td></tr>';
     }
     var startupValue = safeNumber(p.startup_value);
     var totalValue   = safeNumber(p.total_value);
     if (startupValue > 0) {
       priceRowsHtml += '<tr class="srv"><td colspan="5">Start-up — Comissionamento e Treinamento</td>' +
-        '<td style="text-align:right">' + _propFmtCurrency(startupValue) + '</td></tr>';
+        '<td class="num">' + _propFmtCurrency(startupValue) + '</td></tr>';
     }
     var priceTableHtml =
-      '<table class="price-table"><thead><tr>' +
-      '<th>Código</th><th>Produto / Serviço</th><th>NCM</th><th style="text-align:center">Qtd.</th>' +
-      '<th style="text-align:right">Preço Unit.</th><th style="text-align:right">Total</th>' +
+      '<table class="price-table">' +
+      '<colgroup>' +
+        '<col class="col-code"><col><col class="col-ncm"><col class="col-qty">' +
+        '<col class="col-prc"><col class="col-prc">' +
+      '</colgroup>' +
+      '<thead><tr>' +
+      '<th>Código</th><th>Produto / Serviço</th><th>NCM</th><th class="cen">Qtd.</th>' +
+      '<th class="num">Preço Unit.</th><th class="num">Total</th>' +
       '</tr></thead><tbody>' + priceRowsHtml +
       '<tr class="total"><td colspan="5">VALOR TOTAL DA PROPOSTA</td>' +
-      '<td style="text-align:right">' + _propFmtCurrency(totalValue) + '</td></tr>' +
+      '<td class="num">' + _propFmtCurrency(totalValue) + '</td></tr>' +
       '</tbody></table>';
 
     // Fluxograma da solução: editável (flow_json) com padrão automático
@@ -831,59 +918,194 @@ function propSvcGerarHTML(proposalId) {
 }
 
 // -------------------------------------------------------
-// propSvcRevisarEscopoPorIA — revisão de escopo via Claude
+// propSvcRevisarEscopoPorIA — revisao de escopo via Anthropic (FB-22.1)
 // -------------------------------------------------------
 
 /**
- * Chama Claude Haiku para revisar o escopo técnico da proposta.
- * Salva o retorno da IA em ai_review_notes na proposta.
- * Movido de Domain.ProposalEngine.gs (FIX 1 — HOTFIX-01).
+ * FB-22.1 — Revisao real do escopo via Anthropic Sonnet (claude-sonnet-4-6).
  *
- * @param {string} proposalId
- * @param {string} scopeText
+ * Substitui o stub Haiku anterior. Chama a Anthropic Messages API com prompt
+ * calibrado para revisao de proposta tecnica Allegro (ortografia, gramatica,
+ * clareza, logica tecnica, profissionalismo, completude).
+ *
+ * Shape de retorno (envelope preservado para a UI atual):
+ *   { ok: true,  data: { strengths:[], suggestions:[], improvedText, improved, tokens_usados } }
+ *   { ok: false, error: 'mensagem' }
+ *
+ * Observacao back-compat: a UI (_pbBuildAIReviewPanel) ainda le
+ * `review.improved`, portanto o campo `improved` espelha `improvedText`.
+ *
+ * @param {string} proposalId — opcional; se passado, enriquece o prompt com contexto
+ * @param {string} scopeText — texto bruto do escopo a revisar
  * @return {{ok:boolean, data?:Object, error?:string}}
  */
-function propSvcRevisarEscopoPorIA(proposalId, scopeText) {
+function propSvcRevisarEscopoPorIA(proposalId, scopeText, intensity) {
   try {
-    var systemPrompt =
-      'Você é um revisor técnico especializado em propostas comerciais de sensores de umidade ' +
-      'Hydronix para a Allegro Engenharia. Revise o texto do escopo técnico e forneça:\n' +
-      '1. Pontos fortes\n2. Sugestões de melhoria\n' +
-      '3. Informações técnicas que podem estar faltando\n' +
-      '4. Uma versão melhorada do texto (mantendo o tom profissional)\n\n' +
-      'Formato da resposta: JSON com campos {pontos_fortes, sugestoes, versao_melhorada}';
+    scopeText = String(scopeText || '').trim();
+    if (!scopeText) throw new Error('Escopo vazio — nada para revisar.');
+    // FB-22 v3 — calibragem da revisao (Joao escolheu B no Test 4):
+    //   'leve'   -> so corrige ortografia/gramatica, mantem estilo
+    //   'medio'  -> default, organiza e melhora sem inventar (atual)
+    //   'ousado' -> enriquece com itens da proposta, vira 200-500 palavras
+    intensity = String(intensity || 'medio').toLowerCase();
+    if (intensity !== 'leve' && intensity !== 'ousado') intensity = 'medio';
 
-    var key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-    var payload = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: 'Revise este escopo técnico:\n\n' + scopeText }]
-    });
-    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-      method:          'post',
-      contentType:     'application/json',
-      headers:         { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      payload:         payload,
-      muteHttpExceptions: true
-    });
-    var json = JSON.parse(response.getContentText());
-    if (json.error) return { ok: false, error: json.error.message };
-    var text   = json.content[0].text;
-    var review;
-    try { review = JSON.parse(text); } catch (e) { review = { versao_melhorada: text }; }
+    var apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY nao configurado em Script Properties.');
 
+    // Contexto opcional: se houver proposalId, busca dados da proposta para
+    // dar ao modelo chance de detectar inconsistencias logicas (ex: escopo
+    // fala em silo de cimento mas itens sao sensores para agregados).
+    var contextoProposta = '';
     if (proposalId) {
-      propRepoUpdate(proposalId, {
-        ai_review_notes: JSON.stringify(review),
-        updated_at:      nowISO()
-      });
-      appendAuditLog('AI_REVIEW', 'PROPOSALS', proposalId,
-        'Escopo revisado pelo modelo claude-haiku-4-5-20251001');
-      appendTimelineEvent('Proposta', proposalId, 'AI_REVIEW',
-        'Escopo revisado por IA (Claude Haiku)');
+      try {
+        var p = propRepoGetById(proposalId);
+        if (p) {
+          var items = [];
+          try { items = JSON.parse(p.items_json || '[]'); } catch (eItems) {}
+          var itemsTxt = items.slice(0, 8).map(function (it) {
+            return '- ' + (it.name || it.code || '') + ' (qty: ' + (it.qty || it.quantity || 1) + ')';
+          }).join('\n');
+          contextoProposta =
+            '\n\nCONTEXTO DA PROPOSTA (para coerencia logica):\n' +
+            '- Cliente: ' + (p.client_name || '') + '\n' +
+            '- Tipo: ' + (p.type || '') + '\n' +
+            '- Local: ' + (p.location || '') + '\n' +
+            (itemsTxt ? '- Itens principais:\n' + itemsTxt + '\n' : '') +
+            '- Valor total: R$ ' + (p.total_value || 0) + '\n';
+        }
+      } catch (eCtx) { /* sem contexto se falhar — segue sem bloquear a revisao */ }
     }
-    return { ok: true, data: review };
+
+    // FB-22 v3 — 3 prompts calibrados por intensidade (decisao B do Joao no Test 4):
+    var systemPrompt;
+    if (intensity === 'leve') {
+      systemPrompt =
+        'Voce e um revisor de texto da Allegro Engenharia (sensores Hydronix, automacao industrial).\n\n' +
+        'Missao: revisar o escopo tecnico apenas pra CORRIGIR erros — NAO reescreva, NAO reorganize, NAO enriqueca.\n\n' +
+        'Foque APENAS em:\n' +
+        '1. ORTOGRAFIA: typos, acentos errados.\n' +
+        '2. GRAMATICA: concordancia, pontuacao.\n' +
+        '3. CLAREZA pontual: trocar 1 ou 2 palavras ambiguas.\n\n' +
+        'NAO mude estilo, NAO adicione informacao, NAO use contexto dos itens, NAO invente.\n' +
+        'O improvedText deve ser quase identico ao original — so com correcoes.\n\n' +
+        'Retorne EXCLUSIVAMENTE JSON valido: { "strengths": [...max 2], "suggestions": [...max 3, so correcoes mecanicas], "improvedText": "texto original com correcoes aplicadas, ~mesmo tamanho do original" }.';
+    } else if (intensity === 'ousado') {
+      systemPrompt =
+        'Voce e um revisor especialista da Allegro Engenharia, empresa de Curitiba que fornece sensores de umidade Hydronix (Hydro-Mix, Hydro-Probe, Hydro-View) e solucoes completas de automacao industrial (cimento, mineracao, agribusiness, plasticos).\n\n' +
+        'Missao: REESCREVER o escopo tecnico como uma versao COMERCIAL e ROBUSTA pronta pra cliente.\n\n' +
+        'Pode e DEVE:\n' +
+        '- Usar contexto da proposta (cliente, itens, valor, local) pra montar texto especifico.\n' +
+        '- Citar modelos dos equipamentos (HMXT01, Hydro-Mix XT, etc) pelo nome.\n' +
+        '- Explicar servicos (MO-Infra, MO-Startup, Kit Infra) com detalhe.\n' +
+        '- Reorganizar em blocos: (1) Fornecimento; (2) Instalacao/Infra; (3) Comissionamento e treinamento; (4) Suporte pos-venda; (5) Condicoes gerais.\n' +
+        '- Texto entre 250-500 palavras, formal-tecnico, digno de cliente.\n' +
+        'NAO pode:\n' +
+        '- Inventar dados (especs nao mencionadas, prazos, garantias diferentes de 24m, valores).\n' +
+        '- Usar conhecimento generico nao presente no contexto.\n\n' +
+        'Retorne EXCLUSIVAMENTE JSON valido: { "strengths": [...max 4], "suggestions": [...max 5], "improvedText": "texto reescrito em blocos, 250-500 palavras" }.';
+    } else {
+      // medio (default)
+      systemPrompt =
+        'Voce e um revisor da Allegro Engenharia (sensores Hydronix, automacao industrial).\n\n' +
+        'Missao: revisar o escopo tecnico com EQUILIBRIO — corrige erros, organiza, melhora clareza, SEM enfeitar demais.\n\n' +
+        'Foco:\n' +
+        '1. ORTOGRAFIA e GRAMATICA: corrige tudo.\n' +
+        '2. CLAREZA: troca frases ambiguas por objetivas.\n' +
+        '3. LOGICA: detecta inconsistencias com itens da proposta.\n' +
+        '4. ORGANIZACAO: se o texto for desorganizado, agrupa em paragrafos coerentes.\n' +
+        '5. COMPLETUDE: se faltar info CRUCIAL (ex: prazo de garantia padrao), apenas sinaliza em "suggestions", nao adiciona no improvedText.\n\n' +
+        'NAO reescreva do zero. NAO invente especs. NAO use jargao novo.\n' +
+        'O improvedText deve ser ~mesma extensao do original (+/- 30%), mais limpo e organizado.\n\n' +
+        'Retorne EXCLUSIVAMENTE JSON valido: { "strengths": [...max 3], "suggestions": [...max 4], "improvedText": "texto corrigido e organizado, mesma extensao geral" }.';
+    }
+
+    var userPrompt;
+    if (intensity === 'leve') {
+      userPrompt = 'Corrija apenas ortografia/gramatica do escopo abaixo. Sem reescrever.\n\n```\n' + scopeText + '\n```';
+    } else if (intensity === 'ousado') {
+      userPrompt = 'Reescreva o escopo abaixo como uma versao COMERCIAL ROBUSTA pra cliente, usando o contexto da proposta (cliente, itens, valor). Texto final 250-500 palavras, em blocos.\n\nESCOPO ATUAL:\n```\n' + scopeText + '\n```' + contextoProposta;
+    } else {
+      userPrompt = 'Revise o escopo abaixo: corrija erros, organize, melhore clareza. Mantenha extensao similar ao original. Use o contexto so pra detectar inconsistencias, nao pra enriquecer.\n\nESCOPO ATUAL:\n```\n' + scopeText + '\n```' + contextoProposta;
+    }
+
+    var requestBody = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    };
+
+    var response;
+    try {
+      response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        payload: JSON.stringify(requestBody),
+        muteHttpExceptions: true
+      });
+    } catch (eNet) {
+      throw new Error('Falha de rede ao chamar Anthropic: ' + eNet.message);
+    }
+
+    var code = response.getResponseCode();
+    var body = response.getContentText();
+    if (code < 200 || code >= 300) {
+      throw new Error('Anthropic API erro ' + code + ': ' + body.substring(0, 400));
+    }
+
+    var parsed;
+    try { parsed = JSON.parse(body); }
+    catch (eParse) { throw new Error('Resposta da Anthropic nao e JSON: ' + body.substring(0, 200)); }
+
+    if (parsed.error) {
+      throw new Error('Anthropic API erro: ' + (parsed.error.message || JSON.stringify(parsed.error)));
+    }
+    if (!parsed.content || !parsed.content[0] || !parsed.content[0].text) {
+      throw new Error('Resposta da Anthropic sem content[0].text');
+    }
+
+    // Limpa cercas de codigo defensivo (modelo as vezes encapsula em ```json ... ```)
+    var raw = String(parsed.content[0].text).trim();
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+
+    var review;
+    try { review = JSON.parse(raw); }
+    catch (eJson) { throw new Error('Sonnet nao retornou JSON valido. Resposta: ' + raw.substring(0, 300)); }
+
+    // Saneamento defensivo + back-compat com a UI atual.
+    var strengthsArr   = Array.isArray(review.strengths)   ? review.strengths.slice(0, 4)   : [];
+    var suggestionsArr = Array.isArray(review.suggestions) ? review.suggestions.slice(0, 5) : [];
+    var improvedTxt    = String(review.improvedText || scopeText);
+
+    var out = {
+      strengths:     strengthsArr,
+      suggestions:   suggestionsArr,
+      improvedText:  improvedTxt,
+      improved:      improvedTxt, // alias p/ _pbBuildAIReviewPanel (le review.improved)
+      tokens_usados: parsed.usage ? (parsed.usage.input_tokens + parsed.usage.output_tokens) : 0
+    };
+
+    // Persiste no historico da proposta + timeline, se houver proposalId.
+    if (proposalId) {
+      try {
+        propRepoUpdate(proposalId, {
+          ai_review_notes: JSON.stringify(out),
+          updated_at:      nowISO()
+        });
+        appendTimelineEvent('Proposta', proposalId, 'AI_REVIEW',
+          'Escopo revisado por IA (Sonnet, intensidade=' + intensity + ')');
+      } catch (ePersist) { /* nao bloqueia a UX se persistencia falhar */ }
+    }
+    appendAuditLog('IA_REVIEW_PROPOSAL', 'PROPOSALS', proposalId || '(novo)',
+      'model=claude-sonnet-4-6 intensity=' + intensity + ' tokens=' + out.tokens_usados +
+      ' strengths=' + out.strengths.length + ' suggestions=' + out.suggestions.length);
+
+    return { ok: true, data: out };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -1092,4 +1314,102 @@ function propSvcDefaultFlow(proposalId) {
   var rows = [];
   for (var i = 0; i < items.length; i++) rows.push({ code: items[i].code || '' });
   return _propBuildDefaultFlow(rows);
+}
+
+/**
+ * FB-23: Envia a proposta por e-mail com o PDF em anexo.
+ * Pré-condições:
+ *   - Proposta deve estar em status APROVADA_ENVIO ou superior (ENVIADA já validada).
+ *   - PDF deve ter sido gerado (pdf_file_id preenchido).
+ * Pós-condições:
+ *   - Email enviado via MailApp ao destinatário.
+ *   - Entrada em AUDIT_LOG e TIMELINE.
+ *   - Status da proposta avança para ENVIADA (se ainda não estava).
+ *
+ * @param {string} proposalId
+ * @param {Object} opts { to: string (obrigatorio), cc?: string, subject?: string, body?: string (HTML), replyTo?: string }
+ * @return {{ok:true,data:{messageId,sentTo}}|{ok:false,error:string}}
+ */
+function propSvcEnviarPorEmail(proposalId, opts) {
+  opts = opts || {};
+  if (!proposalId) throw new Error('proposalId obrigatorio.');
+  if (!opts.to || !/@/.test(opts.to)) throw new Error('Destinatario invalido em opts.to.');
+
+  var p = propRepoGetById(proposalId);
+  if (!p) throw new Error('Proposta nao encontrada: ' + proposalId);
+
+  // Validacao de status: so envia se APROVADA_ENVIO ou ENVIADA
+  var statusOk = (p.status === 'APROVADA_ENVIO' || p.status === 'ENVIADA');
+  if (!statusOk) throw new Error('Proposta ' + proposalId + ' nao esta APROVADA_ENVIO (status atual: ' + p.status + '). Avance o status antes de enviar.');
+
+  // PDF anexo: se nao tiver pdf_file_id, tenta gerar agora (best effort)
+  var pdfBlob = null;
+  if (p.pdf_file_id) {
+    try {
+      var file = DriveApp.getFileById(p.pdf_file_id);
+      pdfBlob = file.getAs(MimeType.PDF);
+      pdfBlob.setName('Proposta_' + (p.number || proposalId) + '.pdf');
+    } catch (eDrv) {
+      Logger.log('[propSvcEnviar] pdf_file_id invalido: ' + eDrv.message);
+    }
+  }
+  // Se nao conseguiu blob, segue sem anexo (mas avisa no log)
+  if (!pdfBlob) Logger.log('[propSvcEnviar] AVISO: enviando proposta ' + proposalId + ' SEM PDF anexo.');
+
+  // Subject e body padroes (sobrescreviveis)
+  var clientName = p.client_name || '';
+  var defaultSubject = 'Proposta Comercial Allegro Engenharia — ' + (p.number || proposalId);
+  var defaultBody =
+    '<p>Prezado(a),</p>' +
+    '<p>Segue em anexo a proposta comercial <b>' + escapeForHtml(p.number || proposalId) + '</b> referente ao projeto solicitado.</p>' +
+    '<p>Estamos a disposicao para esclarecer qualquer duvida ou ajustar o escopo conforme necessario.</p>' +
+    '<p>Atenciosamente,<br><b>Equipe Comercial Allegro Engenharia</b></p>';
+
+  var subject = opts.subject || defaultSubject;
+  var bodyHtml = opts.body || defaultBody;
+
+  var mailOpts = {
+    to: opts.to,
+    subject: subject,
+    htmlBody: bodyHtml,
+    name: 'Allegro Engenharia'
+  };
+  if (opts.cc) mailOpts.cc = opts.cc;
+  if (opts.replyTo) mailOpts.replyTo = opts.replyTo;
+  if (pdfBlob) mailOpts.attachments = [pdfBlob];
+
+  try {
+    MailApp.sendEmail(mailOpts);
+  } catch (eMail) {
+    throw new Error('Falha ao enviar e-mail: ' + eMail.message);
+  }
+
+  // Avancar status para ENVIADA se ainda estava em APROVADA_ENVIO
+  if (p.status === 'APROVADA_ENVIO') {
+    try {
+      propSvcUpdateStatus(proposalId, 'ENVIADA', requireAuth().id, requireAuth().role, { nota: 'Enviada para ' + opts.to });
+    } catch (eSt) {
+      Logger.log('[propSvcEnviar] avancar status ENVIADA falhou: ' + eSt.message);
+    }
+  }
+
+  appendAuditLog('PROPOSAL_EMAIL_SENT', 'PROPOSALS', proposalId,
+    'to=' + opts.to + (opts.cc ? ' cc=' + opts.cc : '') + (pdfBlob ? ' [pdf]' : ' [sem pdf]'));
+  appendTimelineEvent('Proposta', proposalId, 'EMAIL_SENT',
+    'Proposta enviada por e-mail para ' + opts.to + (pdfBlob ? ' (PDF anexo)' : ' (sem PDF)'));
+
+  return {
+    ok: true,
+    messageId: '(MailApp nao retorna messageId)',
+    sentTo: opts.to,
+    cc: opts.cc || '',
+    pdfAnexo: !!pdfBlob,
+    newStatus: 'ENVIADA'
+  };
+}
+
+// helper escape se nao existir global
+function escapeForHtml(s) {
+  s = String(s == null ? '' : s);
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

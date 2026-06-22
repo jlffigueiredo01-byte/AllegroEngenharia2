@@ -21,7 +21,7 @@ function renderDashboard(area) {
         '<p class="page-subtitle">' + dias[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()] + ' — o pulso da Allegro em uma tela.</p>' +
       '</div>' +
       (user && user.role === 'DIRETOR_TECNICO'
-        ? '<button class="btn btn-ghost btn-sm" id="dsh-atualizar-tudo" title="setupAll + reparos + seeds, em cascata">🔄 Atualizar tudo</button>'
+        ? '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="dsh-atualizar-tudo" title="setupAll + reparos + seeds, em cascata">🔄 Atualizar tudo</button>'
         : '') +
     '</div>' +
     '<div id="dsh-atualizar-relatorio"></div>' +

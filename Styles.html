@@ -1174,21 +1174,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
    UTILITÁRIOS
 ══════════════════════════════════════════════════════════════ */
 .hidden     { display: none !important; }
-.flex       { display: flex; }
-.flex-center{ display: flex; align-items: center; justify-content: center; }
-.gap-8      { gap: 8px; }
-.gap-12     { gap: 12px; }
-.gap-16     { gap: 16px; }
-.mt-8  { margin-top: 8px; }
-.mt-16 { margin-top: 16px; }
-.mt-24 { margin-top: 24px; }
-.mb-16 { margin-bottom: 16px; }
-.mb-24 { margin-bottom: 24px; }
 .text-muted { color: var(--color-text-muted); }
-.text-sm    { font-size: 12px; }
-.text-xs    { font-size: 11px; }
-.fw-bold    { font-weight: 700; }
-.truncate   { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -1523,5 +1509,121 @@ body.theme-dark .btn-ghost { color: var(--color-text-muted); }
   font-family: inherit; font-size: 12px; transition: background .15s;
 }
 .theme-toggle-btn:hover { background: rgba(255,255,255,0.06); }
+
+/* === Triagens (Fase 1) === */
+.trg-kanban { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.trg-col { background:#f8fafc; border-radius:10px; padding:10px; min-height:200px; }
+.trg-col-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-weight:600; font-size:13px; color:#475569; }
+.trg-col-count { background:#e2e8f0; color:#475569; border-radius:9999px; padding:2px 8px; font-size:11px; }
+.trg-col.triado     { background:#fef3c7; }
+.trg-col.aprovados  { background:#dbeafe; }
+.trg-col.implementado { background:#d1fae5; }
+.trg-col.fechados   { background:#f1f5f9; }
+.trg-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-bottom:8px; cursor:pointer; transition:box-shadow .15s; }
+.trg-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.trg-card-head { display:flex; justify-content:space-between; gap:6px; font-size:11px; color:#64748b; margin-bottom:4px; }
+.trg-card-title { font-size:13px; font-weight:600; color:#1e293b; margin-bottom:4px; line-height:1.3; }
+.trg-card-meta { font-size:11px; color:#94a3b8; }
+.trg-card-preview { font-size:11px; color:#64748b; margin-top:4px; max-height:32px; overflow:hidden; }
+.trg-detail-section { margin:12px 0; }
+.trg-detail-label { font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+.trg-md { background:#f8fafc; border-radius:8px; padding:12px; font-size:13px; white-space:pre-wrap; line-height:1.5; max-height:280px; overflow:auto; }
+.trg-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.trg-actions .btn { flex:1; min-width:140px; }
+
+@media (max-width: 700px) {
+  .trg-kanban { grid-template-columns:1fr; }
+  .trg-col { min-height:auto; }
+  .trg-actions .btn { min-width:0; padding:14px; font-size:15px; }
+}
+
+/* dark theme — sobrescreve cores das colunas pra contraste correto */
+body.theme-dark .trg-col          { background:#1e293b; }
+body.theme-dark .trg-col.triado   { background:#3f3b1e; }
+body.theme-dark .trg-col.aprovados{ background:#1e3a5f; }
+body.theme-dark .trg-col.implementado { background:#1e3f3a; }
+body.theme-dark .trg-col.fechados { background:#252e3a; }
+body.theme-dark .trg-col-header   { color:#cbd5e1; }
+body.theme-dark .trg-col-count    { background:#0f172a; color:#cbd5e1; }
+body.theme-dark .trg-card         { background:#0f172a; border-color:#334155; color:#e2e8f0; }
+body.theme-dark .trg-card-title   { color:#f1f5f9; }
+body.theme-dark .trg-card-meta    { color:#94a3b8; }
+body.theme-dark .trg-card-preview { color:#cbd5e1; }
+body.theme-dark .trg-md           { background:#0f172a; color:#e2e8f0; }
+body.theme-dark .trg-detail-label { color:#cbd5e1; }
+
+/* === FB-14: modo escuro — overrides para inline styles e CSS injetado === */
+/* Atributo-selectors com !important: cobrem o JS de ChamadosUI/Visao360UI
+   sem precisar editar o JS. Cobrem ProposalBuilderUI (CSS injetado dinamico)
+   pq !important vence a cascata mesmo com inject pos-Styles. */
+body.theme-dark [style*="color:#101828"],
+body.theme-dark [style*="color:#111827"],
+body.theme-dark [style*="color: #101828"],
+body.theme-dark [style*="color: #111827"],
+body.theme-dark [style*="color:#14335f"],
+body.theme-dark [style*="color: #14335f"],
+body.theme-dark [style*="color:#0f172a"],
+body.theme-dark [style*="color: #0f172a"] { color: var(--color-text) !important; }
+
+body.theme-dark [style*="color:#475569"],
+body.theme-dark [style*="color: #475569"],
+body.theme-dark [style*="color:#334155"],
+body.theme-dark [style*="color: #334155"],
+body.theme-dark [style*="color:#1f2937"],
+body.theme-dark [style*="color: #1f2937"],
+body.theme-dark [style*="color:#374151"],
+body.theme-dark [style*="color: #374151"] { color: var(--color-text) !important; }
+
+body.theme-dark [style*="color:#64748b"],
+body.theme-dark [style*="color: #64748b"],
+body.theme-dark [style*="color:#667085"],
+body.theme-dark [style*="color: #667085"],
+body.theme-dark [style*="color:#6b7280"],
+body.theme-dark [style*="color: #6b7280"],
+body.theme-dark [style*="color:#9ca3af"],
+body.theme-dark [style*="color: #9ca3af"],
+body.theme-dark [style*="color:#94a3b8"],
+body.theme-dark [style*="color: #94a3b8"] { color: var(--color-text-muted) !important; }
+
+/* fundo claro inline tambem fica ilegivel — fundos comuns cobertos: */
+body.theme-dark [style*="background:#fff"]:not(.theme-toggle-btn):not(.sidebar-user-avatar),
+body.theme-dark [style*="background: #fff"]:not(.theme-toggle-btn):not(.sidebar-user-avatar),
+body.theme-dark [style*="background:#ffffff"],
+body.theme-dark [style*="background: #ffffff"],
+body.theme-dark [style*="background:#f8fafc"],
+body.theme-dark [style*="background: #f8fafc"],
+body.theme-dark [style*="background:#f1f5f9"],
+body.theme-dark [style*="background: #f1f5f9"] { background: var(--color-surface) !important; color: var(--color-text); }
+
+/* Overrides especificos do ProposalBuilderUI (CSS injetado em runtime) */
+body.theme-dark .pb-total-value,
+body.theme-dark .pb-summary-field-value,
+body.theme-dark .pb-stat-card-value { color: var(--color-text) !important; }
+
+body.theme-dark .pb-total-label,
+body.theme-dark .pb-summary-field-label,
+body.theme-dark .pb-summary-title,
+body.theme-dark .pb-stat-card-label { color: var(--color-text-muted) !important; }
+
+body.theme-dark .pb-ai-text,
+body.theme-dark .pb-scope-preview { color: var(--color-text) !important; }
+
+body.theme-dark .pb-total-row,
+body.theme-dark .pb-summary-field,
+body.theme-dark .pb-stat-card,
+body.theme-dark .pb-scope-preview { background: var(--color-surface) !important; border-color: var(--color-border) !important; }
+
+body.theme-dark .pb-ai-strengths   { background: #14352b !important; }
+body.theme-dark .pb-ai-suggestions { background: #3b2f10 !important; }
+body.theme-dark .pb-ai-improved    { background: #1e293b !important; }
+body.theme-dark .pb-ai-strengths .pb-ai-section-title { color: #6ee7b7 !important; }
+body.theme-dark .pb-ai-suggestions .pb-ai-section-title { color: #fcd34d !important; }
+body.theme-dark .pb-ai-improved .pb-ai-section-title { color: #93c5fd !important; }
+
+body.theme-dark .pb-items-table th { color: var(--color-text-muted) !important; }
+body.theme-dark .pb-items-table td { border-bottom-color: var(--color-border) !important; }
+
+/* === FB-15: action cards full width === */
+.ac-col { max-width: none !important; min-width: 260px; }
 
 </style>

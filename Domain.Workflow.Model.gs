@@ -68,7 +68,9 @@ var WORKFLOW_TRANSITIONS = {
     to:   'EM_REVISAO',
     cards: [
       {
-        assignee_role:   'FINANCEIRO_ADMIN',
+        // Lista de papeis que podem REVISAR financeiramente, em ordem de preferencia.
+        // O primeiro user encontrado vira assignee. Mas qualquer um destes pode FECHAR o card.
+        assignee_role:   ['FINANCEIRO_ADMIN', 'DIRETOR_TECNICO', 'DIRETOR_COMERCIAL'],
         title_prefix:    'Revisar financeiro: ',
         tipo:            'REVISAO_FINANCEIRO',
         sla_key:         'SLA_REVISAO_FINANCEIRO_H',

@@ -13,21 +13,29 @@ function renderFornecedores(area) {
         '<h1 class="page-title">🏭 Fornecedores</h1>' +
         '<p class="page-subtitle">Cadastro mestre: idioma define o PO (PT/EN); e-mail de PO recebe os pedidos.</p>' +
       '</div>' +
-      '<button class="btn btn-primary" id="sup-btn-new">+ Novo fornecedor</button>' +
+      '<button class="sga-btn sga-btn--primary" id="sup-btn-new">+ Novo fornecedor</button>' +
     '</div>' +
     '<div id="sup-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
-    '<div id="sup-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+    '<div id="sup-list-wrap"></div>';
+  if (window.SGA && SGA.skeleton) SGA.skeleton(document.getElementById('sup-list-wrap'), { type: 'list', count: 5 });
   document.getElementById('sup-btn-new').addEventListener('click', function () { _supShowForm(null); });
   _supLoad();
 }
 
 function _supLoad() {
+  var wrap = document.getElementById('sup-list-wrap');
+  if (wrap && window.SGA && SGA.skeleton) SGA.skeleton(wrap, { type: 'list', count: 5 });
   google.script.run.withSuccessHandler(function (r) {
     _supList = (r && r.ok && r.data) ? r.data : [];
     _supRenderList();
   }).withFailureHandler(function (e) {
     var w = document.getElementById('sup-list-wrap');
-    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+    if (!w) return;
+    if (window.SGA && SGA.empty) {
+      SGA.empty(w, { icon: '⚠️', title: 'Falha ao carregar', text: e.message || String(e), variant: 'error' });
+    } else {
+      w.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div><h3 class="sga-empty__title">Falha ao carregar</h3><p class="sga-empty__text">' + escapeHtml(e.message || e) + '</p></div>';
+    }
   }).Api_supplierGetAll();
 }
 
@@ -35,9 +43,21 @@ function _supRenderList() {
   var w = document.getElementById('sup-list-wrap');
   if (!w) return;
   if (!_supList.length) {
-    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
-      '<div class="empty-icon">🏭</div><div class="empty-title">Nenhum fornecedor</div>' +
-      '<div class="empty-desc">Cadastre a Hydronix e os fornecedores nacionais de infraestrutura.</div></div></div></div>';
+    if (window.SGA && SGA.empty) {
+      SGA.empty(w, {
+        icon: '🚚',
+        title: 'Nenhum fornecedor cadastrado',
+        text: 'Cadastre a Hydronix e os fornecedores nacionais de infraestrutura para começar a emitir POs.',
+        action: {
+          label: '+ Novo fornecedor',
+          onClick: function () { if (typeof _supShowForm === 'function') _supShowForm(null); }
+        }
+      });
+    } else {
+      w.innerHTML = '<div class="sga-empty"><div class="sga-empty__icon">🚚</div>' +
+        '<h3 class="sga-empty__title">Nenhum fornecedor cadastrado</h3>' +
+        '<p class="sga-empty__text">Cadastre a Hydronix e os fornecedores nacionais de infraestrutura.</p></div>';
+    }
     return;
   }
   var rows = '';
@@ -47,13 +67,13 @@ function _supRenderList() {
     rows += '<tr' + (ativo ? '' : ' style="opacity:.5"') + '>' +
       '<td><code style="font-size:11px">' + escapeHtml(s.id) + '</code></td>' +
       '<td><b>' + escapeHtml(s.name || '') + '</b>' +
-        (s.country ? ' <span style="color:#94a3b8;font-size:11px">· ' + escapeHtml(s.country) + '</span>' : '') + '</td>' +
+        (s.country ? ' <span style="color:var(--sga-text-soft);font-size:11px">· ' + escapeHtml(s.country) + '</span>' : '') + '</td>' +
       '<td style="text-align:center"><span class="badge ' + (s.language === 'EN' ? 'badge-blue' : 'badge-gray') + '">' + escapeHtml(s.language || 'PT') + '</span></td>' +
       '<td style="text-align:center">' + escapeHtml(s.currency || '') + '</td>' +
       '<td style="font-size:12px">' + escapeHtml(s.po_email || s.contact_email || '') + '</td>' +
       '<td style="font-size:12px">' + escapeHtml(s.payment_terms || '') + '</td>' +
       '<td style="text-align:center">' + (s.lead_time_days || '') + '</td>' +
-      '<td><button class="btn btn-ghost btn-sm sup-edit" data-id="' + escapeHtml(s.id) + '">Editar</button></td>' +
+      '<td><button class="sga-btn sga-btn--ghost sga-btn--sm sup-edit" data-id="' + escapeHtml(s.id) + '">Editar</button></td>' +
     '</tr>';
   }
   w.innerHTML =
@@ -111,8 +131,8 @@ function _supShowForm(id) {
       '</div>' +
       '<textarea class="form-input" id="sup-notes" rows="2" placeholder="notas" style="margin-top:8px">' + escapeHtml(s.notes || '') + '</textarea>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
-        '<button class="btn btn-primary" id="sup-save">' + (id ? 'Salvar alterações' : 'Cadastrar') + '</button>' +
-        '<button class="btn btn-ghost" id="sup-cancel">Cancelar</button>' +
+        '<button class="sga-btn sga-btn--primary" id="sup-save">' + (id ? 'Salvar alterações' : 'Cadastrar') + '</button>' +
+        '<button class="sga-btn sga-btn--ghost" id="sup-cancel">Cancelar</button>' +
       '</div>' +
     '</div></div>';
 

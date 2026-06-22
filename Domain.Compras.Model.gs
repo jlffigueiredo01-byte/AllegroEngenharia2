@@ -20,10 +20,12 @@ var PURCHASE_ORDERS_HEADERS = [
 
 /**
  * Status válidos de uma Ordem de Compra.
- * RASCUNHO → EMITIDA → RECEBIDA_PARCIAL / RECEBIDA → (CANCELADA)
+ * RASCUNHO → APROVADA → EMITIDA → RECEBIDA_PARCIAL / RECEBIDA → (CANCELADA)
+ * (FB-029: passo APROVADA entre rascunho e emissão — gera→aprova→emite.)
  */
 var PO_STATUS = {
   RASCUNHO:          'RASCUNHO',
+  APROVADA:          'APROVADA',
   EMITIDA:           'EMITIDA',
   RECEBIDA_PARCIAL:  'RECEBIDA_PARCIAL',
   RECEBIDA:          'RECEBIDA',

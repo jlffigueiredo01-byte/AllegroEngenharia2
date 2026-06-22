@@ -18,6 +18,7 @@ var DRIVE_TAXONOMY = {
   SISTEMA_BACKUPS:    { parent: 'SISTEMA',    name: 'Backups' },
   SISTEMA_FEEDBACK:   { parent: 'SISTEMA',    name: 'Feedback' },
   SISTEMA_TAREFAS:    { parent: 'SISTEMA',    name: 'Tarefas' },
+  SISTEMA_PENDENTES:  { parent: 'SISTEMA',    name: 'Pendentes' },
   ENGENHARIA:         { parent: '',           name: '01-Engenharia' },
   COMERCIAL:          { parent: '',           name: '02-Comercial' },
   PROPOSTAS:          { parent: 'COMERCIAL',  name: 'Propostas' },

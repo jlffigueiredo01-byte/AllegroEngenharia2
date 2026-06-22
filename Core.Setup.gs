@@ -63,6 +63,11 @@ const CONFIG_DEFAULTS = [
   // F5 — Agenda/Calendário
   ['CALENDAR_ID',            '', 'ID do calendário Google (vazio = usa calendário padrão da conta)'],
   ['CALENDAR_EVENT_COUNTER', '0', 'Sequencial de eventos de agenda'],
+  // Ciclo de feedback colaborativo — Triagens
+  ['TRIAGEM_COUNTER',        '0', 'Sequencial de triagens (TRG-xxxxx)'],
+  ['TRIAGEM_LOG_COUNTER',    '0', 'Sequencial de logs de triagem (TRL-xxxxxx)'],
+  // FB-23 — Comentarios colaborativos na Visao Proposta
+  ['PROPOSAL_COMMENT_COUNTER', '0', 'Sequencial de comentarios de proposta (PC-xxxxx)'],
 ];
 
 
@@ -112,6 +117,7 @@ function initCoreSheets() {
   initProposalsSheet();
   initProposalsAddColumns();
   initSetupCalcSheet();
+  try { setupCalcBackfillInfraParams(); } catch (eBk) { Logger.log('[Setup] backfill CALC_INFRA falhou: ' + eBk.message); }
   initLaborRatesSheet();
   // F5 — Agenda/Calendário
   initCalendarEventsSheet();
@@ -131,6 +137,10 @@ function initCoreSheets() {
   initTicketsSheet();
   initTicketUpdatesSheet();
   initFeedbackSheet();
+  // Ciclo de feedback colaborativo — Triagens (docs/ARQUITETURA-CICLO-FEEDBACK.md)
+  initTriagemSheets();
+  // FB-23: Comentarios colaborativos na Visao Proposta
+  try { initProposalCommentsSheet(); } catch (eC) { Logger.log('[Setup] init PROPOSAL_COMMENTS falhou: ' + eC.message); }
   // F15 — Compras e Estoque
   initSuppliersSheet();
   initPurchaseOrdersSheet();
@@ -282,6 +292,22 @@ function initResiliencia() {
   } catch (e) {
     Logger.log('[Setup] Erro ao configurar trigger de backup: ' + e.message);
   }
+
+  // Trigger periódico do notificador de triagens (30 min — ciclo de feedback)
+  try {
+    instalarTriggerTriagem();
+    Logger.log('[Setup] Trigger periódico de triagens configurado.');
+  } catch (e) {
+    Logger.log('[Setup] Erro ao configurar trigger de triagens: ' + e.message);
+  }
+
+  // Trigger do bridge agentes -> Apps Script via JSON no Drive (1 min)
+  try {
+    instalarTriggerAgentBridge();
+    Logger.log('[Setup] Trigger do AgentBridge configurado.');
+  } catch (e) {
+    Logger.log('[Setup] Erro ao configurar trigger do AgentBridge: ' + e.message);
+  }
 }
 
 /**
@@ -314,4 +340,32 @@ function appendTimelineEvent(entity, entityId, eventType, description) {
     user_id: user ? user.id : 'SYSTEM',
     user_name: user ? user.name : 'Sistema'
   }, TIMELINE_HEADERS);
+}
+
+/**
+ * FB-23: lê a timeline de uma entidade (Proposta, Oportunidade, Ticket, etc).
+ * Usado pela Visão Proposta pra montar o histórico.
+ * @param {string} entity     (ex: 'Proposta')
+ * @param {string} entityId   (ex: 'P-00012')
+ * @return {{ok:true,data:Array}|{ok:false,error:string}}
+ */
+function Api_timelineByEntity(entity, entityId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    if (!entity || !entityId) throw new Error('entity e entityId sao obrigatorios.');
+    var rows = sheetToObjects('TIMELINE');
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i].entity || '') === String(entity) &&
+          String(rows[i].entity_id || '') === String(entityId)) {
+        out.push(rows[i]);
+      }
+    }
+    out.sort(function (a, b) {
+      return String(b.timestamp || '').localeCompare(String(a.timestamp || ''));
+    });
+    return { ok: true, data: sanitizeForClient(out) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }

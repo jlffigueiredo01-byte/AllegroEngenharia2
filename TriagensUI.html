@@ -1,0 +1,664 @@
+<script>
+// =============================================================================
+// TriagensUI.html — SGA
+// Guia Triagens (Fase 1): análises automáticas do Sonnet por FB.
+// Kanban com colunas TRIADO / APROVADOS / IMPLEMENTADO / FECHADOS.
+// Acesso restrito a DIRETOR_TECNICO (visibilidade via .nav-item-melhorias).
+// Prefixo _trg. ES5 (compatível com motor V8 do Apps Script Web Apps).
+// Endpoints backend (Fase 1): Api_triagemList, Api_triagemGet, Api_triagemRecusar,
+// Api_triagemComentar, Api_triagemPedirReanalise, Api_triagemKpis.
+// Botão "Aprovar" virá na Fase 2 — exibido aqui como disabled placeholder.
+// =============================================================================
+
+var _trgCache = [];
+var _trgFiltroCamada = '';
+var _trgFiltroEstado = '';
+var _trgFiltroTipo = '';
+
+var _TRG_CAMADA = {
+  VERDE:    { emoji: '🟢', label: 'Verde'    },
+  AMARELO:  { emoji: '🟡', label: 'Amarelo'  },
+  VERMELHO: { emoji: '🔴', label: 'Vermelho' }
+};
+var _TRG_TIPO = {
+  ERRO:     { emoji: '🐛', label: 'Erro'     },
+  SUGESTAO: { emoji: '💡', label: 'Sugestão' },
+  MELHORIA: { emoji: '⬆️', label: 'Melhoria' }
+};
+var _TRG_ESTADO = {
+  NOVO:               { label: 'Novo',                 badge: 'badge-gray'   },
+  EM_TRIAGEM:         { label: 'Em triagem',           badge: 'badge-blue'   },
+  TRIADO:             { label: 'Triado',               badge: 'badge-yellow' },
+  APROVADO:           { label: 'Aprovado',             badge: 'badge-blue'   },
+  RECUSADO:           { label: 'Recusado',             badge: 'badge-gray'   },
+  EM_IMPLEMENTACAO:   { label: 'Em implementação',     badge: 'badge-blue'   },
+  IMPLEMENTADO:       { label: 'Implementado',         badge: 'badge-green'  },
+  FALHOU:             { label: 'Falhou',               badge: 'badge-yellow' },
+  PUBLICADO:          { label: 'Publicado',            badge: 'badge-green'  },
+  FECHADO_SEM_CODIGO: { label: 'Fechado sem código',   badge: 'badge-gray'   },
+  FECHADO:            { label: 'Fechado',              badge: 'badge-gray'   }
+};
+
+/* ───────────────────────────────────────────────────────────────
+   ENTRY POINT
+─────────────────────────────────────────────────────────────── */
+
+function renderTriagens(area) {
+  area.innerHTML =
+    '<div class="page-header">' +
+      '<div class="page-header-left">' +
+        '<h1 class="page-title">🧠 Triagens</h1>' +
+        '<p class="page-subtitle">Análises automáticas dos seus relatos. Aprovar, comentar, recusar.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid" id="trg-kpis" style="grid-template-columns:repeat(4,1fr)"></div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
+      '<select class="form-input" id="trg-f-camada" style="width:160px">' +
+        '<option value="">Todas as camadas</option>' +
+        '<option value="VERDE">🟢 Verde</option>' +
+        '<option value="AMARELO">🟡 Amarelo</option>' +
+        '<option value="VERMELHO">🔴 Vermelho</option>' +
+      '</select>' +
+      '<select class="form-input" id="trg-f-estado" style="width:200px">' +
+        '<option value="">Todos os estados</option>' +
+        '<option value="TRIADO">Triado (aguarda você)</option>' +
+        '<option value="APROVADO">Aprovado</option>' +
+        '<option value="EM_IMPLEMENTACAO">Em implementação</option>' +
+        '<option value="IMPLEMENTADO">Implementado</option>' +
+        '<option value="PUBLICADO">Publicado</option>' +
+        '<option value="RECUSADO">Recusado</option>' +
+        '<option value="FECHADO">Fechado</option>' +
+        '<option value="FECHADO_SEM_CODIGO">Fechado sem código</option>' +
+        '<option value="FALHOU">Falhou</option>' +
+      '</select>' +
+      '<select class="form-input" id="trg-f-tipo" style="width:170px">' +
+        '<option value="">Todos os tipos</option>' +
+        '<option value="ERRO">🐛 Erro</option>' +
+        '<option value="SUGESTAO">💡 Sugestão</option>' +
+        '<option value="MELHORIA">⬆️ Melhoria</option>' +
+      '</select>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="trg-reload" title="Recarregar">🔄</button>' +
+      '<button class="sga-btn sga-btn--secondary sga-btn--sm" id="trg-classificar" title="Classifica os FBs novos via IA (Sonnet)">🤖 Classificar novos</button>' +
+    '</div>' +
+    '<div id="trg-board"></div>';
+
+  if (window.SGA && SGA.skeleton) SGA.skeleton(document.getElementById('trg-board'), { type: 'list', count: 4 });
+
+  document.getElementById('trg-f-camada').addEventListener('change', function () { _trgFiltroCamada = this.value; _trgRenderKanban(); });
+  document.getElementById('trg-f-estado').addEventListener('change', function () { _trgFiltroEstado = this.value; _trgRenderKanban(); });
+  document.getElementById('trg-f-tipo').addEventListener('change',   function () { _trgFiltroTipo   = this.value; _trgRenderKanban(); });
+  document.getElementById('trg-reload').addEventListener('click',    function () { _trgLoad(); });
+  var _cbtn = document.getElementById('trg-classificar');
+  if (_cbtn) _cbtn.addEventListener('click', _trgClassificar);
+
+  _trgLoad();
+}
+
+/* 🤖 Classifica os FBs NOVO via Sonnet (server-side) + garante o trigger automático. */
+function _trgClassificar() {
+  var btn = document.getElementById('trg-classificar');
+  if (btn) { btn.disabled = true; btn.textContent = '🤖 Classificando...'; }
+  showAlert('Classificando FBs novos com a IA (Sonnet) — pode levar alguns segundos...', 'info');
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Classificar novos'; }
+      if (!r || !r.ok) { showAlert('Erro: ' + ((r && r.error) || 'desconhecido'), 'error'); return; }
+      var d = r.data || {};
+      showAlert('Classificados: ' + (d.classificados || 0) + ' · falhas: ' + (d.falhas || 0) + ' · restantes: ' + (d.restantes || 0), 'success');
+      _trgLoad();
+    })
+    .withFailureHandler(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Classificar novos'; }
+      showAlert('Falha: ' + (e.message || e), 'error');
+    })
+    .Api_triagemClassificarPendentes();
+}
+
+/* ───────────────────────────────────────────────────────────────
+   DATA LOADING
+─────────────────────────────────────────────────────────────── */
+
+function _trgLoad() {
+  var board = document.getElementById('trg-board');
+  if (board) {
+    if (window.SGA && SGA.skeleton) SGA.skeleton(board, { type: 'list', count: 4 });
+    else board.innerHTML = '';
+  }
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) {
+        if (window.SGA && SGA.empty) {
+          SGA.empty(board, { icon: '⚠️', title: 'Não foi possível carregar', text: (r && r.error) || 'sem resposta', variant: 'error' });
+        } else {
+          board.innerHTML = '<div class="card"><div class="card-body" style="color:var(--sga-color-danger)">Erro: ' + escapeHtml((r && r.error) || 'sem resposta') + '</div></div>';
+        }
+        return;
+      }
+      _trgCache = r.data || [];
+      _trgKpis();
+      _trgRenderKanban();
+    })
+    .withFailureHandler(function (e) {
+      if (window.SGA && SGA.empty) {
+        SGA.empty(board, { icon: '⚠️', title: 'Falha ao carregar', text: e.message || String(e), variant: 'error' });
+      } else {
+        board.innerHTML = '<div class="card"><div class="card-body" style="color:var(--sga-color-danger)">Falha: ' + escapeHtml(e.message || e) + '</div></div>';
+      }
+    })
+    .Api_triagemList({});
+}
+
+function _trgKpis() {
+  var box = document.getElementById('trg-kpis');
+  if (!box) return;
+
+  // Try server-side KPIs first (cheaper, accurate if backend filters by visibility)
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (r && r.ok && r.data) {
+        _trgRenderKpis(r.data);
+      } else {
+        _trgRenderKpis(_trgComputeKpisLocal());
+      }
+    })
+    .withFailureHandler(function () { _trgRenderKpis(_trgComputeKpisLocal()); })
+    .Api_triagemKpis();
+}
+
+function _trgComputeKpisLocal() {
+  var k = { total: 0, aguardam: 0, em_curso: 0, fechados: 0 };
+  for (var i = 0; i < _trgCache.length; i++) {
+    var st = _trgCache[i].estado;
+    k.total++;
+    if (st === 'TRIADO') k.aguardam++;
+    else if (st === 'EM_IMPLEMENTACAO' || st === 'APROVADO') k.em_curso++;
+    else if (st === 'RECUSADO' || st === 'FECHADO' || st === 'FECHADO_SEM_CODIGO' || st === 'PUBLICADO') k.fechados++;
+  }
+  return k;
+}
+
+function _trgRenderKpis(k) {
+  var box = document.getElementById('trg-kpis');
+  if (!box) return;
+  var kpi = function (l, v, sub) {
+    return '<div class="kpi"><div class="k-label"><span>' + l + '</span></div><div class="k-value">' + v + '</div>' + (sub ? '<div class="k-sub">' + sub + '</div>' : '') + '</div>';
+  };
+  box.innerHTML =
+    kpi('Total', String(k.total || 0), 'triagens registradas') +
+    kpi('Aguardam você', String(k.aguardam || 0), 'estado TRIADO') +
+    kpi('Em curso', String(k.em_curso || 0), 'aprovado / implementando') +
+    kpi('Fechados', String(k.fechados || 0), 'recusado / publicado / fechado');
+}
+
+/* ───────────────────────────────────────────────────────────────
+   RENDER — KANBAN
+─────────────────────────────────────────────────────────────── */
+
+function _trgFilteredCache() {
+  return _trgCache.filter(function (t) {
+    if (_trgFiltroCamada && t.camada !== _trgFiltroCamada) return false;
+    if (_trgFiltroEstado && t.estado !== _trgFiltroEstado) return false;
+    if (_trgFiltroTipo   && t.tipo_confirmado !== _trgFiltroTipo) return false;
+    return true;
+  });
+}
+
+function _trgRenderKanban() {
+  var box = document.getElementById('trg-board');
+  if (!box) return;
+
+  var lista = _trgFilteredCache();
+
+  // Bucketing por coluna visual
+  var col = { triado: [], aprovados: [], implementado: [], fechados: [] };
+  for (var i = 0; i < lista.length; i++) {
+    var t = lista[i];
+    var st = t.estado;
+    if (st === 'TRIADO' || st === 'EM_TRIAGEM' || st === 'NOVO' || st === 'FALHOU') col.triado.push(t);
+    else if (st === 'APROVADO' || st === 'EM_IMPLEMENTACAO') col.aprovados.push(t);
+    else if (st === 'IMPLEMENTADO') col.implementado.push(t);
+    else if (st === 'RECUSADO' || st === 'FECHADO' || st === 'FECHADO_SEM_CODIGO' || st === 'PUBLICADO') col.fechados.push(t);
+    else col.triado.push(t);
+  }
+
+  if (!lista.length) {
+    if (window.SGA && SGA.empty) {
+      SGA.empty(box, { icon: '🧠', title: 'Nenhuma triagem neste filtro', text: 'Quando o Sonnet analisar um relato, ele aparece aqui.' });
+    } else {
+      box.innerHTML = '<div class="sga-empty"><div class="sga-empty__icon">🧠</div><h3 class="sga-empty__title">Nenhuma triagem neste filtro</h3><p class="sga-empty__text">Quando o Sonnet analisar um relato, ele aparece aqui.</p></div>';
+    }
+    return;
+  }
+
+  var html = '<div class="trg-kanban">' +
+    _trgRenderColumn('triado',       'TRIADO',                 'espera você',          col.triado,       false) +
+    _trgRenderColumn('aprovados',    'APROVADOS',              'p/ implementar',       col.aprovados,    false) +
+    _trgRenderColumn('implementado', 'IMPLEMENTADO',           'aguarda Implantar',    col.implementado, false) +
+    _trgRenderColumn('fechados',     'FECHADOS',               'histórico',            col.fechados,     true) +
+  '</div>';
+
+  box.innerHTML = html;
+
+  // Bind clicks nos cards
+  var cards = box.querySelectorAll('.trg-card');
+  for (var c = 0; c < cards.length; c++) {
+    cards[c].addEventListener('click', function () { _trgDetalhe(this.getAttribute('data-fb')); });
+  }
+
+  // Expand de "FECHADOS"
+  var toggle = box.querySelector('#trg-fechados-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', function () {
+      var body = document.getElementById('trg-col-fechados-body');
+      if (!body) return;
+      var hidden = body.style.display === 'none';
+      body.style.display = hidden ? 'block' : 'none';
+      this.textContent = hidden ? 'ocultar' : 'ver';
+    });
+  }
+}
+
+function _trgRenderColumn(cls, label, sub, items, collapsedDefault) {
+  var header =
+    '<div class="trg-col-header">' +
+      '<span>' + escapeHtml(label) + ' <span style="font-weight:400;color:var(--sga-text-soft)">· ' + escapeHtml(sub) + '</span></span>' +
+      '<span class="trg-col-count">' + items.length + (collapsedDefault ? ' &nbsp;<a id="trg-fechados-toggle" style="cursor:pointer;text-decoration:underline">ver</a>' : '') + '</span>' +
+    '</div>';
+
+  var cardsHtml = '';
+  for (var i = 0; i < items.length; i++) cardsHtml += _trgRenderCard(items[i]);
+  if (!items.length) cardsHtml = '<div style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);text-align:center;padding:14px 0">— vazio —</div>';
+
+  var bodyStyle = collapsedDefault ? 'display:none' : '';
+  return '<div class="trg-col ' + cls + '">' +
+           header +
+           '<div id="trg-col-' + cls + '-body" style="' + bodyStyle + '">' + cardsHtml + '</div>' +
+         '</div>';
+}
+
+function _trgRenderCard(t) {
+  var cam = _TRG_CAMADA[t.camada] || { emoji: '⚪', label: t.camada || '' };
+  var tip = _TRG_TIPO[t.tipo_confirmado] || { emoji: '•', label: t.tipo_confirmado || '' };
+  var titulo = t.titulo || '(sem título)';
+  if (titulo.length > 50) titulo = titulo.substring(0, 47) + '...';
+  var preview = _trgFirstLine(t.analise_md || '');
+  if (preview.length > 80) preview = preview.substring(0, 77) + '...';
+
+  return '<div class="trg-card" data-fb="' + escapeHtml(t.fb_id) + '">' +
+    '<div class="trg-card-head">' +
+      '<span><code style="font-size:10px">' + escapeHtml(t.fb_id) + '</code> ' + cam.emoji + ' ' + tip.emoji + '</span>' +
+      '<span>' + escapeHtml(_trgRelativeTime(t.criado_em || t.atualizado_em)) + '</span>' +
+    '</div>' +
+    '<div class="trg-card-title">' + escapeHtml(titulo) + '</div>' +
+    '<div class="trg-card-meta">' + escapeHtml(t.autor_fb || '—') + ' · ' + escapeHtml(t.tela || '') + '</div>' +
+    (preview ? '<div class="trg-card-preview">' + escapeHtml(preview) + '</div>' : '') +
+  '</div>';
+}
+
+/* ───────────────────────────────────────────────────────────────
+   DETALHE (modal)
+─────────────────────────────────────────────────────────────── */
+
+function _trgDetalhe(fb_id) {
+  // Find local first
+  var t = null;
+  for (var i = 0; i < _trgCache.length; i++) { if (_trgCache[i].fb_id === fb_id) { t = _trgCache[i]; break; } }
+
+  // Open modal with local data immediately, then refresh from server
+  _trgRenderModal(t || { fb_id: fb_id, titulo: '(carregando...)', estado: 'TRIADO' });
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok || !r.data) return;
+      // Refresh cache entry + re-render modal with full payload
+      var fresh = r.data;
+      var hit = false;
+      for (var j = 0; j < _trgCache.length; j++) {
+        if (_trgCache[j].fb_id === fresh.fb_id) { _trgCache[j] = fresh; hit = true; break; }
+      }
+      if (!hit) _trgCache.push(fresh);
+      _trgRenderModal(fresh);
+    })
+    .withFailureHandler(function () { /* mantém o que já está renderizado */ })
+    .Api_triagemGet(fb_id);
+}
+
+function _trgRenderModal(t) {
+  var old = document.getElementById('trg-modal');
+  if (old) old.parentNode.removeChild(old);
+
+  var cam = _TRG_CAMADA[t.camada] || { emoji: '⚪', label: t.camada || '—' };
+  var tip = _TRG_TIPO[t.tipo_confirmado] || { emoji: '•', label: t.tipo_confirmado || '—' };
+  var est = _TRG_ESTADO[t.estado] || { label: t.estado || '—', badge: 'badge-gray' };
+
+  var hist = _trgParseHistorico(t.hist_estados_json);
+  var histHtml = '';
+  if (hist.length) {
+    for (var h = 0; h < hist.length; h++) {
+      var ev = hist[h];
+      histHtml += '<div style="display:flex;gap:8px;font-size:var(--sga-font-size-sm);padding:4px 0;border-bottom:1px dashed var(--sga-border-default)">' +
+        '<span style="color:var(--sga-text-soft);min-width:130px">' + escapeHtml(formatDate(ev.ts) || ev.ts || '') + '</span>' +
+        '<span style="font-weight:600">' + escapeHtml(ev.ator || '—') + '</span>' +
+        '<span>' + escapeHtml(ev.evento || ev.estado || '') + '</span>' +
+      '</div>';
+    }
+  } else {
+    histHtml = '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft)">Sem eventos ainda.</div>';
+  }
+
+  var arquivosHtml = '';
+  if (t.arquivos_tocados) {
+    arquivosHtml =
+      '<div class="trg-detail-section">' +
+        '<div class="trg-detail-label">🔧 Arquivos tocados</div>' +
+        '<pre style="background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-sm);padding:8px;font-size:var(--sga-font-size-xs);white-space:pre-wrap">' + escapeHtml(t.arquivos_tocados) + '</pre>' +
+      '</div>';
+  }
+  var diffHtml = '';
+  if (t.diff_resumo) {
+    diffHtml =
+      '<div class="trg-detail-section">' +
+        '<div class="trg-detail-label">🔧 Diff resumo</div>' +
+        '<pre style="background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-sm);padding:8px;font-size:var(--sga-font-size-xs);white-space:pre-wrap">' + escapeHtml(t.diff_resumo) + '</pre>' +
+      '</div>';
+  }
+  var erroHtml = '';
+  if (t.erro_msg) {
+    erroHtml =
+      '<div class="trg-detail-section">' +
+        '<div class="trg-detail-label" style="color:var(--sga-color-danger)">⚠️ Erro</div>' +
+        '<pre style="background:var(--sga-color-danger-bg);border-radius:var(--sga-radius-sm);padding:8px;font-size:var(--sga-font-size-xs);white-space:pre-wrap;color:var(--sga-color-danger)">' + escapeHtml(t.erro_msg) + '</pre>' +
+      '</div>';
+  }
+
+  // A mensagem ORIGINAL do usuário (verbatim) vem enriquecida em Api_triagemGet
+  // (t.descricao_original). Mostramos ela ANTES da análise do Sonnet para que a
+  // classificação nunca seja lida sem o relato original (lição de campo).
+  var origHtml = '';
+  if (t.descricao_original && String(t.descricao_original).trim()) {
+    origHtml =
+      '<div class="trg-detail-section">' +
+        '<div class="trg-detail-label">💬 Mensagem original do usuário (verbatim)</div>' +
+        '<div class="trg-md" style="white-space:pre-wrap;background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-sm);padding:8px 10px">' + escapeHtml(t.descricao_original) + '</div>' +
+        (t.anexo_url ? '<div style="margin-top:6px;font-size:var(--sga-font-size-sm)">📎 <a href="' + escapeHtml(t.anexo_url) + '" target="_blank" rel="noopener">anexo</a></div>' : '') +
+      '</div>';
+  }
+
+  // Botões dependem do estado: Aprovar só em TRIADO; Publicar só em IMPLEMENTADO.
+  var podeAprovar  = t.estado === 'TRIADO';
+  var podePublicar = t.estado === 'IMPLEMENTADO';
+
+  var notaAtual = t.nota_joao || '';
+
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="sga-modal-backdrop" id="trg-modal" data-modal-id="trg-modal">' +
+      '<div class="sga-modal sga-modal--lg" role="dialog" aria-modal="true" aria-labelledby="trg-modal-title">' +
+        '<header class="sga-modal__header">' +
+          '<div class="sga-modal__title" id="trg-modal-title" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--sga-font-size-lg)">' +
+            '<span style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft)">← Triagens</span> · ' +
+            '<span title="' + escapeHtml(cam.label) + '">' + cam.emoji + '</span>' +
+            '<span title="' + escapeHtml(tip.label) + '">' + tip.emoji + '</span>' +
+            '<span class="badge ' + est.badge + '">' + escapeHtml(est.label) + '</span>' +
+          '</div>' +
+          '<button class="sga-modal__close" type="button" aria-label="Fechar" id="trg-close">✕</button>' +
+        '</header>' +
+        '<div class="sga-modal__body">' +
+          '<div style="font-weight:700;font-size:var(--sga-font-size-lg);margin-bottom:4px">' + escapeHtml(t.fb_id || '') + ' — ' + escapeHtml(t.titulo || '(sem título)') + '</div>' +
+          '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft);margin-bottom:14px">' +
+            'Autor: <b>' + escapeHtml(t.autor_fb || '—') + '</b> · Tela: <b>' + escapeHtml(t.tela || '—') + '</b> · Criado: ' + escapeHtml(formatDate(t.criado_em) || '—') +
+            (t.atualizado_em ? ' · Atualizado: ' + escapeHtml(formatDate(t.atualizado_em)) : '') +
+          '</div>' +
+
+          origHtml +
+          '<div class="trg-detail-section">' +
+            '<div class="trg-detail-label">🧠 Análise do Sonnet</div>' +
+            '<div class="trg-md">' + escapeHtml(t.analise_md || '(análise ainda não disponível)') + '</div>' +
+          '</div>' +
+
+          arquivosHtml + diffHtml + erroHtml +
+
+          '<div class="trg-detail-section">' +
+            '<div class="trg-detail-label">🔧 Atividade</div>' +
+            '<div style="background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-md);padding:10px 12px">' + histHtml + '</div>' +
+          '</div>' +
+
+          '<div class="sga-form-group">' +
+            '<label class="sga-form-label" for="trg-nota">💬 Sua nota</label>' +
+            '<textarea class="sga-form-textarea" id="trg-nota" rows="3" placeholder="Comentário interno (visível só p/ você e os agentes)">' + escapeHtml(notaAtual) + '</textarea>' +
+            '<div style="display:flex;justify-content:flex-end;margin-top:6px">' +
+              '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="trg-salvar-nota">Salvar comentário</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<footer class="sga-modal__footer">' +
+          '<button class="sga-btn sga-btn--danger" id="trg-act-recusar">🚫 Recusar</button>' +
+          '<button class="sga-btn sga-btn--ghost" id="trg-act-reanalise">🔄 Pedir nova análise</button>' +
+          (podeAprovar ? '<button class="sga-btn sga-btn--primary" id="trg-act-aprovar">✅ Aprovar</button>' : '') +
+          (podePublicar ? '<button class="sga-btn sga-btn--primary" id="trg-act-publicar">🚀 Marcar publicado</button>' : '') +
+        '</footer>' +
+      '</div>' +
+    '</div>'
+  );
+
+  // Bindings
+  var fechar = function () { var m = document.getElementById('trg-modal'); if (m) m.parentNode.removeChild(m); };
+  document.getElementById('trg-close').addEventListener('click', fechar);
+  document.getElementById('trg-modal').addEventListener('click', function (e) { if (e.target === this) fechar(); });
+
+  document.getElementById('trg-salvar-nota').addEventListener('click', function () {
+    var nota = document.getElementById('trg-nota').value || '';
+    var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+    google.script.run
+      .withSuccessHandler(function (r) {
+        btn.disabled = false; btn.textContent = 'Salvar comentário';
+        if (!r || !r.ok) { showAlert('Erro: ' + ((r && r.error) || 'desconhecido'), 'error'); return; }
+        showAlert('Comentário salvo.', 'success');
+        t.nota_joao = nota;
+      })
+      .withFailureHandler(function (e) {
+        btn.disabled = false; btn.textContent = 'Salvar comentário';
+        showAlert('Falha: ' + (e.message || e), 'error');
+      })
+      .Api_triagemComentar(t.fb_id, nota);
+  });
+
+  document.getElementById('trg-act-reanalise').addEventListener('click', function () {
+    _trgPromptInput({
+      title: 'Pedir nova análise',
+      message: 'Observação opcional para o Sonnet (ex.: "considere também o caso X"):',
+      placeholder: 'Observação para o Sonnet...',
+      okLabel: 'Enviar',
+      required: false
+    }, function (nota) {
+      if (nota === null) return;
+      var origBtn = document.getElementById('trg-act-reanalise');
+      if (origBtn) { origBtn.disabled = true; origBtn.textContent = 'Enviando...'; }
+      google.script.run
+        .withSuccessHandler(function (r) {
+          if (origBtn) { origBtn.disabled = false; origBtn.textContent = '🔄 Pedir nova análise'; }
+          if (!r || !r.ok) { showAlert('Erro: ' + ((r && r.error) || 'desconhecido'), 'error'); return; }
+          showAlert('Re-análise solicitada. Sonnet vai reprocessar.', 'success');
+          fechar(); _trgLoad();
+        })
+        .withFailureHandler(function (e) {
+          if (origBtn) { origBtn.disabled = false; origBtn.textContent = '🔄 Pedir nova análise'; }
+          showAlert('Falha: ' + (e.message || e), 'error');
+        })
+        .Api_triagemPedirReanalise(t.fb_id, nota);
+    });
+  });
+
+  document.getElementById('trg-act-recusar').addEventListener('click', function () {
+    _trgPromptInput({
+      title: 'Recusar triagem',
+      message: 'Motivo da recusa (obrigatório — vai aparecer ao usuário em "Meus reportes"):',
+      placeholder: 'Motivo da recusa...',
+      okLabel: 'Recusar',
+      okVariant: 'danger',
+      required: true
+    }, function (nota) {
+      if (nota === null) return;
+      var origBtn = document.getElementById('trg-act-recusar');
+      if (origBtn) { origBtn.disabled = true; origBtn.textContent = 'Recusando...'; }
+      google.script.run
+        .withSuccessHandler(function (r) {
+          if (origBtn) { origBtn.disabled = false; origBtn.textContent = '🚫 Recusar'; }
+          if (!r || !r.ok) { showAlert('Erro: ' + ((r && r.error) || 'desconhecido'), 'error'); return; }
+          showAlert('Recusado. Usuário será notificado em "Meus reportes".', 'success');
+          fechar(); _trgLoad();
+        })
+        .withFailureHandler(function (e) {
+          if (origBtn) { origBtn.disabled = false; origBtn.textContent = '🚫 Recusar'; }
+          showAlert('Falha: ' + (e.message || e), 'error');
+        })
+        .Api_triagemRecusar(t.fb_id, nota);
+    });
+  });
+
+  var aprovarBtn = document.getElementById('trg-act-aprovar');
+  if (aprovarBtn) {
+    aprovarBtn.addEventListener('click', function () {
+      var cam = String(t.camada || '').toUpperCase();
+      var msg = (cam === 'VERMELHO')
+        ? 'Aprovar como proposta documentada? Camada VERMELHO NÃO implementa código automático — vira referência para você decidir numa sessão.'
+        : 'Aprovar e gerar a TAREFA para implementação na /dev? Você revisa e publica antes de ir pra produção.';
+      _trgPromptInput({
+        title: '✅ Aprovar triagem',
+        message: msg + '\n\nInstrução extra para o agente (opcional):',
+        placeholder: 'ex.: "atenção ao caso X que o usuário citou no relato original"...',
+        okLabel: 'Aprovar',
+        required: false
+      }, function (nota) {
+        if (nota === null) return;
+        aprovarBtn.disabled = true; aprovarBtn.textContent = 'Aprovando...';
+        google.script.run
+          .withSuccessHandler(function (r) {
+            if (!r || !r.ok) {
+              aprovarBtn.disabled = false; aprovarBtn.textContent = '✅ Aprovar';
+              showAlert('Erro: ' + ((r && r.error) || 'desconhecido'), 'error'); return;
+            }
+            showAlert('Aprovado. TAREFA gerada para os agentes.', 'success');
+            fechar(); _trgLoad();
+          })
+          .withFailureHandler(function (e) {
+            aprovarBtn.disabled = false; aprovarBtn.textContent = '✅ Aprovar';
+            showAlert('Falha: ' + (e.message || e), 'error');
+          })
+          .Api_triagemAprovar(t.fb_id, nota || '');
+      });
+    });
+  }
+
+  var publicarBtn = document.getElementById('trg-act-publicar');
+  if (publicarBtn) {
+    publicarBtn.addEventListener('click', function () {
+      var go = function () {
+        publicarBtn.disabled = true; publicarBtn.textContent = 'Marcando...';
+        google.script.run
+          .withSuccessHandler(function (r) {
+            if (!r || !r.ok) {
+              publicarBtn.disabled = false; publicarBtn.textContent = '🚀 Marcar publicado';
+              showAlert('Erro: ' + ((r && r.error) || 'desconhecido'), 'error'); return;
+            }
+            showAlert('Marcado como publicado em produção.', 'success');
+            fechar(); _trgLoad();
+          })
+          .withFailureHandler(function (e) {
+            publicarBtn.disabled = false; publicarBtn.textContent = '🚀 Marcar publicado';
+            showAlert('Falha: ' + (e.message || e), 'error');
+          })
+          .Api_triagemMarcarPublicado(t.fb_id);
+      };
+      var msg = 'Confirmar que você já clicou "Implantar" no Apps Script e isto está em produção (/exec)?';
+      if (window.SGA && SGA.confirm) {
+        SGA.confirm(msg, { title: 'Marcar publicado', okLabel: 'Sim, publicado' }).then(function (ok) { if (ok) go(); });
+      } else if (confirm(msg)) { go(); }
+    });
+  }
+}
+
+/* Helper: SGA modal-based prompt replacement.
+   callback(value) — value === null se cancelado. */
+function _trgPromptInput(opts, callback) {
+  if (!window.SGA || !SGA.openModal) {
+    // Fallback se SGA não disponível (não deveria acontecer)
+    var v = window.prompt(opts.message || '', '');
+    callback(v);
+    return;
+  }
+  var inputId = 'trg-prompt-input-' + Date.now();
+  var bodyHtml =
+    '<p style="margin:0 0 var(--sga-space-3);color:var(--sga-text-default)">' + (opts.message ? escapeHtml(opts.message) : '') + '</p>' +
+    '<textarea id="' + inputId + '" class="sga-form-textarea" rows="3" placeholder="' + escapeHtml(opts.placeholder || '') + '" data-sga-autofocus></textarea>';
+  var resolved = false;
+  var handle = SGA.openModal({
+    title: opts.title || 'Entrada',
+    size: 'sm',
+    body: bodyHtml,
+    footer: [
+      { label: 'Cancelar', variant: 'ghost', onClick: function () { resolved = true; callback(null); } },
+      {
+        label: opts.okLabel || 'OK',
+        variant: opts.okVariant || 'primary',
+        primary: true,
+        onClick: function (ctx) {
+          var inp = document.getElementById(inputId);
+          var val = inp ? (inp.value || '') : '';
+          if (opts.required && !val.trim()) {
+            showAlert('Campo obrigatório.', 'warning');
+            return false;
+          }
+          resolved = true;
+          callback(val);
+        }
+      }
+    ],
+    onClose: function () { if (!resolved) callback(null); }
+  });
+}
+
+/* ───────────────────────────────────────────────────────────────
+   HELPERS
+─────────────────────────────────────────────────────────────── */
+
+function _trgFirstLine(md) {
+  if (!md) return '';
+  var lines = String(md).split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    var s = lines[i].replace(/^[#>*\-\s]+/, '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+function _trgParseHistorico(raw) {
+  if (!raw) return [];
+  try {
+    var v = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+    if (Object.prototype.toString.call(v) === '[object Array]') return v;
+    return [];
+  } catch (e) { return []; }
+}
+
+function _trgRelativeTime(dateStr) {
+  if (!dateStr) return '';
+  var d;
+  try { d = new Date(dateStr); } catch (e) { return ''; }
+  if (!d || isNaN(d.getTime())) return '';
+  var now = new Date();
+  var diffMs = now.getTime() - d.getTime();
+  var sec = Math.floor(diffMs / 1000);
+  if (sec < 60)      return sec <= 5 ? 'agora' : sec + 's atrás';
+  var min = Math.floor(sec / 60);
+  if (min < 60)      return min + 'min atrás';
+  var hr  = Math.floor(min / 60);
+  if (hr  < 24)      return hr + 'h atrás';
+  var dy  = Math.floor(hr / 24);
+  if (dy === 1)      return 'ontem';
+  if (dy < 30)       return dy + ' dias atrás';
+  var mo  = Math.floor(dy / 30);
+  if (mo < 12)       return mo + ' meses atrás';
+  return Math.floor(mo / 12) + ' anos atrás';
+}
+</script>

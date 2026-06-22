@@ -46,10 +46,36 @@ function Api_poGetAll() {
  */
 function Api_poEmitir(poId) {
   try {
-    requireRole(['DIRETOR_TECNICO']);
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
     if (!poId) throw new Error('ID da PO é obrigatório.');
-    var result = poSvcEmitir(poId);
-    return { ok: true, data: result };
+    var po = poSvcEmitir(poId);
+    // FB-029: ao emitir, envia o documento SC por e-mail ao fornecedor (best-effort).
+    var email = { sent: false };
+    try { var r = poSvcEnviarEmail(poId); email = { sent: true, to: r.to }; }
+    catch (eMail) { email = { sent: false, error: eMail.message }; }
+    return { ok: true, data: po, email: email };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Aprova uma PO (RASCUNHO → APROVADA). Maria (FINANCEIRO_ADMIN) + os 2 diretores. */
+function Api_poAprovar(poId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN']);
+    if (!poId) throw new Error('ID da PO é obrigatório.');
+    return { ok: true, data: poSvcAprovar(poId) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Gera o HTML do documento "Solicitação de Compra — SC" da PO (visualização). */
+function Api_poGerarHTML(poId) {
+  try {
+    requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    if (!poId) throw new Error('ID da PO é obrigatório.');
+    return { ok: true, data: poSvcGerarHTML(poId) };
   } catch (e) {
     return { ok: false, error: e.message };
   }

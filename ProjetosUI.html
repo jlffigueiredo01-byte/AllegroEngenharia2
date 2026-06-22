@@ -6,6 +6,7 @@
 
 var _pjProjects = [];
 var _pjCurrent  = null;
+var _pjRdoAnexos = []; // anexos (base64) do RDO em edição
 
 function renderProjetos(area) {
   area.innerHTML =
@@ -13,12 +14,15 @@ function renderProjetos(area) {
       '<h1 class="page-title">🏗️ Projetos</h1>' +
       '<p class="page-subtitle">Obras em execução: cronograma por marcos e Relatório Diário de Obra.</p>' +
     '</div></div>' +
-    '<div id="pj-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>' +
+    '<div id="pj-list-wrap"></div>' +
     '<div id="pj-detail-wrap"></div>';
+  (function(){ var sk = document.getElementById('pj-list-wrap'); if (sk && window.SGA && SGA.skeleton) SGA.skeleton(sk, { type: 'list', count: 4 }); })();
   _pjLoad();
 }
 
 function _pjLoad() {
+  var wrap = document.getElementById('pj-list-wrap');
+  if (wrap && window.SGA && SGA.skeleton) SGA.skeleton(wrap, { type: 'list', count: 4 });
   google.script.run
     .withSuccessHandler(function (r) {
       _pjProjects = (r && r.ok && r.data) ? r.data : [];
@@ -31,7 +35,7 @@ function _pjLoad() {
     })
     .withFailureHandler(function (e) {
       var w = document.getElementById('pj-list-wrap');
-      if (w) w.innerHTML = '<div class="empty-state">Erro ao carregar projetos: ' + escapeHtml(e.message || e) + '</div>';
+      if (w) w.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div><h3 class="sga-empty__title">Erro ao carregar projetos</h3><p class="sga-empty__text">' + escapeHtml(e.message || e) + '</p></div>';
     })
     .Api_projGetAll({});
 }
@@ -45,27 +49,44 @@ function _pjRenderList() {
   var w = document.getElementById('pj-list-wrap');
   if (!w) return;
   if (!_pjProjects.length) {
-    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
-      '<div class="empty-icon">🏗️</div><div class="empty-title">Nenhum projeto ainda</div>' +
-      '<div class="empty-desc">Projetos nascem automaticamente quando uma proposta é FECHADA.</div></div></div></div>';
+    if (window.SGA && SGA.empty) {
+      SGA.empty(w, {
+        icon: '🚀',
+        title: 'Nenhum projeto ainda',
+        text: 'Projetos nascem automaticamente quando uma proposta é FECHADA. Acompanhe suas propostas em andamento para ver o primeiro projeto aqui.'
+      });
+    } else {
+      w.innerHTML = '<div class="sga-empty">' +
+        '<div class="sga-empty__icon">🚀</div>' +
+        '<h3 class="sga-empty__title">Nenhum projeto ainda</h3>' +
+        '<p class="sga-empty__text">Projetos nascem automaticamente quando uma proposta é FECHADA.</p>' +
+      '</div>';
+    }
     return;
   }
   var rows = '';
   for (var i = 0; i < _pjProjects.length; i++) {
     var p = _pjProjects[i];
-    rows += '<tr>' +
-      '<td><code style="font-size:11px">' + escapeHtml(p.id) + '</code></td>' +
-      '<td>' + escapeHtml(p.title || '') + '</td>' +
-      '<td><span class="badge ' + _pjBadge(p.status) + '">' + escapeHtml(p.status || '') + '</span></td>' +
-      '<td style="font-size:12px">' + escapeHtml(p.proposal_id || '') + '</td>' +
-      '<td>' + formatDate(p.kick_off_date) + '</td>' +
-      '<td><button class="btn btn-ghost btn-sm pj-open" data-id="' + escapeHtml(p.id) + '">Abrir</button></td>' +
+    rows += '<tr class="sga-table__row">' +
+      '<td class="sga-table__td"><code style="font-size:11px">' + escapeHtml(p.id) + '</code></td>' +
+      '<td class="sga-table__td">' + escapeHtml(p.title || '') + '</td>' +
+      '<td class="sga-table__td"><span class="badge ' + _pjBadge(p.status) + '">' + escapeHtml(p.status || '') + '</span></td>' +
+      '<td class="sga-table__td" style="font-size:12px">' + escapeHtml(p.proposal_id || '') + '</td>' +
+      '<td class="sga-table__td">' + formatDate(p.kick_off_date) + '</td>' +
+      '<td class="sga-table__td sga-table__td--actions"><button class="sga-btn sga-btn--ghost sga-btn--sm pj-open" data-id="' + escapeHtml(p.id) + '">Abrir</button></td>' +
     '</tr>';
   }
   w.innerHTML =
-    '<div class="card"><div class="table-wrap"><table class="data-table">' +
-      '<thead><tr><th>ID</th><th>Projeto</th><th>Status</th><th>Proposta</th><th>Kick-off</th><th></th></tr></thead>' +
-      '<tbody>' + rows + '</tbody></table></div></div>';
+    '<div class="sga-table-wrap"><table class="sga-table">' +
+      '<thead><tr>' +
+        '<th class="sga-table__th">ID</th>' +
+        '<th class="sga-table__th">Projeto</th>' +
+        '<th class="sga-table__th">Status</th>' +
+        '<th class="sga-table__th">Proposta</th>' +
+        '<th class="sga-table__th">Kick-off</th>' +
+        '<th class="sga-table__th sga-table__th--actions"></th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>';
   var btns = w.querySelectorAll('.pj-open');
   for (var b = 0; b < btns.length; b++) {
     btns[b].addEventListener('click', function () { _pjOpen(this.getAttribute('data-id')); });
@@ -91,14 +112,14 @@ function _pjOpen(id) {
           '<div style="display:flex;gap:6px;margin-top:8px">' +
             '<input class="form-input" id="pj-ms-title" type="text" placeholder="novo marco (ex.: Start-up)" style="flex:1">' +
             '<input class="form-input" id="pj-ms-date" type="date" style="width:150px">' +
-            '<button class="btn btn-primary btn-sm" id="pj-ms-add">+</button>' +
+            '<button class="sga-btn sga-btn--primary sga-btn--sm" id="pj-ms-add">+</button>' +
           '</div>' +
         '</div>' +
 
         '<div>' +
           '<div class="form-label" style="font-weight:700">📋 RDO — Relatório Diário de Obra</div>' +
           '<div id="pj-rdos"><div class="spinner-ring"></div></div>' +
-          '<button class="btn btn-primary btn-sm" id="pj-rdo-new" style="margin-top:8px">+ Lançar RDO de hoje</button>' +
+          '<button class="sga-btn sga-btn--primary sga-btn--sm" id="pj-rdo-new" style="margin-top:8px">+ Lançar RDO de hoje</button>' +
           '<div id="pj-rdo-form" class="hidden" style="margin-top:10px;background:#f8fafc;border-radius:10px;padding:12px"></div>' +
         '</div>' +
 
@@ -115,11 +136,20 @@ function _pjOpen(id) {
 /* ── Marcos ── */
 
 function _pjLoadMilestones() {
+  var skBox = document.getElementById('pj-milestones');
+  if (skBox && window.SGA && SGA.skeleton) SGA.skeleton(skBox, { type: 'lines', count: 3 });
   google.script.run.withSuccessHandler(function (r) {
     var box = document.getElementById('pj-milestones');
     if (!box) return;
     var list = (r && r.ok && r.data) ? r.data : [];
-    if (!list.length) { box.innerHTML = '<p style="color:#64748b;font-size:12px">Nenhum marco. Defina no kick-off.</p>'; return; }
+    if (!list.length) {
+      box.innerHTML = '<div class="sga-empty sga-empty--compact" style="padding:14px 8px;gap:6px;">' +
+        '<div class="sga-empty__icon">🎯</div>' +
+        '<h3 class="sga-empty__title" style="font-size:13px;">Nenhum marco</h3>' +
+        '<p class="sga-empty__text" style="font-size:12px;">Use o campo acima para definir o primeiro marco do kick-off.</p>' +
+      '</div>';
+      return;
+    }
     var html = '';
     for (var i = 0; i < list.length; i++) {
       var m = list[i];
@@ -128,7 +158,7 @@ function _pjLoadMilestones() {
         '<span style="font-size:16px">' + (done ? '✅' : (m.status === 'ATRASADO' ? '🔴' : '⬜')) + '</span>' +
         '<div style="flex:1"><div style="font-size:13px;font-weight:600;' + (done ? 'text-decoration:line-through;color:#94a3b8' : '') + '">' + escapeHtml(m.title || '') + '</div>' +
           '<div style="font-size:11px;color:#64748b">previsto: ' + formatDate(m.due_date) + (done ? ' · concluído: ' + formatDate(m.completed_at) : '') + '</div></div>' +
-        (done ? '' : '<button class="btn btn-ghost btn-sm pj-ms-done" data-id="' + escapeHtml(m.id) + '">Concluir</button>') +
+        (done ? '' : '<button class="sga-btn sga-btn--ghost sga-btn--sm pj-ms-done" data-id="' + escapeHtml(m.id) + '">Concluir</button>') +
       '</div>';
     }
     box.innerHTML = html;
@@ -148,22 +178,42 @@ function _pjLoadMilestones() {
 function _pjAddMilestone() {
   var t = document.getElementById('pj-ms-title').value;
   var d = document.getElementById('pj-ms-date').value;
-  if (!t || !d) { showAlert('Informe título e data do marco.', 'warning'); return; }
-  google.script.run.withSuccessHandler(function (res) {
-    if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
-    document.getElementById('pj-ms-title').value = '';
-    _pjLoadMilestones();
-  }).Api_projAddMilestone(_pjCurrent.id, t, d, '');
+  if (!t || !d) { showAlert('Informe título E data do marco.', 'warning'); return; }
+  var btn = document.getElementById('pj-ms-add');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (btn) { btn.disabled = false; btn.textContent = '+'; }
+      if (!res || !res.ok) { showAlert('Erro ao adicionar marco: ' + (res ? res.error : '?'), 'error'); return; }
+      document.getElementById('pj-ms-title').value = '';
+      document.getElementById('pj-ms-date').value = '';
+      showAlert('Marco adicionado!', 'success');
+      _pjLoadMilestones();
+    })
+    .withFailureHandler(function (err) {
+      if (btn) { btn.disabled = false; btn.textContent = '+'; }
+      showAlert('Falha ao adicionar marco: ' + (err.message || err), 'error');
+    })
+    .Api_projAddMilestone(_pjCurrent.id, t, d, '');
 }
 
 /* ── RDO ── */
 
 function _pjLoadRdos() {
+  var skBox = document.getElementById('pj-rdos');
+  if (skBox && window.SGA && SGA.skeleton) SGA.skeleton(skBox, { type: 'list', count: 3 });
   google.script.run.withSuccessHandler(function (r) {
     var box = document.getElementById('pj-rdos');
     if (!box) return;
     var list = (r && r.ok && r.data) ? r.data : [];
-    if (!list.length) { box.innerHTML = '<p style="color:#64748b;font-size:12px">Nenhum RDO lançado ainda.</p>'; return; }
+    if (!list.length) {
+      box.innerHTML = '<div class="sga-empty sga-empty--compact" style="padding:14px 8px;gap:6px;">' +
+        '<div class="sga-empty__icon">📝</div>' +
+        '<h3 class="sga-empty__title" style="font-size:13px;">Nenhum RDO lançado</h3>' +
+        '<p class="sga-empty__text" style="font-size:12px;">Use o botão "+ Novo RDO" acima para registrar o primeiro diário de obra.</p>' +
+      '</div>';
+      return;
+    }
     var html = '';
     for (var i = list.length - 1; i >= 0 && i >= list.length - 10; i--) {
       var rdo = list[i];
@@ -171,11 +221,17 @@ function _pjLoadRdos() {
       try { ativ = JSON.parse(rdo.atividades_json || '[]'); } catch (e) {}
       var ocor = [];
       try { ocor = JSON.parse(rdo.ocorrencias_json || '[]'); } catch (e2) {}
+      var fotos = [];
+      try { fotos = JSON.parse(rdo.fotos_json || '[]'); } catch (e3) {}
       html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px">' +
         '<div style="display:flex;justify-content:space-between"><b>' + formatDate(rdo.date) + '</b>' +
           '<span>' + escapeHtml(rdo.clima || '') + ' · ' + (rdo.horas_lancadas || 0) + 'h</span></div>' +
         '<div style="color:#334155">' + escapeHtml(ativ.map(function (a) { return a.descricao; }).join('; ')) + '</div>' +
         (ocor.length ? '<div style="color:#b45309">⚠ ' + escapeHtml(ocor.join('; ')) + '</div>' : '') +
+        (fotos.length ? '<div style="margin-top:4px">' + fotos.map(function (ft) {
+            var u = ft.url || (ft.file_id ? ('https://drive.google.com/file/d/' + ft.file_id + '/view') : '#');
+            return '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener" style="margin-right:8px">📎 ' + escapeHtml(ft.name || ft.caption || 'anexo') + '</a>';
+          }).join('') + '</div>' : '') +
         '<div style="color:#94a3b8">' + escapeHtml(rdo.tecnico_nome || '') + ' · ' + escapeHtml(rdo.efetivo_campo || '') + '</div>' +
       '</div>';
     }
@@ -186,6 +242,7 @@ function _pjLoadRdos() {
 function _pjShowRdoForm() {
   var f = document.getElementById('pj-rdo-form');
   f.classList.remove('hidden');
+  _pjRdoAnexos = [];
   var today = new Date();
   var iso = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
   f.innerHTML =
@@ -193,20 +250,51 @@ function _pjShowRdoForm() {
       '<label style="font-size:12px">Data<br><input class="form-input" id="rdo-date" type="date" value="' + iso + '" style="width:150px"></label>' +
       '<label style="font-size:12px">Clima<br><select class="form-input" id="rdo-clima" style="width:140px">' +
         '<option>BOM</option><option>CHUVA</option><option>IMPRATICAVEL</option></select></label>' +
-      '<label style="font-size:12px;flex:1">Efetivo em campo<br><input class="form-input" id="rdo-efetivo" type="text" placeholder="quem esteve na obra"></label>' +
+      '<label style="font-size:12px;flex:1;min-width:160px">Efetivo em campo<br><input class="form-input" id="rdo-efetivo" type="text" placeholder="quem esteve na obra" style="width:100%"></label>' +
     '</div>' +
-    '<label style="font-size:12px">Atividades executadas<br><textarea class="form-input" id="rdo-ativ" rows="2" placeholder="uma por linha"></textarea></label>' +
-    '<div style="display:flex;gap:8px">' +
-      '<label style="font-size:12px;width:120px">Horas do dia<br><input class="form-input" id="rdo-horas" type="number" min="0" step="0.5" value="8"></label>' +
-      '<label style="font-size:12px;flex:1">Ocorrências / impedimentos<br><input class="form-input" id="rdo-ocor" type="text" placeholder="chuva, área não liberada... (separe por ;)"></label>' +
+    '<label style="font-size:12px;display:block;margin-top:8px">Atividades executadas <span style="color:#94a3b8">(uma por linha)</span><br>' +
+      '<textarea class="form-input" id="rdo-ativ" rows="5" placeholder="ex.:&#10;Instalação do sensor no silo 3&#10;Comissionamento da malha de temperatura&#10;Treinamento da equipe de operação" style="width:100%;font-family:inherit;resize:vertical;min-height:110px"></textarea></label>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<label style="font-size:12px;width:120px">Horas do dia<br><input class="form-input" id="rdo-horas" type="number" min="0" step="0.5" value="8" style="width:100%"></label>' +
+      '<label style="font-size:12px;flex:1;min-width:200px">Ocorrências / impedimentos<br><input class="form-input" id="rdo-ocor" type="text" placeholder="chuva, área não liberada... (separe por ;)" style="width:100%"></label>' +
     '</div>' +
-    '<div style="margin-top:8px;display:flex;gap:8px">' +
-      '<button class="btn btn-primary btn-sm" id="rdo-save">Salvar RDO</button>' +
-      '<button class="btn btn-ghost btn-sm" id="rdo-cancel">Cancelar</button>' +
+    '<div style="margin-top:10px">' +
+      '<label class="sga-btn sga-btn--ghost sga-btn--sm" style="cursor:pointer">📎 Anexar fotos / PDFs' +
+        '<input type="file" id="rdo-files" accept="image/*,application/pdf" multiple style="display:none"></label>' +
+      '<span id="rdo-files-list" style="font-size:11px;color:#64748b;margin-left:8px"></span>' +
+    '</div>' +
+    '<div style="margin-top:10px;display:flex;gap:8px">' +
+      '<button class="sga-btn sga-btn--primary sga-btn--sm" id="rdo-save">Salvar RDO</button>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="rdo-cancel">Cancelar</button>' +
     '</div>' +
     '<div style="font-size:11px;color:#94a3b8;margin-top:4px">RDO é imutável após salvo — um por dia por obra.</div>';
-  document.getElementById('rdo-cancel').addEventListener('click', function () { f.classList.add('hidden'); f.innerHTML = ''; });
+  document.getElementById('rdo-cancel').addEventListener('click', function () { f.classList.add('hidden'); f.innerHTML = ''; _pjRdoAnexos = []; });
   document.getElementById('rdo-save').addEventListener('click', _pjSaveRdo);
+  document.getElementById('rdo-files').addEventListener('change', _pjRdoFilesChange);
+}
+
+function _pjRdoFilesChange() {
+  var files = this.files;
+  if (!files || !files.length) return;
+  for (var i = 0; i < files.length; i++) {
+    (function (file) {
+      if (file.size > 8 * 1024 * 1024) { showAlert('"' + file.name + '" acima de 8 MB — ignorado.', 'warning'); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        _pjRdoAnexos.push({ base64: String(reader.result).split(',')[1], mime: file.type, name: file.name });
+        _pjRdoFilesRender();
+      };
+      reader.readAsDataURL(file);
+    })(files[i]);
+  }
+  this.value = '';
+}
+
+function _pjRdoFilesRender() {
+  var span = document.getElementById('rdo-files-list');
+  if (!span) return;
+  if (!_pjRdoAnexos.length) { span.textContent = ''; return; }
+  span.textContent = _pjRdoAnexos.length + ' arquivo(s): ' + _pjRdoAnexos.map(function (a) { return a.name; }).join(', ');
 }
 
 function _pjSaveRdo() {
@@ -228,7 +316,8 @@ function _pjSaveRdo() {
     efetivo_campo:   document.getElementById('rdo-efetivo').value,
     atividades_json: atividades,
     ocorrencias_json: ocorrencias,
-    horas_lancadas:  horas
+    horas_lancadas:  horas,
+    fotos:           _pjRdoAnexos
   };
   var btn = document.getElementById('rdo-save');
   btn.disabled = true; btn.textContent = 'Salvando...';
@@ -236,7 +325,8 @@ function _pjSaveRdo() {
     .withSuccessHandler(function (res) {
       btn.disabled = false; btn.textContent = 'Salvar RDO';
       if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
-      showAlert('RDO registrado!', 'success');
+      showAlert('RDO registrado!' + (_pjRdoAnexos.length ? ' (' + _pjRdoAnexos.length + ' anexo(s))' : ''), 'success');
+      _pjRdoAnexos = [];
       var f = document.getElementById('pj-rdo-form');
       f.classList.add('hidden'); f.innerHTML = '';
       _pjLoadRdos();

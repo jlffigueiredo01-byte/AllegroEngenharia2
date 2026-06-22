@@ -14,11 +14,11 @@ function renderConfig(area) {
 
   if (!hasAccess) {
     area.innerHTML =
-      '<div class="card" style="max-width:480px;margin:48px auto;text-align:center;">' +
-        '<div class="card-body">' +
-          '<div style="font-size:48px;margin-bottom:16px;">🔒</div>' +
-          '<h2 class="card-title">Acesso Restrito</h2>' +
-          '<p style="color:var(--text-secondary);">Esta área é exclusiva para administradores do sistema.</p>' +
+      '<div style="max-width:480px;margin:48px auto">' +
+        '<div class="sga-empty">' +
+          '<div class="sga-empty__icon">🔒</div>' +
+          '<h3 class="sga-empty__title">Acesso Restrito</h3>' +
+          '<p class="sga-empty__text">Esta área é exclusiva para administradores do sistema.</p>' +
         '</div>' +
       '</div>';
     return;
@@ -36,8 +36,8 @@ function renderConfig(area) {
     '</div>' +
 
     '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
-      '<button id="cfg-tab-users-btn"  class="btn btn-primary"  onclick="cfgShowTab(\'users\')" >Usuários</button>' +
-      '<button id="cfg-tab-config-btn" class="btn btn-ghost"    onclick="cfgShowTab(\'config\')">Configurações do sistema</button>' +
+      '<button id="cfg-tab-users-btn"  class="sga-btn sga-btn--primary"  onclick="cfgShowTab(\'users\')" >Usuários</button>' +
+      '<button id="cfg-tab-config-btn" class="sga-btn sga-btn--ghost"    onclick="cfgShowTab(\'config\')">Configurações do sistema</button>' +
     '</div>' +
 
     '<div id="cfg-tab-users"  >' + _cfgBuildUsersTab()  + '</div>' +
@@ -60,13 +60,13 @@ function cfgShowTab(tab) {
   if (tab === 'users') {
     usersDiv.classList.remove('hidden');
     configDiv.classList.add('hidden');
-    usersBtn.className  = 'btn btn-primary';
-    configBtn.className = 'btn btn-ghost';
+    usersBtn.className  = 'sga-btn sga-btn--primary';
+    configBtn.className = 'sga-btn sga-btn--ghost';
   } else {
     usersDiv.classList.add('hidden');
     configDiv.classList.remove('hidden');
-    usersBtn.className  = 'btn btn-ghost';
-    configBtn.className = 'btn btn-primary';
+    usersBtn.className  = 'sga-btn sga-btn--ghost';
+    configBtn.className = 'sga-btn sga-btn--primary';
   }
 }
 
@@ -75,79 +75,43 @@ function cfgShowTab(tab) {
 // ===========================================================================
 
 function _cfgBuildUsersTab() {
-  return '<div class="card">' +
-    '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">' +
-      '<span class="card-title">Usuários</span>' +
-      '<button class="btn btn-primary btn-sm" onclick="cfgOpenNewUserModal()">+ Novo Usuário</button>' +
+  return '<div class="sga-card sga-card--bordered">' +
+    '<div class="sga-card__header">' +
+      '<h3 class="sga-card__title">Usuários</h3>' +
+      '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="cfgOpenNewUserModal()">+ Novo Usuário</button>' +
     '</div>' +
-    '<div class="card-body">' +
-      '<div id="cfg-users-spinner" class="hidden" style="text-align:center;padding:24px;">' +
-        '<div class="spinner-ring"></div>' +
-      '</div>' +
-      '<div class="table-wrap">' +
-        '<table class="data-table" id="cfg-users-table">' +
+    '<div class="sga-card__body">' +
+      '<div id="cfg-users-spinner-wrap"></div>' +
+      '<div class="sga-table-wrap">' +
+        '<table class="sga-table" id="cfg-users-table">' +
           '<thead><tr>' +
-            '<th>ID</th><th>Nome</th><th>Email</th><th>Perfil</th><th>Status</th><th>Ações</th>' +
+            '<th class="sga-table__th">ID</th>' +
+            '<th class="sga-table__th">Nome</th>' +
+            '<th class="sga-table__th">Email</th>' +
+            '<th class="sga-table__th">Perfil</th>' +
+            '<th class="sga-table__th">Status</th>' +
+            '<th class="sga-table__th sga-table__th--actions">Ações</th>' +
           '</tr></thead>' +
-          '<tbody id="cfg-users-tbody"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>' +
+          '<tbody id="cfg-users-tbody"><tr><td colspan="6" class="sga-table__td" style="text-align:center;color:var(--sga-text-muted)">Carregando...</td></tr></tbody>' +
         '</table>' +
-      '</div>' +
-    '</div>' +
-  '</div>' +
-
-  // --- New User Modal ---
-  '<div id="cfg-user-modal" class="hidden" style="' +
-    'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;' +
-    'display:flex;align-items:center;justify-content:center;">' +
-    '<div class="card" style="width:100%;max-width:480px;">' +
-      '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">' +
-        '<span class="card-title">Novo Usuário</span>' +
-        '<button class="btn btn-ghost btn-sm" onclick="cfgCloseNewUserModal()">✕</button>' +
-      '</div>' +
-      '<div class="card-body">' +
-        '<div class="form-group">' +
-          '<label class="form-label">Nome *</label>' +
-          '<input id="cfg-new-name" class="form-input" type="text" placeholder="Nome completo" />' +
-        '</div>' +
-        '<div class="form-group">' +
-          '<label class="form-label">E-mail</label>' +
-          '<input id="cfg-new-email" class="form-input" type="email" placeholder="usuario@empresa.com" />' +
-        '</div>' +
-        '<div class="form-group">' +
-          '<label class="form-label">Perfil *</label>' +
-          '<select id="cfg-new-role" class="form-input">' +
-            '<option value="">Selecione...</option>' +
-            '<option value="GERAL">GERAL</option>' +
-            '<option value="VENDAS">VENDAS</option>' +
-            '<option value="TECNICO">TECNICO</option>' +
-          '</select>' +
-        '</div>' +
-        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">' +
-          '<button class="btn btn-ghost" onclick="cfgCloseNewUserModal()">Cancelar</button>' +
-          '<button class="btn btn-primary" onclick="cfgSubmitNewUser()">Criar Usuário</button>' +
-        '</div>' +
       '</div>' +
     '</div>' +
   '</div>';
 }
 
 function _cfgLoadUsers() {
-  var spinner = document.getElementById('cfg-users-spinner');
   var tbody   = document.getElementById('cfg-users-tbody');
-  if (spinner) spinner.classList.remove('hidden');
 
   google.script.run
     .withSuccessHandler(function(res) {
-      if (spinner) spinner.classList.add('hidden');
       if (!res || !res.ok) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Erro ao carregar usuários.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="sga-table__td" style="text-align:center;color:var(--sga-color-danger)">Erro ao carregar usuários.</td></tr>';
         return;
       }
       _cfgRenderUsersTable(res.data || []);
     })
     .withFailureHandler(function(err) {
-      if (spinner) spinner.classList.add('hidden');
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Erro: ' + escapeHtml(String(err)) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="sga-table__td" style="text-align:center;color:var(--sga-color-danger)">Erro: ' + escapeHtml(String(err)) + '</td></tr>';
     })
     .Api_cfgGetUsers();
 }
@@ -180,7 +144,7 @@ function _cfgRenderUsersTable(users) {
             : '<span class="badge badge-red">Inativo</span>') +
         '</td>' +
         '<td>' +
-          '<button class="btn btn-ghost btn-sm" onclick="cfgToggleUser(\'' + escapeHtml(u.id) + '\')">' +
+          '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="cfgToggleUser(\'' + escapeHtml(u.id) + '\')">' +
             toggleLabel +
           '</button>' +
         '</td>' +
@@ -190,17 +154,46 @@ function _cfgRenderUsersTable(users) {
   tbody.innerHTML = rows;
 }
 
-// --- Modal helpers ---
+// --- Modal helpers (SGA.openModal — modal criado on-demand) ---
+
+var _cfgUserModal = null;
 
 function cfgOpenNewUserModal() {
-  document.getElementById('cfg-new-name').value  = '';
-  document.getElementById('cfg-new-email').value = '';
-  document.getElementById('cfg-new-role').value  = '';
-  document.getElementById('cfg-user-modal').classList.remove('hidden');
+  var roles = {
+    DIRETOR_TECNICO:   'Diretor Técnico',
+    DIRETOR_COMERCIAL: 'Diretor Comercial',
+    FINANCEIRO_ADMIN:  'Financeiro / Admin',
+    TECNICO:           'Técnico'
+  };
+  var opts = '<option value="">— Selecione —</option>';
+  for (var k in roles) { opts += '<option value="' + k + '">' + escapeHtml(roles[k]) + '</option>'; }
+  var body =
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Nome <span class="sga-form-required">*</span></label>' +
+      '<input id="cfg-new-name" class="sga-form-input" type="text" placeholder="Nome completo">' +
+    '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Email</label>' +
+      '<input id="cfg-new-email" class="sga-form-input" type="email" placeholder="email@exemplo.com">' +
+    '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Perfil <span class="sga-form-required">*</span></label>' +
+      '<select id="cfg-new-role" class="sga-form-select">' + opts + '</select>' +
+    '</div>';
+  _cfgUserModal = SGA.openModal({
+    title: 'Novo Usuário',
+    size: 'sm',
+    body: body,
+    footer: [
+      { label: 'Cancelar', variant: 'ghost', onClick: 'close' },
+      { label: 'Criar', variant: 'primary', primary: true, onClick: function () { cfgSubmitNewUser(); return false; } }
+    ],
+    onClose: function () { _cfgUserModal = null; }
+  });
 }
 
 function cfgCloseNewUserModal() {
-  document.getElementById('cfg-user-modal').classList.add('hidden');
+  if (_cfgUserModal) _cfgUserModal.close();
 }
 
 function cfgSubmitNewUser() {
@@ -320,7 +313,7 @@ function _cfgRenderConfigTable(rows) {
         '<td>' +
           // Read-only view: "Editar" button
           '<span id="cfg-edit-btn-' + i + '">' +
-            '<button class="btn btn-ghost btn-sm" ' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" ' +
               'onclick="cfgStartEditConfig(' + i + ',\'' + escapeHtml(r.key) + '\')">' +
               'Editar' +
             '</button>' +
@@ -329,11 +322,11 @@ function _cfgRenderConfigTable(rows) {
           '<span id="cfg-edit-form-' + i + '" class="hidden" style="display:none;">' +
             '<input id="' + inputId + '" class="form-input" type="text" value="' + safeVal + '" ' +
               'style="width:160px;display:inline-block;" />' +
-            '<button class="btn btn-primary btn-sm" style="margin-left:6px;" ' +
+            '<button class="sga-btn sga-btn--primary sga-btn--sm" style="margin-left:6px;" ' +
               'onclick="cfgSaveConfigValue(' + i + ',\'' + escapeHtml(r.key) + '\')">' +
               'Salvar' +
             '</button>' +
-            '<button class="btn btn-ghost btn-sm" style="margin-left:4px;" ' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" style="margin-left:4px;" ' +
               'onclick="cfgCancelEditConfig(' + i + ')">' +
               'Cancelar' +
             '</button>' +

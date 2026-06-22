@@ -126,13 +126,38 @@ function fbSvcCriar(data) {
   // e o trigger detecta cada novo arquivo facilmente. (best-effort)
   try { _fbGravarRelato(rec); } catch (eMd) { Logger.log('fbSvcCriar md: ' + eMd.message); }
 
+  // Cria o card de triagem em NOVO NA HORA — aparece na guia Triagens
+  // imediatamente, sem depender de watcher/Drive sync/PLANO. best-effort.
+  try {
+    if (typeof triagemSvcCriarNovo === 'function') {
+      triagemSvcCriarNovo(id, {
+        titulo: rec.titulo,
+        autor_fb: rec.criado_por_nome || rec.criado_por,
+        tela: rec.tela
+      });
+    }
+  } catch (eTrg) { Logger.log('fbSvcCriar triagem NOVO: ' + eTrg.message); }
+
   return { id: id };
 }
 
-/** Os relatos do próprio usuário, com status (fecha o ciclo). */
+/** Os relatos do próprio usuário, com status (fecha o ciclo).
+ *  Match ROBUSTO: o id do usuário em cache pode divergir do criado_por gravado
+ *  (drift de id, email vs id, caixa/espaço). Casa por id OU email no campo
+ *  criado_por, e por nome no campo criado_por_nome — normalizado. Evita o caso
+ *  "aparece em Melhorias mas some em Meus reportes". */
 function fbSvcMeus() {
   var user = requireAuth();
-  var rows = sheetToObjects(FEEDBACK_SHEET).filter(function (r) { return r.criado_por === user.id; });
+  var _norm = function (v) { return String(v == null ? '' : v).trim().toLowerCase(); };
+  var uid = _norm(user.id);
+  var umail = _norm(user.email);
+  var uname = _norm(user.name);
+  var rows = sheetToObjects(FEEDBACK_SHEET).filter(function (r) {
+    var by = _norm(r.criado_por);
+    var byName = _norm(r.criado_por_nome);
+    return (by && (by === uid || (umail && by === umail))) ||
+           (byName && uname && byName === uname);
+  });
   rows.sort(function (a, b) { return String(b.criado_em).localeCompare(String(a.criado_em)); });
   return rows.slice(0, 50);
 }
@@ -152,7 +177,20 @@ function _fbGerarTarefaAgente(id, nota) {
   for (var i = 0; i < rows.length; i++) { if (rows[i].id === id) { rec = rows[i]; break; } }
   if (!rec) return null;
 
+  // A camada confiável vive na aba TRIAGENS (gravada pelo Sonnet). Prefere ela;
+  // cai para o FEEDBACKS só se não houver triagem. Também puxa a análise do Sonnet
+  // para a TAREFA ficar auto-contida (classificação + mensagem original juntas).
   var camada = String(rec.camada || '').toUpperCase();
+  var analiseSonnet = '';
+  try {
+    if (typeof _trgRepoGetByFbId === 'function') {
+      var trg = _trgRepoGetByFbId(id);
+      if (trg) {
+        if (trg.camada) camada = String(trg.camada).toUpperCase();
+        analiseSonnet = String(trg.analise_md || '');
+      }
+    }
+  } catch (eTrg) { /* sem triagem — segue com camada do FEEDBACKS */ }
   // na dúvida, sobe de camada (regra de ouro da política de autonomia)
   var modo = (camada === 'VERDE' || camada === 'AMARELO') ? 'IMPLEMENTAR' : 'PROPOR';
   var emoji = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
@@ -180,6 +218,14 @@ function _fbGerarTarefaAgente(id, nota) {
   out += '- **Tipo:** ' + rec.tipo + ' · **Tela:** ' + (rec.tela || '?') + ' · **Por:** ' + (rec.criado_por_nome || rec.criado_por) + '\\n\\n';
   out += '> ' + String(rec.descricao || '').replace(/\\n/g, '\\n> ') + '\\n';
   if (rec.anexo_url) out += '\\n📎 [anexo](' + rec.anexo_url + ')\\n';
+
+  // Classificação do Sonnet vai JUNTO (TAREFA auto-contida: original + classificação).
+  if (analiseSonnet && analiseSonnet.trim()) {
+    out += '\\n## 🧠 Classificação do Sonnet\\n\\n' + analiseSonnet.trim() + '\\n';
+  }
+  out += '\\n> ⚠️ Se a classificação acima divergir da MENSAGEM ORIGINAL do usuário\\n';
+  out += '> (seção "Relato original" acima), a mensagem original PREVALECE. Releia o\\n';
+  out += '> relato verbatim antes de codar — detalhes do usuário não devem se perder no resumo.\\n';
 
   var pasta = drvGetFolder('SISTEMA_TAREFAS');
   if (!pasta) return null;

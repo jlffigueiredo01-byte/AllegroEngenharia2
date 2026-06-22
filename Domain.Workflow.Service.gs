@@ -300,12 +300,16 @@ function _wfGetSla(slaKey) {
  * @return {string}     - user.id ou ''
  */
 function _wfGetUserByRole(role) {
-  // Usa getUsersByRole() de Core.Auth ou Domain.Users — sem acesso direto à sheet
+  // Aceita string (papel unico) OU array de papeis em ordem de preferencia.
+  // Retorna o ID do primeiro user encontrado que tenha um dos papeis.
   try {
-    var found = getUsersByRole(role);
-    if (found && found.length > 0) return found[0].id;
+    var roles = Array.isArray(role) ? role : [role];
+    for (var i = 0; i < roles.length; i++) {
+      var found = getUsersByRole(roles[i]);
+      if (found && found.length > 0) return found[0].id;
+    }
   } catch (e) {
-    Logger.log('[Workflow] Papel não encontrado: ' + role + ' — ' + e.message);
+    Logger.log('[Workflow] Papel(eis) nao encontrado(s): ' + JSON.stringify(role) + ' — ' + e.message);
   }
   return '';
 }

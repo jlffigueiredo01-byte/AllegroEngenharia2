@@ -3,6 +3,8 @@
 // Overrides renderCompanies(area) declared as placeholder in Scripts.html
 
 var _companies = [];
+var _coDetailModal = null;  // handle SGA.openModal — detalhe/edição
+var _coNewModal = null;     // handle SGA.openModal — nova empresa
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -15,16 +17,16 @@ function renderCompanies(area) {
         '<div class="page-title">Empresas</div>' +
         '<div class="page-subtitle">Cadastro de empresas e organizações</div>' +
       '</div>' +
-      '<button class="btn btn-primary" onclick="_openNewCompanyModal()">+ Nova Empresa</button>' +
+      '<button class="sga-btn sga-btn--primary" onclick="_openNewCompanyModal()">+ Nova Empresa</button>' +
     '</div>' +
     '<div class="card" style="margin-bottom:16px">' +
       '<div class="card-body" style="padding:12px 16px">' +
-        '<input id="co-search" class="form-input" type="text" placeholder="Buscar por nome, cidade ou estado…" ' +
+        '<input id="co-search" class="sga-form-input" type="text" placeholder="Buscar por nome, cidade ou estado…" ' +
                'oninput="_filterCompaniesTable()" style="max-width:360px">' +
       '</div>' +
     '</div>' +
     '<div id="co-stats" class="card" style="margin-bottom:16px;display:none">' +
-      '<div class="card-body" style="padding:10px 16px;display:flex;gap:24px;font-size:13px;color:#555">' +
+      '<div class="card-body" style="padding:10px 16px;display:flex;gap:24px;font-size:13px;color:var(--sga-text-muted)">' +
         '<span id="co-stat-total"></span>' +
         '<span id="co-stat-active"></span>' +
       '</div>' +
@@ -32,11 +34,13 @@ function renderCompanies(area) {
     '<div class="card">' +
       '<div class="card-header"><div class="card-title">Lista de Empresas</div></div>' +
       '<div class="card-body" id="co-table-wrap">' +
-        '<div style="text-align:center;padding:32px"><div class="spinner-ring"></div></div>' +
+        '<div id="co-table-skeleton"></div>' +
       '</div>' +
-    '</div>' +
-    _companyDetailModalHtml() +
-    _newCompanyModalHtml();
+    '</div>';
+
+  // Skeleton enquanto carrega
+  var sk = document.getElementById('co-table-skeleton');
+  if (sk && window.SGA && SGA.skeleton) SGA.skeleton(sk, { type: 'list', count: 5 });
 
   _loadCompanies();
 }
@@ -46,6 +50,8 @@ function renderCompanies(area) {
 // ---------------------------------------------------------------------------
 
 function _loadCompanies() {
+  var wrap = document.getElementById('co-table-wrap');
+  if (wrap && window.SGA && SGA.skeleton) SGA.skeleton(wrap, { type: 'list', count: 5 });
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res.ok) { showAlert('Erro ao carregar empresas: ' + res.error, 'error'); return; }
@@ -80,12 +86,24 @@ function _renderCompaniesTable(list) {
   if (!wrap) return;
 
   if (!list || list.length === 0) {
-    wrap.innerHTML =
-      '<div class="empty-state">' +
-        '<div class="empty-icon">🏢</div>' +
-        '<div class="empty-title">Nenhuma empresa encontrada</div>' +
-        '<div class="empty-desc">Cadastre a primeira empresa clicando em "Nova Empresa".</div>' +
-      '</div>';
+    if (window.SGA && SGA.empty) {
+      SGA.empty(wrap, {
+        icon: '🏢',
+        title: 'Nenhuma empresa cadastrada',
+        text: 'Cadastre a primeira empresa para começar a vincular contatos, propostas e chamados.',
+        action: {
+          label: '+ Nova Empresa',
+          onClick: function () { if (typeof _openNewCompanyModal === 'function') _openNewCompanyModal(); }
+        }
+      });
+    } else {
+      wrap.innerHTML =
+        '<div class="sga-empty">' +
+          '<div class="sga-empty__icon">🏢</div>' +
+          '<h3 class="sga-empty__title">Nenhuma empresa cadastrada</h3>' +
+          '<p class="sga-empty__text">Cadastre a primeira empresa clicando em "Nova Empresa".</p>' +
+        '</div>';
+    }
     return;
   }
 
@@ -97,23 +115,23 @@ function _renderCompaniesTable(list) {
       ? '<span class="badge badge-green">Ativo</span>'
       : '<span class="badge badge-red">Inativo</span>';
     rows +=
-      '<tr>' +
-        '<td>' + escapeHtml(c.name || '') + '</td>' +
-        '<td>' + escapeHtml(c.city  || '') + '</td>' +
-        '<td>' + escapeHtml(c.state || '') + '</td>' +
-        '<td>' + escapeHtml(c.client_type || '') + '</td>' +
-        '<td>' + badge + '</td>' +
-        '<td>' +
-          '<button class="btn btn-ghost btn-sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Ver</button>' +
+      '<tr class="sga-table__row">' +
+        '<td class="sga-table__td">' + escapeHtml(c.name || '') + '</td>' +
+        '<td class="sga-table__td">' + escapeHtml(c.city  || '') + '</td>' +
+        '<td class="sga-table__td">' + escapeHtml(c.state || '') + '</td>' +
+        '<td class="sga-table__td">' + escapeHtml(c.client_type || '') + '</td>' +
+        '<td class="sga-table__td">' + badge + '</td>' +
+        '<td class="sga-table__td sga-table__td--actions">' +
+          '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Ver</button>' +
         '</td>' +
       '</tr>';
   }
 
   wrap.innerHTML =
-    '<div class="table-wrap">' +
-      '<table class="data-table">' +
+    '<div class="sga-table-wrap">' +
+      '<table class="sga-table">' +
         '<thead><tr>' +
-          '<th>Nome</th><th>Cidade</th><th>Estado</th><th>Tipo</th><th>Status</th><th></th>' +
+          '<th class="sga-table__th">Nome</th><th class="sga-table__th">Cidade</th><th class="sga-table__th">Estado</th><th class="sga-table__th">Tipo</th><th class="sga-table__th">Status</th><th class="sga-table__th sga-table__th--actions"></th>' +
         '</tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>' +
@@ -147,30 +165,34 @@ function _filterCompaniesTable() {
 // Detail modal
 // ---------------------------------------------------------------------------
 
-function _companyDetailModalHtml() {
-  return (
-    '<div id="co-detail-overlay" class="hidden" ' +
-         'style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;" ' +
-         'onclick="_co_closeDetailModal(event)">' +
-      '<div style="background:#fff;border-radius:8px;width:100%;max-width:480px;padding:24px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,.18);" ' +
-           'onclick="event.stopPropagation()">' +
-        '<button onclick="_closeDetailModalDirect()" ' +
-                'style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>' +
-        '<div id="co-detail-content"></div>' +
-      '</div>' +
-    '</div>'
-  );
+function _coFind(id) {
+  for (var i = 0; i < _companies.length; i++) {
+    if (String(_companies[i].id) === String(id)) return _companies[i];
+  }
+  return null;
+}
+
+// Troca o corpo do modal de detalhe aberto (sem reabrir janela)
+function _coSetDetailBody(html, title) {
+  if (!_coDetailModal || !_coDetailModal.modal) return false;
+  var body = _coDetailModal.modal.querySelector('.sga-modal__body');
+  if (body) body.innerHTML = html;
+  var t = _coDetailModal.modal.querySelector('.sga-modal__title');
+  if (t && title) t.textContent = title;
+  return true;
 }
 
 function _openCompanyDetail(id) {
-  var company = null;
-  for (var i = 0; i < _companies.length; i++) {
-    if (String(_companies[i].id) === String(id)) { company = _companies[i]; break; }
-  }
+  var company = _coFind(id);
   if (!company) { showAlert('Empresa não encontrada', 'error'); return; }
-
-  document.getElementById('co-detail-content').innerHTML = _detailViewHtml(company);
-  document.getElementById('co-detail-overlay').classList.remove('hidden');
+  // Reusa a janela se já estiver aberta (ex.: cancelar edição)
+  if (_coSetDetailBody(_detailViewHtml(company), company.name || 'Empresa')) return;
+  _coDetailModal = SGA.openModal({
+    title: company.name || 'Empresa',
+    size: 'sm',
+    body: _detailViewHtml(company),
+    onClose: function () { _coDetailModal = null; }
+  });
 }
 
 function _detailViewHtml(c) {
@@ -179,7 +201,6 @@ function _detailViewHtml(c) {
     ? '<span class="badge badge-green">Ativo</span>'
     : '<span class="badge badge-red">Inativo</span>';
   return (
-    '<h3 style="margin:0 0 16px">' + escapeHtml(c.name || '') + '</h3>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;font-size:14px">' +
       '<div><strong>ID</strong><br>' + escapeHtml(c.id || '') + '</div>' +
       '<div><strong>Status</strong><br>' + badge + '</div>' +
@@ -189,51 +210,47 @@ function _detailViewHtml(c) {
       '<div><strong>Criado em</strong><br>' + formatDate(c.created_at || '') + '</div>' +
     '</div>' +
     '<div style="margin-top:20px;display:flex;gap:8px">' +
-      '<button class="btn btn-success btn-sm" onclick="_c360Open(\'' + escapeHtml(c.id) + '\')">🔎 Visão 360</button>' +
-      '<button class="btn btn-primary btn-sm" onclick="_openEditForm(\'' + escapeHtml(c.id) + '\')">Editar</button>' +
+      '<button class="sga-btn sga-btn--secondary sga-btn--sm" onclick="_c360Open(\'' + escapeHtml(c.id) + '\')">🔎 Visão 360</button>' +
+      '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_openEditForm(\'' + escapeHtml(c.id) + '\')">Editar</button>' +
       (isActive
-        ? '<button class="btn btn-ghost btn-sm" onclick="_confirmDeactivate(\'' + escapeHtml(c.id) + '\')">Desativar</button>'
+        ? '<button class="sga-btn sga-btn--danger sga-btn--sm" onclick="_confirmDeactivate(\'' + escapeHtml(c.id) + '\')">Desativar</button>'
         : '') +
     '</div>'
   );
 }
 
 function _openEditForm(id) {
-  var company = null;
-  for (var i = 0; i < _companies.length; i++) {
-    if (String(_companies[i].id) === String(id)) { company = _companies[i]; break; }
-  }
+  var company = _coFind(id);
   if (!company) return;
-
-  document.getElementById('co-detail-content').innerHTML = _editFormHtml(company);
+  if (!_coDetailModal || !_coDetailModal.modal) _openCompanyDetail(id);
+  _coSetDetailBody(_editFormHtml(company), 'Editar — ' + (company.name || ''));
 }
 
 function _editFormHtml(c) {
   return (
-    '<h3 style="margin:0 0 16px">Editar Empresa</h3>' +
-    '<div class="form-group">' +
-      '<label class="form-label">Nome *</label>' +
-      '<input id="edit-name" class="form-input" type="text" value="' + escapeHtml(c.name || '') + '">' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Nome <span class="sga-form-required">*</span></label>' +
+      '<input id="edit-name" class="sga-form-input" type="text" value="' + escapeHtml(c.name || '') + '">' +
     '</div>' +
-    '<div class="form-row-2">' +
-      '<div class="form-group">' +
-        '<label class="form-label">Cidade</label>' +
-        '<input id="edit-city" class="form-input" type="text" value="' + escapeHtml(c.city || '') + '">' +
+    '<div class="sga-form-row">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Cidade</label>' +
+        '<input id="edit-city" class="sga-form-input" type="text" value="' + escapeHtml(c.city || '') + '">' +
       '</div>' +
-      '<div class="form-group">' +
-        '<label class="form-label">Estado</label>' +
-        '<input id="edit-state" class="form-input" type="text" maxlength="2" value="' + escapeHtml(c.state || '') + '">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Estado</label>' +
+        '<input id="edit-state" class="sga-form-input" type="text" maxlength="2" value="' + escapeHtml(c.state || '') + '">' +
       '</div>' +
     '</div>' +
-    '<div class="form-group">' +
-      '<label class="form-label">Tipo</label>' +
-      '<select id="edit-client-type" class="form-input">' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Tipo</label>' +
+      '<select id="edit-client-type" class="sga-form-select">' +
         _clientTypeOptions(c.client_type) +
       '</select>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-top:20px">' +
-      '<button class="btn btn-primary btn-sm" onclick="_submitEditCompany(\'' + escapeHtml(c.id) + '\')">Salvar</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Cancelar</button>' +
+    '<div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Cancelar</button>' +
+      '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_submitEditCompany(\'' + escapeHtml(c.id) + '\')">Salvar</button>' +
     '</div>'
   );
 }
@@ -263,87 +280,263 @@ function _submitEditCompany(id) {
 }
 
 function _confirmDeactivate(id) {
-  if (!confirm('Desativar esta empresa? Esta ação pode ser revertida posteriormente.')) return;
-  setLoading(true);
-  google.script.run
-    .withSuccessHandler(function(res) {
-      setLoading(false);
-      if (!res.ok) { showAlert('Erro ao desativar: ' + res.error, 'error'); return; }
-      showAlert('Empresa desativada', 'success');
-      _closeDetailModalDirect();
-      _loadCompanies();
-    })
-    .withFailureHandler(function(err) {
-      setLoading(false);
-      showAlert('Falha de comunicação: ' + err.message, 'error');
-    })
-    .Api_deactivateCompany(id);
-}
-
-function _co_closeDetailModal(event) {
-  if (event.target.id === 'co-detail-overlay') _closeDetailModalDirect();
+  var doIt = function () {
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function(res) {
+        setLoading(false);
+        if (!res.ok) { showAlert('Erro ao desativar: ' + res.error, 'error'); return; }
+        showAlert('Empresa desativada', 'success');
+        _closeDetailModalDirect();
+        _loadCompanies();
+      })
+      .withFailureHandler(function(err) {
+        setLoading(false);
+        showAlert('Falha de comunicação: ' + err.message, 'error');
+      })
+      .Api_deactivateCompany(id);
+  };
+  if (window.SGA && SGA.confirm) {
+    SGA.confirm('Desativar esta empresa? Esta ação pode ser revertida posteriormente.', { danger: true, okLabel: 'Desativar' })
+      .then(function (ok) { if (ok) doIt(); });
+  } else if (confirm('Desativar esta empresa? Esta ação pode ser revertida posteriormente.')) {
+    doIt();
+  }
 }
 
 function _closeDetailModalDirect() {
-  var overlay = document.getElementById('co-detail-overlay');
-  if (overlay) overlay.classList.add('hidden');
+  if (_coDetailModal) _coDetailModal.close();
 }
 
 // ---------------------------------------------------------------------------
 // New Company modal
 // ---------------------------------------------------------------------------
 
-function _newCompanyModalHtml() {
+function _newCompanyFormHtml() {
   return (
-    '<div id="co-new-overlay" class="hidden" ' +
-         'style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;" ' +
-         'onclick="_co_closeNewModal(event)">' +
-      '<div style="background:#fff;border-radius:8px;width:100%;max-width:480px;padding:24px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,.18);" ' +
-           'onclick="event.stopPropagation()">' +
-        '<button onclick="_closeNewModalDirect()" ' +
-                'style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>' +
-        '<h3 style="margin:0 0 16px">Nova Empresa</h3>' +
-        '<div class="form-group">' +
-          '<label class="form-label">Nome *</label>' +
-          '<input id="new-name" class="form-input" type="text" placeholder="Nome da empresa">' +
-        '</div>' +
-        '<div class="form-row-2">' +
-          '<div class="form-group">' +
-            '<label class="form-label">Cidade</label>' +
-            '<input id="new-city" class="form-input" type="text" placeholder="Cidade">' +
-          '</div>' +
-          '<div class="form-group">' +
-            '<label class="form-label">Estado</label>' +
-            '<input id="new-state" class="form-input" type="text" maxlength="2" placeholder="UF">' +
-          '</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-          '<label class="form-label">Tipo de Cliente</label>' +
-          '<select id="new-client-type" class="form-input">' +
-            _clientTypeOptions('') +
-          '</select>' +
-        '</div>' +
-        '<div style="display:flex;gap:8px;margin-top:20px">' +
-          '<button class="btn btn-primary" onclick="_submitNewCompany()">Cadastrar</button>' +
-          '<button class="btn btn-ghost" onclick="_closeNewModalDirect()">Cancelar</button>' +
-        '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Website</label>' +
+      '<input id="new-website" class="sga-form-input" type="text" placeholder="https://exemplo.com.br">' +
+      '<div style="margin-top:6px;display:flex;align-items:center;gap:10px">' +
+        '<button type="button" id="new-enrich-btn" class="sga-btn sga-btn--secondary sga-btn--sm" onclick="_compEnrichClick()">🔍 Enriquecimento de Dados</button>' +
+        '<span id="new-enrich-status" style="font-size:12px;color:var(--sga-text-muted)"></span>' +
       '</div>' +
-    '</div>'
+    '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Nome <span class="sga-form-required">*</span> <span id="new-name-aibadge"></span></label>' +
+      '<input id="new-name" class="sga-form-input" type="text" placeholder="Nome da empresa">' +
+    '</div>' +
+    '<div class="sga-form-row">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Cidade</label>' +
+        '<input id="new-city" class="sga-form-input" type="text" placeholder="Cidade">' +
+      '</div>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Estado</label>' +
+        '<input id="new-state" class="sga-form-input" type="text" maxlength="2" placeholder="UF">' +
+      '</div>' +
+    '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Tipo de Cliente</label>' +
+      '<select id="new-client-type" class="sga-form-select">' +
+        _clientTypeOptions('') +
+      '</select>' +
+    '</div>' +
+    '<div id="new-enrich-preview" style="display:none;margin-top:8px;padding:10px 12px;background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-sm);font-size:12px;color:var(--sga-text-default)"></div>'
   );
 }
 
 function _openNewCompanyModal() {
-  var overlay = document.getElementById('co-new-overlay');
-  if (!overlay) return;
-  // Reset fields
-  var fields = ['new-name', 'new-city', 'new-state'];
-  for (var i = 0; i < fields.length; i++) {
-    var el = document.getElementById(fields[i]);
-    if (el) el.value = '';
+  _coNewModal = SGA.openModal({
+    title: 'Nova Empresa',
+    size: 'sm',
+    body: _newCompanyFormHtml(),
+    footer: [
+      { label: 'Cancelar', variant: 'ghost', onClick: 'close' },
+      { label: 'Cadastrar', variant: 'primary', primary: true, onClick: function () { _submitNewCompany(); return false; } }
+    ],
+    onClose: function () { _coNewModal = null; }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Enriquecimento de Empresa via IA (FB-17/18) — prefixo _compEnrich
+// ---------------------------------------------------------------------------
+
+function _compEnrichReset() {
+  var status = document.getElementById('new-enrich-status');
+  if (status) { status.textContent = ''; status.style.color = 'var(--sga-text-muted)'; }
+  var preview = document.getElementById('new-enrich-preview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  var btn = document.getElementById('new-enrich-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Enriquecimento de Dados'; }
+  // Limpa badges 🤖 IA que possam ter ficado de tentativa anterior
+  var badgeIds = ['new-name-aibadge'];
+  for (var i = 0; i < badgeIds.length; i++) {
+    var el = document.getElementById(badgeIds[i]);
+    if (el) el.innerHTML = '';
   }
-  var sel = document.getElementById('new-client-type');
-  if (sel) sel.selectedIndex = 0;
-  overlay.classList.remove('hidden');
+}
+
+function _compEnrichClick() {
+  var websiteEl = document.getElementById('new-website');
+  if (!websiteEl) return;
+  var website = websiteEl.value.trim();
+  if (!website) {
+    showAlert('Informe o website da empresa antes de enriquecer.', 'error');
+    websiteEl.focus();
+    return;
+  }
+
+  var btn = document.getElementById('new-enrich-btn');
+  var status = document.getElementById('new-enrich-status');
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Buscando...'; }
+  if (status) { status.textContent = 'Consultando IA, aguarde alguns segundos...'; status.style.color = 'var(--sga-text-muted)'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        var msg = (res && res.error) ? res.error : 'Falha desconhecida no enriquecimento.';
+        showAlert('Erro ao enriquecer: ' + msg, 'error');
+        if (status) { status.textContent = '❌ ' + msg; status.style.color = 'var(--sga-color-danger)'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Enriquecimento de Dados'; }
+        return;
+      }
+      _compEnrichApply(res.data);
+    })
+    .withFailureHandler(function(err) {
+      var msg = (err && err.message) ? err.message : 'Falha de comunicacao.';
+      showAlert('Falha de comunicacao: ' + msg, 'error');
+      if (status) { status.textContent = '❌ ' + msg; status.style.color = 'var(--sga-color-danger)'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Enriquecimento de Dados'; }
+    })
+    .Api_enrichCompanyFromWebsite(website);
+}
+
+/**
+ * Aplica os dados retornados pela IA aos campos do form de Nova Empresa.
+ * Campos que NAO existem no modal sao mostrados apenas no preview informativo.
+ * NUNCA persiste — usuario revisa/edita e clica "Cadastrar".
+ */
+function _compEnrichApply(data) {
+  if (!data) return;
+
+  // Mapa campo-IA -> id do input no modal. Campos ausentes vao para o preview.
+  var mapInputs = [
+    { key: 'nome_fantasia',     inputId: 'new-name',  badgeId: 'new-name-aibadge', label: 'Nome' },
+    { key: 'razao_social',      inputId: 'new-name',  badgeId: 'new-name-aibadge', label: 'Nome (razao social — fallback)' }
+  ];
+
+  var filled = [];   // campos que foram aplicados no form
+  var notInForm = [];// campos retornados mas sem input correspondente
+
+  // Aplica nome (prefere nome_fantasia, cai pra razao_social se vazio)
+  var nameInput = document.getElementById('new-name');
+  if (nameInput && !nameInput.value.trim()) {
+    var nomeIA = String(data.nome_fantasia || '').trim() || String(data.razao_social || '').trim();
+    if (nomeIA) {
+      nameInput.value = nomeIA;
+      _compEnrichBadge('new-name-aibadge');
+      filled.push('Nome');
+    }
+  }
+
+  // Cidade/Estado: tenta extrair do endereco se vier formatado "..., Cidade, UF, CEP"
+  var cityInput  = document.getElementById('new-city');
+  var stateInput = document.getElementById('new-state');
+  var endereco   = String(data.endereco || '').trim();
+  if (endereco && cityInput && stateInput) {
+    var cidadeUF = _compEnrichParseCidadeUF(endereco);
+    if (cidadeUF.cidade && !cityInput.value.trim()) {
+      cityInput.value = cidadeUF.cidade;
+      filled.push('Cidade');
+    }
+    if (cidadeUF.uf && !stateInput.value.trim()) {
+      stateInput.value = cidadeUF.uf;
+      filled.push('Estado');
+    }
+  }
+
+  // Campos retornados que NAO tem input no modal — apenas mostra no preview
+  var extras = [
+    { k: 'razao_social',      lbl: 'Razao Social' },
+    { k: 'cnpj',              lbl: 'CNPJ' },
+    { k: 'descricao_empresa', lbl: 'Descricao' },
+    { k: 'endereco',          lbl: 'Endereco' },
+    { k: 'telefone',          lbl: 'Telefone' },
+    { k: 'email',             lbl: 'E-mail' },
+    { k: 'setor',             lbl: 'Setor' },
+    { k: 'fontes_consultadas',lbl: 'Fontes' }
+  ];
+  for (var i = 0; i < extras.length; i++) {
+    var v = String(data[extras[i].k] || '').trim();
+    if (v) notInForm.push({ label: extras[i].lbl, value: v });
+  }
+
+  // Renderiza preview informativo
+  var preview = document.getElementById('new-enrich-preview');
+  if (preview) {
+    var html = '<div style="font-weight:600;margin-bottom:6px">🤖 Dados encontrados pela IA</div>';
+    if (filled.length) {
+      html += '<div style="margin-bottom:6px;color:var(--sga-color-success)">✓ Aplicados no formulario: ' + escapeHtml(filled.join(', ')) + '</div>';
+    }
+    if (notInForm.length) {
+      html += '<div style="margin-bottom:4px;color:var(--sga-text-muted)">Informacoes adicionais (revise e copie se necessario):</div>';
+      html += '<ul style="margin:4px 0 0 18px;padding:0">';
+      for (var j = 0; j < notInForm.length; j++) {
+        html += '<li><strong>' + escapeHtml(notInForm[j].label) + ':</strong> ' + escapeHtml(notInForm[j].value) + '</li>';
+      }
+      html += '</ul>';
+    }
+    if (data.tokens_usados) {
+      html += '<div style="margin-top:6px;color:var(--sga-text-soft);font-size:11px">Tokens usados: ' + escapeHtml(String(data.tokens_usados)) + '</div>';
+    }
+    preview.innerHTML = html;
+    preview.style.display = '';
+  }
+
+  var status = document.getElementById('new-enrich-status');
+  if (status) {
+    status.textContent = '✓ Dados encontrados. Revise e edite antes de cadastrar.';
+    status.style.color = 'var(--sga-color-success)';
+  }
+  var btn = document.getElementById('new-enrich-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Buscar novamente'; }
+}
+
+function _compEnrichBadge(badgeId) {
+  var el = document.getElementById(badgeId);
+  if (!el) return;
+  el.innerHTML = '<span class="sga-badge sga-badge--info" style="margin-left:6px">🤖 IA</span>';
+}
+
+/**
+ * Tenta extrair { cidade, uf } de uma string de endereco brasileira.
+ * Heuristica simples: procura padrao ", Cidade, UF" ou "Cidade - UF" perto do final.
+ */
+function _compEnrichParseCidadeUF(endereco) {
+  var out = { cidade: '', uf: '' };
+  if (!endereco) return out;
+
+  // Padrao "Cidade - UF" ou "Cidade/UF"
+  var m = endereco.match(/([A-Za-zÀ-ÿ' .]+?)\s*[-/]\s*([A-Z]{2})\b/);
+  if (m) {
+    out.cidade = m[1].replace(/^,\s*/, '').trim();
+    out.uf = m[2];
+    return out;
+  }
+  // Padrao "..., Cidade, UF, CEP" — pega ultimos dois tokens nao-CEP
+  var parts = endereco.split(',');
+  for (var i = parts.length - 1; i >= 0; i--) {
+    var p = parts[i].trim();
+    var ufMatch = p.match(/\b([A-Z]{2})\b/);
+    if (ufMatch && !out.uf) {
+      out.uf = ufMatch[1];
+      if (i - 1 >= 0) out.cidade = parts[i - 1].trim();
+      break;
+    }
+  }
+  return out;
 }
 
 function _submitNewCompany() {
@@ -370,13 +563,8 @@ function _submitNewCompany() {
     .Api_createCompany({ name: name, city: city, state: state, client_type: clientType });
 }
 
-function _co_closeNewModal(event) {
-  if (event.target.id === 'co-new-overlay') _closeNewModalDirect();
-}
-
 function _closeNewModalDirect() {
-  var overlay = document.getElementById('co-new-overlay');
-  if (overlay) overlay.classList.add('hidden');
+  if (_coNewModal) _coNewModal.close();
 }
 
 // ---------------------------------------------------------------------------
@@ -402,71 +590,6 @@ function _c360Open(companyId) {
   // v2: a Visão 360 virou seção própria (workspace completo)
   _closeDetailModalDirect();
   open360(companyId);
-  return;
-
-  var box = document.getElementById('co-detail-content');
-  var company = null;
-  for (var i = 0; i < _companies.length; i++) {
-    if (String(_companies[i].id) === String(companyId)) { company = _companies[i]; break; }
-  }
-  box.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center">' +
-      '<h3 style="margin:0">🔎 ' + escapeHtml(company ? company.name : companyId) + ' — Visão 360</h3>' +
-      '<button class="btn btn-ghost btn-sm" onclick="_openCompanyDetail(\'' + escapeHtml(companyId) + '\')">← voltar</button>' +
-    '</div>' +
-    '<div id="c360-opps"  style="margin-top:14px"><div class="form-label" style="font-weight:700">🎯 Oportunidades</div><div class="spinner-ring"></div></div>' +
-    '<div id="c360-props" style="margin-top:14px"><div class="form-label" style="font-weight:700">📄 Propostas</div><div class="spinner-ring"></div></div>' +
-    '<div id="c360-projs" style="margin-top:14px"><div class="form-label" style="font-weight:700">🏗️ Projetos</div><div class="spinner-ring"></div></div>' +
-    '<div id="c360-base"  style="margin-top:14px"><div class="form-label" style="font-weight:700">⚙️ Base instalada</div><div class="spinner-ring"></div></div>' +
-    '<div id="c360-tkts"  style="margin-top:14px"><div class="form-label" style="font-weight:700">🛠️ Chamados</div><div class="spinner-ring"></div></div>';
-
-  var fill = function (elId, rows, fmt, empty) {
-    var el = document.getElementById(elId);
-    if (!el) return;
-    var head = el.querySelector('.form-label').outerHTML;
-    if (!rows.length) { el.innerHTML = head + '<p style="color:#94a3b8;font-size:12px;margin:4px 0 0">' + empty + '</p>'; return; }
-    var html = '';
-    for (var i = 0; i < rows.length && i < 8; i++) html +=
-      '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">' + fmt(rows[i]) + '</div>';
-    if (rows.length > 8) html += '<p style="color:#94a3b8;font-size:11px">+ ' + (rows.length - 8) + ' anteriores…</p>';
-    el.innerHTML = head + html;
-  };
-
-  google.script.run.withSuccessHandler(function (r) {
-    fill('c360-opps', (r && r.ok && r.data) ? r.data : [], function (o) {
-      return '<span>' + escapeHtml(o.id + ' · ' + (o.product || '')) + '</span><span class="badge badge-blue">' + escapeHtml(o.status || '') + '</span>';
-    }, 'Nenhuma oportunidade.');
-  }).Api_getOpportunitiesByCompany(companyId);
-
-  google.script.run.withSuccessHandler(function (r) {
-    var all = (r && r.ok && r.data) ? r.data : [];
-    var mine = all.filter(function (p) { return String(p.client_id) === String(companyId); });
-    fill('c360-props', mine, function (p) {
-      return '<span>' + escapeHtml((p.number || p.id) + ' · ' + formatBRL(Number(p.total_value || 0))) + '</span><span class="badge badge-blue">' + escapeHtml(p.status || '') + '</span>';
-    }, 'Nenhuma proposta.');
-  }).Api_getProposals({});
-
-  google.script.run.withSuccessHandler(function (r) {
-    var all = (r && r.ok && r.data) ? r.data : [];
-    var mine = all.filter(function (p) { return String(p.company_id) === String(companyId); });
-    fill('c360-projs', mine, function (p) {
-      return '<span>' + escapeHtml(p.id + ' · ' + (p.title || '')) + '</span><span class="badge badge-yellow">' + escapeHtml(p.status || '') + '</span>';
-    }, 'Nenhum projeto.');
-  }).Api_projGetAll({});
-
-  google.script.run.withSuccessHandler(function (r) {
-    fill('c360-base', (r && r.ok && r.data) ? r.data : [], function (b) {
-      return '<span>' + escapeHtml((b.serial || b.id) + ' · ' + (b.product_code || '')) + '</span><span style="color:#64748b">garantia: ' + formatDate(b.warranty_hw_end || b.warranty_end || '') + '</span>';
-    }, 'Nenhum equipamento registrado.');
-  }).Api_biGetByCompany(companyId);
-
-  google.script.run.withSuccessHandler(function (r) {
-    var all = (r && r.ok && r.data) ? r.data : [];
-    var mine = all.filter(function (t) { return String(t.company_id) === String(companyId); });
-    fill('c360-tkts', mine, function (t) {
-      return '<span>' + escapeHtml(t.id + ' · ' + (t.tipo || '')) + '</span><span class="badge badge-red">' + escapeHtml(t.status || '') + '</span>';
-    }, 'Nenhum chamado.');
-  }).Api_tktGetAll({});
 }
 
 </script>

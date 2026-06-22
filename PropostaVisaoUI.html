@@ -1,0 +1,1147 @@
+<script>
+/* =============================================================================
+   PropostaVisaoUI — "Visão 360 da Proposta" — FB-23 / FB-26-27
+
+   Página dedicada (não modal). Substitui o modal de detalhe que existia antes.
+   Entrada: renderPropostaVisao(area, proposalId)
+
+   Estrutura:
+     1. Header: cliente · número · status · valor + Botões de ação
+     2. Stepper visual: GERADA → EM_REVISAO → APROVADA_ENVIO → ENVIADA → FECHADA
+        Com "pendente com X há Y" + responsabilidade por etapa
+     3. Seções colapsáveis com edit inline:
+        - Resumo (cliente, contato, prazos, condições)
+        - Itens (tabela)
+        - Escopo & Fluxograma
+        - Histórico (timeline)
+        - Comentários (NEW — colaborativo)
+        - Action Cards vinculados (filter por quote_id)
+
+   Prefixo: _ppv (proposta visao). Conflito zero com _pb (proposal builder
+   wizard de criação) e _pst (proposal status transitions modal).
+============================================================================= */
+
+var _ppv = {
+  proposalId: null,
+  data: null,
+  items: [],
+  comments: [],
+  actionCards: [],
+  timeline: [],
+  // Histórico agora abre por DEFAULT (Test 4 #2 — DNA da proposta sempre visível)
+  collapsed: { resumo:false, itens:false, escopo:false, hist:false, com:false, ac:true },
+  loadingFlags: { p:false, c:false, ac:false, t:false }
+};
+
+var _PPV_STATUS_FLOW = [
+  { key:'PROPOSTA_GERADA',  label:'GERADA',       resp:'(qualquer)',                emoji:'📄' },
+  { key:'EM_REVISAO',       label:'EM REVISÃO',   resp:'Maria (FIN)',               emoji:'🔍' },
+  { key:'APROVADA_ENVIO',   label:'APROVADA',     resp:'João/Gema/Maria',           emoji:'✅' },
+  { key:'ENVIADA',          label:'ENVIADA',      resp:'cliente',                   emoji:'📤' },
+  { key:'FECHADA',          label:'FECHADA',      resp:'—',                         emoji:'🎉' }
+];
+
+var _PPV_STATUS_BADGE = {
+  PROPOSTA_GERADA:  'badge-blue',
+  EM_REVISAO:       'badge-yellow',
+  APROVADA_ENVIO:   'badge-yellow',
+  ENVIADA:          'badge-yellow',
+  FECHADA:          'badge-green',
+  RECUSADA:         'badge-red',
+  SUBSTITUIDA:      'badge-gray',
+  CANCELADA:        'badge-gray'
+};
+
+/* ───────────── Entry point ───────────── */
+function renderPropostaVisao(area, proposalId) {
+  _ppv = {
+    proposalId: proposalId,
+    data: null, items: [], comments: [], actionCards: [], timeline: [],
+    collapsed: { resumo:false, itens:false, escopo:false, hist:false, com:false, ac:true },
+    loadingFlags: { p:false, c:false, ac:false, t:false }
+  };
+  area.innerHTML =
+    '<div style="padding:24px"><div class="spinner-ring" style="margin:40px auto"></div>' +
+    '<div style="text-align:center;color:#94a3b8;font-size:13px">Carregando proposta ' + escapeHtml(proposalId || '') + '...</div></div>';
+  _ppvLoadAll();
+}
+
+function _ppvLoadAll() {
+  if (!_ppv.proposalId) return;
+  // 4 chamadas em paralelo — render quando proposta retorna; complementos chegam depois
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { _ppvRenderErr(r && r.error || 'sem resposta'); return; }
+      _ppv.data = r.data || null;
+      try { _ppv.items = _ppv.data.items_json ? JSON.parse(_ppv.data.items_json) : []; } catch (e) { _ppv.items = []; }
+      _ppvRender();
+    })
+    .withFailureHandler(function (e) { _ppvRenderErr(e.message || e); })
+    .Api_propGetById(_ppv.proposalId);
+
+  google.script.run
+    .withSuccessHandler(function (r) { _ppv.comments    = (r && r.ok) ? (r.data || []) : []; _ppvRenderSection('com'); })
+    .withFailureHandler(function ()    { _ppv.comments    = []; _ppvRenderSection('com'); })
+    .Api_propGetComments(_ppv.proposalId);
+
+  google.script.run
+    .withSuccessHandler(function (r) { _ppv.actionCards = (r && r.ok) ? (r.data || []) : []; _ppvRenderSection('ac'); })
+    .withFailureHandler(function ()    { _ppv.actionCards = []; _ppvRenderSection('ac'); })
+    .Api_acGetByProposal(_ppv.proposalId);
+
+  google.script.run
+    .withSuccessHandler(function (r) { _ppv.timeline    = (r && r.ok) ? (r.data || []) : []; _ppvRenderSection('hist'); })
+    .withFailureHandler(function ()    { _ppv.timeline    = []; _ppvRenderSection('hist'); })
+    .Api_timelineByEntity('Proposta', _ppv.proposalId);
+}
+
+function _ppvRenderErr(msg) {
+  var area = document.getElementById('section-content');
+  if (!area) return;
+  area.innerHTML =
+    '<div class="page-header"><div class="page-header-left">' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="showSection(\'quotes\')">← Voltar para Propostas</button>' +
+    '</div></div>' +
+    '<div class="card"><div class="card-body" style="color:#b91c1c">Erro ao carregar proposta: ' + escapeHtml(msg) + '</div></div>';
+}
+
+/* ───────────── Main render ───────────── */
+function _ppvRender() {
+  var area = document.getElementById('section-content');
+  if (!area || !_ppv.data) return;
+  var p = _ppv.data;
+
+  area.innerHTML =
+    _ppvRenderHeader(p) +
+    _ppvRenderStepper(p) +
+    _ppvRenderActions(p) +
+    '<div id="ppv-resumo"></div>' +
+    '<div id="ppv-itens"></div>' +
+    '<div id="ppv-escopo"></div>' +
+    '<div id="ppv-hist"></div>' +
+    '<div id="ppv-com"></div>' +
+    '<div id="ppv-ac"></div>';
+
+  _ppvRenderSection('resumo');
+  _ppvRenderSection('itens');
+  _ppvRenderSection('escopo');
+  _ppvRenderSection('hist');
+  _ppvRenderSection('com');
+  _ppvRenderSection('ac');
+}
+
+function _ppvRenderHeader(p) {
+  var st = String(p.status || '').toUpperCase();
+  var badgeCls = _PPV_STATUS_BADGE[st] || 'badge-gray';
+  var valor = (typeof formatBRL === 'function') ? formatBRL(p.total_value || 0) : ('R$ ' + (p.total_value || 0));
+  return (
+    '<div class="page-header" style="margin-bottom:8px">' +
+      '<div class="page-header-left">' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="showSection(\'quotes\')" style="margin-bottom:6px">← Voltar para Propostas</button>' +
+        '<h1 class="page-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<span>🏢 ' + escapeHtml(p.client_name || '(sem cliente)') + '</span>' +
+          '<span style="font-size:14px;color:#94a3b8">Proposta <code style="font-size:13px">' + escapeHtml(p.number || p.id || '—') + '</code></span>' +
+          '<span class="badge ' + badgeCls + '">' + escapeHtml(p.status || '—') + '</span>' +
+        '</h1>' +
+        '<p class="page-subtitle">' +
+          '💰 ' + valor + ' · 📅 Criada em ' + escapeHtml(_ppvFormatDate(p.created_at)) +
+          (p.responsible ? ' · 👤 Responsável: ' + escapeHtml(p.responsible) : '') +
+        '</p>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function _ppvRenderStepper(p) {
+  var stAtual = String(p.status || '').toUpperCase();
+  var atualIdx = -1;
+  for (var i = 0; i < _PPV_STATUS_FLOW.length; i++) {
+    if (_PPV_STATUS_FLOW[i].key === stAtual) { atualIdx = i; break; }
+  }
+  // Estados terminais não-canônicos
+  var terminal = (stAtual === 'RECUSADA' || stAtual === 'SUBSTITUIDA' || stAtual === 'CANCELADA') ? stAtual : null;
+
+  var steps = '';
+  for (var k = 0; k < _PPV_STATUS_FLOW.length; k++) {
+    var s = _PPV_STATUS_FLOW[k];
+    var passed = (atualIdx > k);
+    var current = (atualIdx === k);
+    var bg = passed ? '#16a34a' : (current ? '#1a56db' : '#cbd5e1');
+    var col = (passed || current) ? '#fff' : '#475569';
+    var border = current ? '3px solid #1e40af' : 'none';
+    var label = (passed ? '✓ ' : '') + s.emoji + ' ' + s.label;
+    steps +=
+      '<div style="flex:1;min-width:120px;text-align:center;padding:8px 4px;background:' + bg + ';color:' + col + ';border-radius:6px;font-size:11.5px;font-weight:700;border:' + border + '">' +
+        label +
+        '<div style="font-size:9.5px;font-weight:500;margin-top:2px;opacity:.85">' + escapeHtml(s.resp) + '</div>' +
+      '</div>';
+    if (k < _PPV_STATUS_FLOW.length - 1) steps += '<div style="color:#94a3b8;align-self:center;font-size:14px">→</div>';
+  }
+
+  var pendenteHtml = '';
+  if (atualIdx >= 0 && !terminal) {
+    var cur = _PPV_STATUS_FLOW[atualIdx];
+    var diasDesde = _ppvDiasDesde(p.updated_at || p.created_at);
+    pendenteHtml =
+      '<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12px;color:#854d0e">' +
+        '⏳ Pendente com <b>' + escapeHtml(cur.resp) + '</b>' +
+        (diasDesde !== null ? ' há ' + diasDesde + (diasDesde === 1 ? ' dia' : ' dias') : '') +
+        ' (estado: ' + escapeHtml(cur.label) + ')' +
+      '</div>';
+  } else if (terminal) {
+    pendenteHtml =
+      '<div style="margin-top:8px;padding:8px 12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#475569">' +
+        '🏁 Proposta finalizada como <b>' + escapeHtml(terminal) + '</b>. Sem ações pendentes.' +
+      '</div>';
+  }
+
+  return (
+    '<div class="card" style="margin-bottom:14px">' +
+      '<div class="card-body" style="padding:12px 16px">' +
+        '<div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Fluxo de status</div>' +
+        '<div style="display:flex;gap:4px;align-items:stretch;flex-wrap:wrap">' + steps + '</div>' +
+        pendenteHtml +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function _ppvRenderActions(p) {
+  var st = String(p.status || '').toUpperCase();
+  var podeAvancar  = (st !== 'FECHADA' && st !== 'RECUSADA' && st !== 'SUBSTITUIDA' && st !== 'CANCELADA');
+  var podeEnviar   = (st === 'APROVADA_ENVIO' || st === 'ENVIADA');
+
+  return (
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">' +
+      (podeAvancar ? '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_ppvAvancarStatus()">🔄 Avançar status</button>' : '') +
+      (podeEnviar  ? '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_ppvEnviarEmail()">📤 Enviar por email</button>' : '') +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_ppvImprimirPdf()">🖨️ Gerar/Imprimir PDF</button>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_ppvCriarActionCard()">🗂 + Criar Action Card</button>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_ppvCriarRevisao()" title="Cria uma nova revisão Rn+1 desta proposta">📋 Duplicar como revisão</button>' +
+    '</div>'
+  );
+}
+
+/* ───────────── Seções individuais (renderSection) ───────────── */
+
+function _ppvRenderSection(key) {
+  var el = document.getElementById('ppv-' + key);
+  if (!el) return;
+  if (key === 'resumo') el.innerHTML = _ppvSecResumo();
+  else if (key === 'itens') el.innerHTML = _ppvSecItens();
+  else if (key === 'escopo') el.innerHTML = _ppvSecEscopo();
+  else if (key === 'hist') el.innerHTML = _ppvSecHist();
+  else if (key === 'com') el.innerHTML = _ppvSecComentarios();
+  else if (key === 'ac') el.innerHTML = _ppvSecActionCards();
+}
+
+function _ppvSecHeader(key, label, icon, count) {
+  var col = _ppv.collapsed[key];
+  var ic = col ? '▶' : '▼';
+  var ctn = (count != null) ? ' <span style="font-size:11px;color:#94a3b8">(' + count + ')</span>' : '';
+  return (
+    '<div onclick="_ppvToggle(\'' + key + '\')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e5e7eb">' +
+      '<span style="font-size:11px;color:#94a3b8;width:14px">' + ic + '</span>' +
+      '<span style="font-size:14px;font-weight:700;color:#14335f">' + icon + ' ' + label + ctn + '</span>' +
+    '</div>'
+  );
+}
+
+function _ppvToggle(key) {
+  _ppv.collapsed[key] = !_ppv.collapsed[key];
+  _ppvRenderSection(key);
+}
+
+function _ppvSecResumo() {
+  var p = _ppv.data || {};
+  var hdr = _ppvSecHeader('resumo', 'Resumo', '📋');
+  if (_ppv.collapsed.resumo) return '<div class="card" style="margin-bottom:10px">' + hdr + '</div>';
+  var rows = [
+    ['Tipo', p.type],
+    ['Cliente', p.client_name],
+    ['Localização', p.location],
+    ['Responsável', p.responsible],
+    ['Contato (e-mail)', p.contact_email],
+    ['Contato (tel)',   p.contact_phone],
+    ['Validade (dias)', p.validity_days],
+    ['Entrega (dias)',  p.delivery_days],
+    ['Condições de pagamento', p.payment_terms],
+    ['Observações', p.observations],
+    ['Atualizada em', _ppvFormatDate(p.updated_at)]
+  ];
+  var html = '<table style="width:100%;font-size:13px">';
+  for (var i = 0; i < rows.length; i++) {
+    var v = rows[i][1];
+    if (v == null || v === '') continue;
+    html +=
+      '<tr style="border-bottom:1px solid #f3f4f6">' +
+        '<td style="padding:6px 10px;color:#6b7280;width:38%;vertical-align:top">' + escapeHtml(rows[i][0]) + '</td>' +
+        '<td style="padding:6px 10px;vertical-align:top">' + escapeHtml(String(v)) + '</td>' +
+      '</tr>';
+  }
+  html += '</table>';
+  html += '<div style="padding:10px 16px;border-top:1px solid #f3f4f6"><button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_ppvEditResumo()">✏️ Editar resumo</button></div>';
+  return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="padding:0">' + html + '</div></div>';
+}
+
+function _ppvSecItens() {
+  var hdr = _ppvSecHeader('itens', 'Itens', '📦', _ppv.items.length);
+  if (_ppv.collapsed.itens) return '<div class="card" style="margin-bottom:10px">' + hdr + '</div>';
+  var p = _ppv.data || {};
+  var totItens = 0;
+  var rowsHtml = '';
+  for (var i = 0; i < _ppv.items.length; i++) {
+    var it = _ppv.items[i];
+    var qty = Number(it.qty || it.quantity || 1);
+    var unit = Number(it.unit_price || it.price || 0);
+    var tot  = Number(it.total != null ? it.total : (qty * unit));
+    totItens += tot;
+    rowsHtml +=
+      '<tr style="border-bottom:1px solid #f3f4f6">' +
+        '<td style="padding:6px 10px"><code style="font-size:11px">' + escapeHtml(it.code || '') + '</code></td>' +
+        '<td style="padding:6px 10px">' + escapeHtml(it.name || '') + (it.isService ? ' <span style="font-size:10px;color:#94a3b8">(serviço)</span>' : '') + '</td>' +
+        '<td style="padding:6px 10px;text-align:center">' + qty + '</td>' +
+        '<td style="padding:6px 10px;text-align:right;white-space:nowrap">' + (typeof formatBRL === 'function' ? formatBRL(unit) : ('R$ ' + unit)) + '</td>' +
+        '<td style="padding:6px 10px;text-align:right;white-space:nowrap"><b>' + (typeof formatBRL === 'function' ? formatBRL(tot) : ('R$ ' + tot)) + '</b></td>' +
+      '</tr>';
+  }
+  var startup = Number(p.startup_value || 0);
+  if (startup > 0) {
+    rowsHtml +=
+      '<tr style="border-bottom:1px solid #f3f4f6;background:#fafbfc">' +
+        '<td colspan="4" style="padding:6px 10px;font-style:italic;color:#475569">Start-up · Comissionamento e Treinamento</td>' +
+        '<td style="padding:6px 10px;text-align:right;white-space:nowrap"><b>' + (typeof formatBRL === 'function' ? formatBRL(startup) : ('R$ ' + startup)) + '</b></td>' +
+      '</tr>';
+  }
+  var totalGeral = totItens + startup;
+  rowsHtml +=
+    '<tr style="background:#1a56db;color:#fff">' +
+      '<td colspan="4" style="padding:8px 10px;font-weight:700">TOTAL DA PROPOSTA</td>' +
+      '<td style="padding:8px 10px;text-align:right;font-weight:800;font-size:14px">' + (typeof formatBRL === 'function' ? formatBRL(totalGeral) : ('R$ ' + totalGeral)) + '</td>' +
+    '</tr>';
+  var tbl =
+    '<table style="width:100%;font-size:12.5px;border-collapse:collapse">' +
+      '<thead><tr style="background:#f1f5f9;color:#475569">' +
+        '<th style="padding:8px 10px;text-align:left;font-weight:700;font-size:11px">Código</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-weight:700;font-size:11px">Item</th>' +
+        '<th style="padding:8px 10px;text-align:center;font-weight:700;font-size:11px">Qtd</th>' +
+        '<th style="padding:8px 10px;text-align:right;font-weight:700;font-size:11px">Preço Unit.</th>' +
+        '<th style="padding:8px 10px;text-align:right;font-weight:700;font-size:11px">Total</th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody>' +
+    '</table>';
+  var btn = '<div style="padding:10px 16px;border-top:1px solid #f3f4f6"><button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_ppvEditItens()">✏️ Editar itens</button></div>';
+  return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="padding:0">' + tbl + btn + '</div></div>';
+}
+
+function _ppvSecEscopo() {
+  var p = _ppv.data || {};
+  var hdr = _ppvSecHeader('escopo', 'Escopo & Fluxograma', '🎯');
+  if (_ppv.collapsed.escopo) return '<div class="card" style="margin-bottom:10px">' + hdr + '</div>';
+  var scopeHtml = '<pre style="white-space:pre-wrap;margin:0;font-family:inherit;font-size:13px;line-height:1.5;color:#1f2937">' + escapeHtml(p.scope_text || '(escopo vazio)') + '</pre>';
+  // Fluxograma preview
+  var boxes = [];
+  if (p.flow_json) { try { boxes = JSON.parse(p.flow_json) || []; } catch (e) {} }
+  var flowHtml = '';
+  if (boxes && boxes.length) {
+    var parts = [];
+    for (var i = 0; i < boxes.length; i++) {
+      var b = boxes[i];
+      parts.push(
+        '<div style="display:inline-block;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;min-width:90px;text-align:center;font-size:11.5px;vertical-align:middle">' +
+          '<div style="font-weight:700;color:#14335f">' + escapeHtml(b.title || '') + '</div>' +
+          (b.sub ? '<div style="font-size:10.5px;color:#64748b;margin-top:2px">' + escapeHtml(b.sub) + '</div>' : '') +
+        '</div>'
+      );
+    }
+    flowHtml = '<div style="margin-top:12px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e5e7eb">' +
+                 '<div style="font-size:11px;color:#6b7280;font-weight:700;margin-bottom:8px">FLUXOGRAMA</div>' +
+                 parts.join('<span style="color:#94a3b8;margin:0 4px;font-size:14px">→</span>') +
+               '</div>';
+  } else {
+    flowHtml = '<div style="margin-top:12px;padding:8px 12px;background:#f8fafc;border-radius:8px;font-size:12px;color:#94a3b8"><i>Sem fluxograma personalizado — PDF usa fluxo automático derivado dos itens.</i></div>';
+  }
+  var btns =
+    '<div style="padding:10px 16px;border-top:1px solid #f3f4f6;display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_ppvEditEscopo()">✏️ Editar / Revisar escopo (com IA)</button>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_ppvEditFluxograma()">🧩 Editar fluxograma</button>' +
+    '</div>';
+  return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="padding:14px 16px">' + scopeHtml + flowHtml + '</div>' + btns + '</div>';
+}
+
+function _ppvSecHist() {
+  var hdr = _ppvSecHeader('hist', 'Histórico', '🕒', _ppv.timeline.length);
+  if (_ppv.collapsed.hist) return '<div class="card" style="margin-bottom:10px">' + hdr + '</div>';
+  if (!_ppv.timeline || !_ppv.timeline.length) {
+    return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="font-size:12px;color:#94a3b8">Sem eventos registrados ainda.</div></div>';
+  }
+  var rows = '';
+  for (var i = 0; i < _ppv.timeline.length; i++) {
+    var ev = _ppv.timeline[i];
+    rows +=
+      '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px">' +
+        '<span style="color:#94a3b8;min-width:130px;font-size:11px;white-space:nowrap">' + escapeHtml(_ppvFormatDate(ev.timestamp)) + '</span>' +
+        '<span style="flex:1">' +
+          '<b>' + escapeHtml(ev.event_type || '—') + '</b> · ' + escapeHtml(ev.description || '') +
+          (ev.user_name ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">por ' + escapeHtml(ev.user_name) + '</div>' : '') +
+        '</span>' +
+      '</div>';
+  }
+  return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="padding:8px 16px">' + rows + '</div></div>';
+}
+
+function _ppvSecComentarios() {
+  var hdr = _ppvSecHeader('com', 'Comentários', '💬', _ppv.comments.length);
+  if (_ppv.collapsed.com) return '<div class="card" style="margin-bottom:10px">' + hdr + '</div>';
+  var rows = '';
+  if (_ppv.comments && _ppv.comments.length) {
+    for (var i = 0; i < _ppv.comments.length; i++) {
+      var c = _ppv.comments[i];
+      var isDeleted = /\[comentario excluido por/.test(c.body || '');
+      rows +=
+        '<div style="padding:10px 0;border-bottom:1px solid #f3f4f6">' +
+          '<div style="font-size:11.5px;color:#6b7280;margin-bottom:4px">' +
+            '<b style="color:#14335f">' + escapeHtml(c.author_name || c.author_id || '—') + '</b>' +
+            (c.author_role ? ' <span style="font-size:10px;color:#94a3b8">(' + escapeHtml(c.author_role) + ')</span>' : '') +
+            ' · ' + escapeHtml(_ppvFormatDate(c.created_at)) +
+            (!isDeleted ? ' · <a href="#" onclick="event.preventDefault();_ppvDeleteComment(\'' + escapeHtml(c.id) + '\')" style="color:#b91c1c;font-size:10px">excluir</a>' : '') +
+          '</div>' +
+          '<div style="font-size:13px;white-space:pre-wrap;color:' + (isDeleted ? '#94a3b8' : '#1f2937') + ';font-style:' + (isDeleted ? 'italic' : 'normal') + '">' + escapeHtml(c.body || '') + '</div>' +
+        '</div>';
+    }
+  } else {
+    rows = '<div style="font-size:12px;color:#94a3b8;padding:6px 0">Sem comentários ainda. Use o campo abaixo para iniciar a conversa.</div>';
+  }
+  var addBox =
+    '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">' +
+      '<textarea id="ppv-comment-input" class="form-input" rows="3" placeholder="Escreva um comentário para a equipe (Gema, Maria, Jonatan ou você)..." style="font-family:inherit;resize:vertical;min-height:60px;font-size:13px"></textarea>' +
+      '<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_ppvAddComment()">💬 Adicionar comentário</button>' +
+      '</div>' +
+    '</div>';
+  return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="padding:8px 16px 14px">' + rows + addBox + '</div></div>';
+}
+
+function _ppvSecActionCards() {
+  var hdr = _ppvSecHeader('ac', 'Action Cards vinculados', '🗂', _ppv.actionCards.length);
+  if (_ppv.collapsed.ac) return '<div class="card" style="margin-bottom:10px">' + hdr + '</div>';
+  var rows = '';
+  if (_ppv.actionCards && _ppv.actionCards.length) {
+    var statusBadge = { ABERTO:'badge-blue', EM_ANDAMENTO:'badge-yellow', CONCLUIDO:'badge-green', CANCELADO:'badge-gray', SLA_ESTOURADO:'badge-red' };
+    for (var i = 0; i < _ppv.actionCards.length; i++) {
+      var c = _ppv.actionCards[i];
+      var bcls = statusBadge[c.status] || 'badge-gray';
+      // "Eu reviso este card": bypass de alçada COMPLETA pela diretoria.
+      // Aparece só no card REVISAO_FINANCEIRO aberto, e só para os 2 Diretores.
+      var isRevFin = (c.tipo === 'REVISAO_FINANCEIRO') || /revis[aã]o\s*financ/i.test(c.title || '');
+      var cardAberto = c.status !== 'CONCLUIDO' && c.status !== 'CANCELADO';
+      var isDiretor = ALLEGRO.currentUser &&
+        (ALLEGRO.currentUser.role === 'DIRETOR_TECNICO' || ALLEGRO.currentUser.role === 'DIRETOR_COMERCIAL');
+      var bypassBtn = (isRevFin && cardAberto && isDiretor)
+        ? '<div style="margin-top:6px">' +
+            '<button class="sga-btn sga-btn--secondary sga-btn--sm" onclick="_ppvRevisarCardFinanceiro()" ' +
+            'title="Libera a revisão financeira sem a Maria (FINANCEIRO_ADMIN) — fica registrado no histórico">' +
+            '✅ Eu reviso este card (diretoria)</button>' +
+          '</div>'
+        : '';
+      rows +=
+        '<div style="padding:10px 0;border-bottom:1px solid #f3f4f6">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px">' +
+            '<b style="font-size:13px">' + escapeHtml(c.title || '(sem título)') + '</b>' +
+            '<span class="badge ' + bcls + '" style="font-size:10px">' + escapeHtml(c.status || '—') + '</span>' +
+          '</div>' +
+          (c.message ? '<div style="font-size:12px;color:#475569;margin-bottom:4px">' + escapeHtml(c.message) + '</div>' : '') +
+          '<div style="font-size:11px;color:#94a3b8">' +
+            (c.assigned_to ? '👤 ' + escapeHtml(c.assigned_to) + ' · ' : '') +
+            (c.urgent === 'TRUE' || c.urgent === true ? '🚨 urgente · ' : '') +
+            'criado em ' + escapeHtml(_ppvFormatDate(c.created_at)) +
+          '</div>' +
+          bypassBtn +
+        '</div>';
+    }
+  } else {
+    rows = '<div style="font-size:12px;color:#94a3b8;padding:6px 0">Nenhum action card vinculado a esta proposta. Use o botão acima "+ Criar Action Card".</div>';
+  }
+  return '<div class="card" style="margin-bottom:10px">' + hdr + '<div class="card-body" style="padding:8px 16px 14px">' + rows + '</div></div>';
+}
+
+/* "Eu reviso este card" — diretor fecha a revisão financeira (bypass de alçada). */
+function _ppvRevisarCardFinanceiro() {
+  var p = _ppv.data || {};
+  if (!p.id) return;
+  var go = function () {
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert((r && r.error) || 'Erro ao liberar revisão.', 'error'); return; }
+        showAlert(r.message || 'Revisão financeira liberada.', 'success');
+        _ppvLoadAll();
+      })
+      .withFailureHandler(function (err) { showAlert('Falha: ' + (err && err.message ? err.message : err), 'error'); })
+      .Api_propRevisarFinanceiroBypass(p.id);
+  };
+  var msg = 'Liberar a revisão financeira desta proposta sem a Maria (FINANCEIRO_ADMIN)? ' +
+            'A ação fica registrada no histórico em seu nome.';
+  if (window.SGA && SGA.confirm) {
+    SGA.confirm(msg, { title: 'Eu reviso este card', okLabel: 'Liberar' }).then(function (ok) { if (ok) go(); });
+  } else if (confirm(msg)) { go(); }
+}
+
+/* ───────────── Ações ───────────── */
+
+/* FB-23 Test 5b: Modal SGA de avançar status (substitui prompt nativo do _pstOpen).
+   O fluxo de proposta é LINEAR e fixo, então o botão sabe qual é o próximo
+   estado e oferece direto. Alternativas (Recusar, Cancelar) ficam como
+   secundárias. Sem dropdown — sem prompt feio. */
+var _PPV_NEXT_STATES = {
+  DEMANDA:         { next: 'LEVANTAMENTO',   alt: ['CANCELADA'] },
+  LEVANTAMENTO:    { next: 'PROPOSTA_GERADA', alt: ['CANCELADA'] },
+  PROPOSTA_GERADA: { next: 'EM_REVISAO',     alt: ['CANCELADA'] },
+  EM_REVISAO:      { next: 'APROVADA_ENVIO', alt: ['PROPOSTA_GERADA', 'CANCELADA'] },
+  APROVADA_ENVIO:  { next: 'ENVIADA',        alt: ['CANCELADA'] },
+  ENVIADA:         { next: 'FECHADA',        alt: ['RECUSADA', 'SUBSTITUIDA'] }
+};
+var _PPV_STATE_LABEL = {
+  DEMANDA:         { label: '📥 Demanda',           desc: 'Cliente trouxe uma demanda inicial.' },
+  LEVANTAMENTO:    { label: '🔍 Levantamento',       desc: 'Time técnico está coletando dados pra montar a proposta.' },
+  PROPOSTA_GERADA: { label: '📄 Proposta Gerada',    desc: 'Documento foi montado e precisa de revisão.' },
+  EM_REVISAO:      { label: '🔎 Em Revisão',         desc: 'Maria (FINANCEIRO_ADMIN) revisa preço/condições.' },
+  APROVADA_ENVIO:  { label: '✅ Aprovada p/ Envio',  desc: 'Pronta pra ser enviada ao cliente.' },
+  ENVIADA:         { label: '📤 Enviada',            desc: 'Já está com o cliente, aguardando retorno.' },
+  FECHADA:         { label: '🎉 Fechada (ganha)',    desc: 'Cliente aceitou. Projeto será criado.' },
+  RECUSADA:        { label: '❌ Recusada',           desc: 'Cliente recusou. Histórico mantido.' },
+  SUBSTITUIDA:     { label: '🔁 Substituída',        desc: 'Substituída por uma revisão (Rn+1).' },
+  CANCELADA:       { label: '🚫 Cancelada',          desc: 'Cancelada antes de chegar ao cliente.' }
+};
+
+function _ppvAvancarStatus() {
+  var p = _ppv.data || {};
+  var atual = String(p.status || '').toUpperCase();
+  var rules = _PPV_NEXT_STATES[atual];
+  if (!rules) {
+    showAlert('Estado "' + atual + '" é terminal. Sem transições disponíveis.', 'info');
+    return;
+  }
+  var atualLbl = _PPV_STATE_LABEL[atual] || { label: atual, desc: '' };
+  var nextLbl  = _PPV_STATE_LABEL[rules.next] || { label: rules.next, desc: '' };
+
+  // Bypass de alçada na MESMA janela: diretor avançando EM_REVISAO → APROVADA_ENVIO
+  // pode dispensar a revisão da Maria (FINANCEIRO_ADMIN) sem sair daqui.
+  var isDiretor = ALLEGRO.currentUser &&
+    (ALLEGRO.currentUser.role === 'DIRETOR_TECNICO' || ALLEGRO.currentUser.role === 'DIRETOR_COMERCIAL');
+  var showBypass = isDiretor && atual === 'EM_REVISAO' && rules.next === 'APROVADA_ENVIO';
+  var bypassBox = showBypass
+    ? '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:14px">' +
+        '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:13px;color:#92400e">' +
+          '<input type="checkbox" id="ppv-st-bypass" style="margin-top:3px">' +
+          '<span><b>Liberar como diretoria</b> — se a Maria (FINANCEIRO_ADMIN) ainda não revisou, ' +
+          'marque para dispensar a revisão financeira e aprovar o envio agora. Fica registrado no histórico em seu nome.</span>' +
+        '</label>' +
+      '</div>'
+    : '';
+
+  // Botão primário = next state (caminho feliz). Secundários = alt.
+  var primaryBtn =
+    '<button class="sga-btn sga-btn--primary" id="ppv-st-go" data-target="' + escapeHtml(rules.next) + '" style="min-width:200px">' +
+      'Avançar para ' + nextLbl.label +
+    '</button>';
+  var altBtns = '';
+  for (var i = 0; i < rules.alt.length; i++) {
+    var alt = rules.alt[i];
+    var lbl = _PPV_STATE_LABEL[alt] || { label: alt };
+    var color = (alt === 'CANCELADA' || alt === 'RECUSADA') ? 'color:#b91c1c;border-color:#fecaca' : '';
+    altBtns += '<button class="sga-btn sga-btn--ghost sga-btn--sm ppv-st-alt" data-target="' + escapeHtml(alt) + '" style="' + color + '">' + lbl.label + '</button>';
+  }
+
+  // Monta o modal HTML
+  var prevModal = document.getElementById('ppv-st-modal');
+  if (prevModal) prevModal.parentNode.removeChild(prevModal);
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="sga-modal-backdrop" id="ppv-st-modal" style="z-index:1300">' +
+      '<div class="modal" style="max-width:560px;width:94%">' +
+        '<div class="card">' +
+          '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+            '<div class="card-title">🔄 Avançar status da proposta</div>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-st-x">✕</button>' +
+          '</div>' +
+          '<div class="card-body">' +
+            '<div style="background:#f8fafc;border-radius:8px;padding:10px 14px;margin-bottom:12px">' +
+              '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Estado atual</div>' +
+              '<div style="font-size:14px;font-weight:700;margin-top:2px">' + atualLbl.label + '</div>' +
+              '<div style="font-size:12px;color:#64748b;margin-top:4px">' + escapeHtml(atualLbl.desc) + '</div>' +
+            '</div>' +
+
+            '<div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:14px">' +
+              '<div style="font-size:11px;color:#1d4ed8;text-transform:uppercase;font-weight:700;letter-spacing:.5px">Próximo estado natural</div>' +
+              '<div style="font-size:14px;font-weight:700;margin-top:2px;color:#1e3a8a">' + nextLbl.label + '</div>' +
+              '<div style="font-size:12px;color:#1e40af;margin-top:4px">' + escapeHtml(nextLbl.desc) + '</div>' +
+            '</div>' +
+
+            '<label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px">Nota (opcional)</label>' +
+            '<textarea id="ppv-st-nota" class="form-input" rows="2" placeholder="ex: revisei preço e condições. ok pra envio." style="margin-top:4px;font-family:inherit;font-size:13px"></textarea>' +
+            bypassBox +
+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;justify-content:flex-end">' +
+              primaryBtn +
+              '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-st-cancel">Cancelar</button>' +
+            '</div>' +
+            (altBtns ?
+              '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb">' +
+                '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:6px">Ou desvie do fluxo:</div>' +
+                '<div style="display:flex;gap:6px;flex-wrap:wrap">' + altBtns + '</div>' +
+              '</div>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+
+  var fechar = function () {
+    var m = document.getElementById('ppv-st-modal');
+    if (m) m.parentNode.removeChild(m);
+  };
+  document.getElementById('ppv-st-x').addEventListener('click', fechar);
+  document.getElementById('ppv-st-cancel').addEventListener('click', fechar);
+  document.getElementById('ppv-st-modal').addEventListener('click', function (e) {
+    if (e.target === this) fechar();
+  });
+  document.getElementById('ppv-st-go').addEventListener('click', function () { _ppvDoStatusChange(this.getAttribute('data-target')); });
+  var alts = document.querySelectorAll('.ppv-st-alt');
+  for (var k = 0; k < alts.length; k++) {
+    alts[k].addEventListener('click', function () { _ppvDoStatusChange(this.getAttribute('data-target')); });
+  }
+}
+
+function _ppvDoStatusChange(target) {
+  var nota = (document.getElementById('ppv-st-nota') || {}).value || '';
+  var bypassEl = document.getElementById('ppv-st-bypass');
+  var opcoes = { nota: nota };
+  if (bypassEl && bypassEl.checked) opcoes.force_revisao_bloqueante = true;
+  var btn = document.getElementById('ppv-st-go');
+  if (btn) { btn.disabled = true; btn.textContent = 'Avançando...'; }
+  google.script.run
+    .withSuccessHandler(function (r) {
+      var m = document.getElementById('ppv-st-modal');
+      if (m) m.parentNode.removeChild(m);
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+      var msg = opcoes.force_revisao_bloqueante
+        ? 'Revisão financeira liberada pela diretoria — proposta ' + target + '.'
+        : 'Status atualizado para ' + target + '.';
+      showAlert(msg, 'success');
+      _ppvLoadAll();
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_propUpdateStatus(_ppv.proposalId, target, opcoes);
+}
+
+function _ppvEnviarEmail() {
+  var p = _ppv.data || {};
+  _ppvOpenFormModal('📤 Enviar proposta por e-mail', [
+    { id: 'to',      label: 'Para',          type: 'email',    value: p.contact_email || '',      required: true, placeholder: 'contato@cliente.com.br' },
+    { id: 'cc',      label: 'CC (opcional)', type: 'email',    value: '',                         placeholder: 'maria@allegro.eng.br' },
+    { id: 'subject', label: 'Assunto',       type: 'text',     value: 'Proposta Comercial Allegro Engenharia — ' + (p.number || p.id) },
+    { id: 'body',    label: 'Corpo do email (HTML)', type: 'textarea', rows: 8,
+      value: '<p>Prezado(a) ' + (p.responsible || '') + ',</p>' +
+             '<p>Segue em anexo a proposta comercial <b>' + (p.number || p.id) + '</b> referente ao projeto solicitado.</p>' +
+             '<p>Estamos à disposição para esclarecer dúvidas ou ajustar o escopo conforme necessário.</p>' +
+             '<p>Atenciosamente,<br>Equipe Comercial Allegro Engenharia</p>' }
+  ], function (vals, close) {
+    if (!/@/.test(vals.to)) { showAlert('E-mail inválido em "Para".', 'warning'); return false; }
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+        showAlert('Email enviado para ' + vals.to + (r.data && r.data.pdfAnexo ? ' (com PDF)' : ' (sem PDF — gere o PDF antes)'), 'success');
+        close && close();
+        _ppvLoadAll();
+      })
+      .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+      .Api_propEnviarPorEmail(_ppv.proposalId, { to: vals.to, cc: vals.cc, subject: vals.subject, body: vals.body });
+    return false; // nao fecha automatico — o success handler fecha
+  }, { submitLabel: '📤 Enviar agora', width: 640 });
+}
+
+function _ppvImprimirPdf() {
+  if (typeof _printProposal === 'function') {
+    _printProposal(_ppv.proposalId);
+  } else {
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+        var html = (typeof r.data === 'string') ? r.data : (r.data && r.data.html ? r.data.html : '');
+        if (html) { var w = window.open('', '_blank'); w.document.write(html); w.document.close(); }
+      })
+      .Api_generateProposalHTML(_ppv.proposalId);
+  }
+}
+
+/* FB-23 Test 5a (v2): Modal SGA self-contained pra criar Action Card.
+   Antes dependia de _openNewCardModal externo — quebrava se user nao tinha
+   passado na guia ActionCards. Agora gera o modal completo aqui mesmo,
+   carregando lista de usuarios via Api_acGetActiveUsers. */
+function _ppvCriarActionCard() {
+  // Carrega usuarios ativos primeiro pra popular select "Atribuir A"
+  google.script.run
+    .withSuccessHandler(function (r) {
+      var users = (r && r.ok) ? (r.data || []) : [];
+      var userOpts = [{ value: '', label: '— selecione —' }];
+      for (var i = 0; i < users.length; i++) {
+        userOpts.push({ value: users[i].id, label: users[i].name + ' (' + users[i].role + ')' });
+      }
+      _ppvOpenFormModal('🗂 Novo Action Card vinculado à proposta', [
+        { id: 'title',    label: 'Título',         type: 'text',     required: true, placeholder: 'Ex: Revisar Kit Infra (+10%)' },
+        { id: 'message',  label: 'Mensagem',       type: 'textarea', rows: 3,        placeholder: 'Descrição do que precisa ser feito (opcional)' },
+        { id: 'quote_id', label: 'Proposta ID',    type: 'text',     value: _ppv.proposalId, readonly: true },
+        { id: 'assigned_to', label: 'Atribuir a',  type: 'select',   options: userOpts, value: '', required: true },
+        { id: 'urgent',   label: '🚨 Urgente',     type: 'checkbox', value: false }
+      ], function (vals, close) {
+        google.script.run
+          .withSuccessHandler(function (r2) {
+            if (!r2 || !r2.ok) { showAlert('Erro: ' + (r2 ? r2.error : 'sem resposta'), 'error'); return; }
+            showAlert('Action Card criado e vinculado.', 'success');
+            close && close();
+            // Recarrega so os action cards vinculados (mais leve)
+            google.script.run.withSuccessHandler(function (r3) {
+              _ppv.actionCards = (r3 && r3.ok) ? (r3.data || []) : [];
+              _ppvRenderSection('ac');
+            }).Api_acGetByProposal(_ppv.proposalId);
+          })
+          .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+          .Api_acCreate({
+            title: vals.title,
+            message: vals.message,
+            quote_id: vals.quote_id,
+            assigned_to: vals.assigned_to,
+            urgent: !!vals.urgent
+          });
+        return false; // nao fecha auto
+      }, { submitLabel: '🗂 Criar Action Card' });
+    })
+    .withFailureHandler(function (e) {
+      showAlert('Falha ao carregar usuarios: ' + (e.message || e), 'error');
+    })
+    .Api_acGetActiveUsers();
+}
+
+async function _ppvCriarRevisao() {
+  var ok = await SGA.confirm('Criar uma nova revisão Rn+1 desta proposta? A proposta atual fica como histórico.', { okLabel: 'Criar revisão' });
+  if (!ok) return;
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+      var newId = (r.data && r.data.id) || r.id;
+      showAlert('Revisão criada: ' + newId, 'success');
+      if (newId) {
+        _ppv.proposalId = newId;
+        renderPropostaVisao(document.getElementById('section-content'), newId);
+      }
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_propCriarRevisao(_ppv.proposalId);
+}
+
+function _ppvAddComment() {
+  var input = document.getElementById('ppv-comment-input');
+  if (!input) return;
+  var body = input.value.trim();
+  if (!body) { showAlert('Digite um comentário antes de enviar.', 'warning'); return; }
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+      input.value = '';
+      // Recarrega só comentários (mais leve que _ppvLoadAll)
+      google.script.run.withSuccessHandler(function (rr) {
+        _ppv.comments = (rr && rr.ok) ? (rr.data || []) : [];
+        _ppvRenderSection('com');
+      }).Api_propGetComments(_ppv.proposalId);
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_propAddComment(_ppv.proposalId, body);
+}
+
+async function _ppvDeleteComment(commentId) {
+  var ok = await SGA.confirm('Excluir este comentário?', { danger: true, okLabel: 'Excluir' });
+  if (!ok) return;
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+      google.script.run.withSuccessHandler(function (rr) {
+        _ppv.comments = (rr && rr.ok) ? (rr.data || []) : [];
+        _ppvRenderSection('com');
+      }).Api_propGetComments(_ppv.proposalId);
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_propDeleteComment(commentId);
+}
+
+/* ───────────── Edit inline (simples — usa Api_updateProposal existente) ───────────── */
+
+function _ppvEditResumo() {
+  var p = _ppv.data || {};
+  _ppvOpenFormModal('✏️ Editar resumo da proposta', [
+    { id: 'location',      label: 'Localização',          type: 'text',     value: p.location || '' },
+    { id: 'validity_days', label: 'Validade (dias)',      type: 'number',   value: p.validity_days || '' },
+    { id: 'delivery_days', label: 'Entrega (dias)',       type: 'number',   value: p.delivery_days || '' },
+    { id: 'payment_terms', label: 'Condições de pagamento', type: 'text',   value: p.payment_terms || '' },
+    { id: 'observations',  label: 'Observações',          type: 'textarea', value: p.observations || '', rows: 4 }
+  ], function (vals) {
+    _ppvSaveUpdate(vals);
+  }, { submitLabel: '💾 Salvar resumo' });
+}
+
+/* Modal UNIFICADO: editar escopo + revisar IA + aplicar resultado, tudo na
+   MESMA janela (princípio UX: atividades correlatas = mesma janela). */
+function _ppvEditEscopo() {
+  var p = _ppv.data || {};
+  var prev = document.getElementById('ppv-escopo-modal');
+  if (prev) prev.remove();
+
+  var html =
+    '<div class="sga-modal-backdrop" id="ppv-escopo-modal" style="z-index:1300">' +
+      '<div class="modal" style="max-width:820px;width:96%;max-height:92vh;display:flex;flex-direction:column">' +
+        '<div class="card" style="display:flex;flex-direction:column;max-height:92vh;overflow:hidden">' +
+          '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0">' +
+            '<div class="card-title">✏️ Editar escopo técnico</div>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-esc-x">✕</button>' +
+          '</div>' +
+          '<div class="card-body" style="overflow:auto;flex:1">' +
+            // Barra superior: IA inline (tudo no mesmo modal)
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#eef6ff;border:1px solid #93c5fd;border-radius:8px">' +
+              '<span style="font-size:11px;color:#1e3a8a;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🤖 Revisar com IA:</span>' +
+              '<select id="ppv-esc-intensity" class="form-input" style="width:auto;padding:6px 10px;font-size:13px" title="Intensidade">' +
+                '<option value="leve">🪶 Leve (só corrige)</option>' +
+                '<option value="medio" selected>⚖️ Médio (recomendado)</option>' +
+                '<option value="ousado">🚀 Ousado (reescreve)</option>' +
+              '</select>' +
+              '<button class="sga-btn sga-btn--primary sga-btn--sm" id="ppv-esc-ia-btn">Revisar agora</button>' +
+              '<span id="ppv-esc-ia-status" style="font-size:11px;color:#64748b;margin-left:4px"></span>' +
+            '</div>' +
+            // Textarea principal
+            '<label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px">Texto do escopo</label>' +
+            '<textarea id="ppv-esc-text" class="form-input" rows="14" style="resize:vertical;min-height:240px;font-family:inherit;font-size:13px;line-height:1.5;margin-top:4px">' + escapeHtml(p.scope_text || '') + '</textarea>' +
+            // Painel IA (escondido ate IA rodar)
+            '<div id="ppv-esc-ia-panel" style="display:none;margin-top:14px"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid #e5e7eb;flex-shrink:0">' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-esc-cancel">Cancelar</button>' +
+            '<button class="sga-btn sga-btn--primary" id="ppv-esc-save">💾 Salvar escopo</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  var fechar = function () {
+    var m = document.getElementById('ppv-escopo-modal');
+    if (m) m.parentNode.removeChild(m);
+    _ppv._lastReview = null;
+  };
+  document.getElementById('ppv-esc-x').addEventListener('click', fechar);
+  document.getElementById('ppv-esc-cancel').addEventListener('click', fechar);
+  document.getElementById('ppv-escopo-modal').addEventListener('click', function (e) {
+    if (e.target === this) fechar();
+  });
+
+  // Botão IA — roda inline, mostra resultado NA MESMA janela
+  document.getElementById('ppv-esc-ia-btn').addEventListener('click', function () {
+    var ta = document.getElementById('ppv-esc-text');
+    var intensity = (document.getElementById('ppv-esc-intensity') || {}).value || 'medio';
+    var statusEl = document.getElementById('ppv-esc-ia-status');
+    var panelEl = document.getElementById('ppv-esc-ia-panel');
+    var btn = this;
+    var text = (ta.value || '').trim();
+    if (!text) { showAlert('Escreva algo no escopo antes de revisar.', 'warning'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Revisando...';
+    statusEl.textContent = '⏳ aguardando IA (5-15s)...';
+    panelEl.style.display = 'none';
+
+    google.script.run
+      .withSuccessHandler(function (r) {
+        btn.disabled = false;
+        btn.textContent = 'Revisar agora';
+        statusEl.textContent = '';
+        if (!r || !r.ok) { showAlert('Erro IA: ' + (r ? r.error : '?'), 'error'); return; }
+        var rev = r.data || {};
+        var strHtml = (rev.strengths   || []).map(function (s) { return '<li style="color:#15803d;margin:2px 0">✓ ' + escapeHtml(s) + '</li>'; }).join('');
+        var sugHtml = (rev.suggestions || []).map(function (s) { return '<li style="color:#b45309;margin:2px 0">• ' + escapeHtml(s) + '</li>'; }).join('');
+        panelEl.innerHTML =
+          '<div style="border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;padding:12px">' +
+            '<div style="font-size:12px;font-weight:700;color:#1e3a8a;margin-bottom:8px">🤖 Resultado da revisão (Sonnet · ' + intensity + ')</div>' +
+            (strHtml ? '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-top:6px">Pontos fortes</div><ul style="padding-left:18px;margin:4px 0 0;font-size:12px">' + strHtml + '</ul>' : '') +
+            (sugHtml ? '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-top:8px">Sugestões</div><ul style="padding-left:18px;margin:4px 0 0;font-size:12px">' + sugHtml + '</ul>' : '') +
+            '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-top:10px">Versão melhorada (preview)</div>' +
+            '<pre style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px;font-size:12px;white-space:pre-wrap;font-family:inherit;line-height:1.5;max-height:240px;overflow:auto;margin:4px 0 0">' + escapeHtml(rev.improvedText || text) + '</pre>' +
+            '<div style="display:flex;gap:8px;margin-top:10px">' +
+              '<button class="sga-btn sga-btn--primary sga-btn--sm" id="ppv-esc-aplicar">✅ Aplicar essa versão no texto</button>' +
+              '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-esc-dispensar">Dispensar</button>' +
+            '</div>' +
+          '</div>';
+        panelEl.style.display = 'block';
+        _ppv._lastReview = rev;
+
+        document.getElementById('ppv-esc-aplicar').addEventListener('click', function () {
+          ta.value = rev.improvedText || ta.value;
+          panelEl.style.display = 'none';
+          showAlert('Versão melhorada aplicada — revise o texto e clique Salvar.', 'success');
+        });
+        document.getElementById('ppv-esc-dispensar').addEventListener('click', function () {
+          panelEl.style.display = 'none';
+        });
+      })
+      .withFailureHandler(function (e) {
+        btn.disabled = false;
+        btn.textContent = 'Revisar agora';
+        statusEl.textContent = '';
+        showAlert('Falha IA: ' + (e.message || e), 'error');
+      })
+      .Api_reviewProposalScope(_ppv.proposalId, text, intensity);
+  });
+
+  // Botão Salvar — commita escopo (e ai_review se houve revisão)
+  document.getElementById('ppv-esc-save').addEventListener('click', function () {
+    var newText = document.getElementById('ppv-esc-text').value;
+    var updates = { scope_text: newText };
+    if (_ppv._lastReview) updates.ai_review = JSON.stringify(_ppv._lastReview);
+    var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); btn.disabled = false; btn.textContent = '💾 Salvar escopo'; return; }
+        showAlert('Escopo salvo.', 'success');
+        fechar();
+        _ppvLoadAll();
+      })
+      .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = '💾 Salvar escopo'; })
+      .Api_updateProposal(_ppv.proposalId, updates);
+  });
+}
+
+/* O botão "Revisar com IA" da seção Escopo agora apenas abre o mesmo modal de
+   edição (a revisão IA vive lá dentro). Não tem mais janela separada. */
+function _ppvRevisarIA() { _ppvEditEscopo(); }
+function _ppvRevisarIAExecutar() { _ppvEditEscopo(); }
+
+function _ppvEditFluxograma() {
+  // Reusa o editor de fluxograma existente do ProposalBuilderUI (_pflOpen)
+  if (typeof _pflOpen === 'function') {
+    _pflOpen(_ppv.proposalId, function () { _ppvLoadAll(); });
+  } else {
+    showAlert('Editor de fluxograma indisponível. Abra a proposta pelo wizard antigo.', 'warning');
+  }
+}
+
+function _ppvEditItens() {
+  showAlert('Edição inline de itens será adicionada na próxima sessão. Use "📋 Duplicar como revisão" e edite no wizard por enquanto.', 'info');
+}
+
+function _ppvRevisarIA() {
+  var p = _ppv.data || {};
+  if (!p.scope_text || !p.scope_text.trim()) { showAlert('Escopo vazio. Edite primeiro.', 'warning'); return; }
+  // FB-22 v3 — modal pré-revisão pra escolher intensidade (Joao Test 4)
+  _ppvOpenFormModal('🤖 Revisar escopo com IA — calibragem', [
+    { id: 'info', type: 'info', html:
+      '<b>Leve:</b> só ortografia e gramática, mantém estilo.<br>' +
+      '<b>Médio:</b> corrige + organiza, sem inventar (recomendado).<br>' +
+      '<b>Ousado:</b> reescreve como versão comercial robusta (250-500 palavras), usa itens da proposta.' },
+    { id: 'intensity', label: 'Intensidade', type: 'select', value: 'medio',
+      options: [
+        { value: 'leve',   label: '🪶 Leve — só corrige erros' },
+        { value: 'medio',  label: '⚖️ Médio — corrige + organiza' },
+        { value: 'ousado', label: '🚀 Ousado — reescreve com contexto' }
+      ]
+    }
+  ], function (vals, close) {
+    close && close();
+    _ppvRevisarIAExecutar(vals.intensity || 'medio');
+    return false;
+  }, { submitLabel: '▶ Revisar agora' });
+}
+
+function _ppvRevisarIAExecutar(intensity) {
+  var p = _ppv.data || {};
+  showAlert('Revisando com IA (Sonnet, ' + intensity + ')... 5-15s.', 'info');
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro IA: ' + (r ? r.error : '?'), 'error'); return; }
+      var rev = r.data || {};
+      // Modal SGA com painel completo de revisao + acoes
+      var strHtml = (rev.strengths || []).map(function (s) {
+        return '<li style="margin:4px 0;color:#15803d">✓ ' + escapeHtml(s) + '</li>';
+      }).join('');
+      var sugHtml = (rev.suggestions || []).map(function (s) {
+        return '<li style="margin:4px 0;color:#b45309">• ' + escapeHtml(s) + '</li>';
+      }).join('');
+      var bodyHtml =
+        (strHtml ? '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Pontos fortes</div><ul style="padding-left:18px;margin:0">' + strHtml + '</ul></div>' : '') +
+        (sugHtml ? '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Sugestões</div><ul style="padding-left:18px;margin:0">' + sugHtml + '</ul></div>' : '');
+      _ppvOpenFormModal('🤖 Revisão IA (Claude Sonnet)', [
+        { id: 'review_info', type: 'info', html: bodyHtml || '<i>(sem pontos fortes/sugestões)</i>' },
+        { id: 'improvedText', label: 'Versão melhorada (editável antes de aplicar)', type: 'textarea', rows: 16, value: rev.improvedText || p.scope_text || '' }
+      ], function (vals, close) {
+        _ppvSaveUpdate({ scope_text: vals.improvedText, ai_review: JSON.stringify(rev) });
+        close && close();
+        return false;
+      }, { submitLabel: '✅ Aplicar versão melhorada', cancelLabel: 'Dispensar', width: 760 });
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_reviewProposalScope(_ppv.proposalId, p.scope_text, intensity);
+}
+
+function _ppvSaveUpdate(updates) {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : 'sem resposta'), 'error'); return; }
+      showAlert('Proposta atualizada.', 'success');
+      _ppvLoadAll();
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_updateProposal(_ppv.proposalId, updates);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PADRAO DE MODAL SGA (FB-23 Test 5)
+
+   Regra de ouro estabelecida pelo Joao:
+     - prompt()/confirm() do navegador SO pra confirmar (sim/nao).
+     - Pra DIGITAR ou EDITAR dados, SEMPRE modal HTML do SGA.
+
+   _ppvOpenFormModal(title, fields, onSubmit, opts):
+     - title:    string do header
+     - fields:   array de { id, label, type, value, placeholder, options[], required, rows }
+       type: 'text' | 'number' | 'textarea' | 'select' | 'email' | 'checkbox' | 'info'
+     - onSubmit: function(values) { ... } — recebe objeto {id: value}
+     - opts:     { submitLabel, cancelLabel, width, alert (string warn no topo) }
+   ═══════════════════════════════════════════════════════════════════════ */
+function _ppvOpenFormModal(title, fields, onSubmit, opts) {
+  opts = opts || {};
+  var prevModal = document.getElementById('ppv-form-modal');
+  if (prevModal) prevModal.parentNode.removeChild(prevModal);
+
+  var width = opts.width || 560;
+  var submitLabel = opts.submitLabel || 'Salvar';
+  var cancelLabel = opts.cancelLabel || 'Cancelar';
+
+  var fieldsHtml = '';
+  if (opts.alert) {
+    fieldsHtml += '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854d0e">' + escapeHtml(opts.alert) + '</div>';
+  }
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i] || {};
+    var id = 'ppvf-' + f.id;
+    var req = f.required ? ' <span style="color:#b91c1c">*</span>' : '';
+    fieldsHtml += '<div class="form-group" style="margin-bottom:12px">';
+    if (f.type !== 'info' && f.type !== 'checkbox') {
+      fieldsHtml += '<label class="form-label" for="' + id + '" style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px">' + escapeHtml(f.label || '') + req + '</label>';
+    }
+    if (f.type === 'textarea') {
+      fieldsHtml += '<textarea id="' + id + '" class="form-input" rows="' + (f.rows || 4) + '" placeholder="' + escapeHtml(f.placeholder || '') + '" style="font-family:inherit;resize:vertical;min-height:80px;font-size:13px;margin-top:4px">' + escapeHtml(f.value || '') + '</textarea>';
+    } else if (f.type === 'select') {
+      var opts2 = '';
+      for (var j = 0; j < (f.options || []).length; j++) {
+        var o = f.options[j];
+        var val = (typeof o === 'object') ? o.value : o;
+        var lbl = (typeof o === 'object') ? o.label : o;
+        var sel = (val === f.value) ? ' selected' : '';
+        opts2 += '<option value="' + escapeHtml(val) + '"' + sel + '>' + escapeHtml(lbl) + '</option>';
+      }
+      fieldsHtml += '<select id="' + id + '" class="form-input" style="margin-top:4px">' + opts2 + '</select>';
+    } else if (f.type === 'checkbox') {
+      fieldsHtml += '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input id="' + id + '" type="checkbox"' + (f.value ? ' checked' : '') + '> ' + escapeHtml(f.label || '') + '</label>';
+    } else if (f.type === 'info') {
+      fieldsHtml += '<div style="font-size:12px;color:#64748b;background:#f8fafc;padding:8px 12px;border-radius:6px">' + (f.html || escapeHtml(f.value || '')) + '</div>';
+    } else {
+      var inputType = f.type || 'text';
+      fieldsHtml += '<input id="' + id + '" type="' + inputType + '" class="form-input" placeholder="' + escapeHtml(f.placeholder || '') + '" value="' + escapeHtml(f.value || '') + '" style="margin-top:4px" ' + (f.readonly ? 'readonly' : '') + '>';
+    }
+    fieldsHtml += '</div>';
+  }
+
+  document.body.insertAdjacentHTML('beforeend',
+    '<div class="sga-modal-backdrop" id="ppv-form-modal" style="z-index:1300">' +
+      '<div class="modal" style="max-width:' + width + 'px;width:94%;max-height:88vh;display:flex;flex-direction:column">' +
+        '<div class="card" style="display:flex;flex-direction:column;max-height:88vh;overflow:hidden">' +
+          '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0">' +
+            '<div class="card-title">' + escapeHtml(title || '') + '</div>' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-form-x">✕</button>' +
+          '</div>' +
+          '<div class="card-body" style="overflow:auto;flex:1">' + fieldsHtml + '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid #e5e7eb;flex-shrink:0">' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="ppv-form-cancel">' + escapeHtml(cancelLabel) + '</button>' +
+            '<button class="sga-btn sga-btn--primary" id="ppv-form-ok">' + escapeHtml(submitLabel) + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+
+  var fechar = function () {
+    var m = document.getElementById('ppv-form-modal');
+    if (m) m.parentNode.removeChild(m);
+  };
+  document.getElementById('ppv-form-x').addEventListener('click', fechar);
+  document.getElementById('ppv-form-cancel').addEventListener('click', fechar);
+  document.getElementById('ppv-form-modal').addEventListener('click', function (e) {
+    if (e.target === this) fechar();
+  });
+  document.getElementById('ppv-form-ok').addEventListener('click', function () {
+    var btn = this;
+    var values = {};
+    var firstRequired = null;
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i] || {};
+      var el = document.getElementById('ppvf-' + f.id);
+      if (!el) continue;
+      var v = (f.type === 'checkbox') ? el.checked : el.value;
+      if (f.required && !v) { firstRequired = f; break; }
+      values[f.id] = v;
+    }
+    if (firstRequired) {
+      showAlert('Preencha: ' + (firstRequired.label || firstRequired.id), 'warning');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+    try {
+      var maybe = onSubmit(values, fechar);
+      // Se callback nao chamou fechar, fecha automaticamente
+      if (maybe !== false) setTimeout(function () { var m = document.getElementById('ppv-form-modal'); if (m) m.parentNode.removeChild(m); }, 100);
+    } catch (e) {
+      showAlert('Erro: ' + (e.message || e), 'error');
+      btn.disabled = false;
+      btn.textContent = submitLabel;
+    }
+  });
+}
+
+/* ───────────── Helpers ───────────── */
+
+/* FB-23 — sempre inclui data + hora:minuto. formatDate global só retorna data;
+   pra timeline/histórico precisamos da hora. */
+function _ppvFormatDate(d) {
+  if (!d) return '—';
+  try {
+    var date = (d instanceof Date) ? d : new Date(d);
+    if (isNaN(date.getTime())) {
+      // Fallback ISO substring se Date inválido (defensivo)
+      var s = String(d);
+      return s.length > 16 ? s.substring(0, 16).replace('T', ' ') : s;
+    }
+    var dd = String(date.getDate()).padStart(2, '0');
+    var mm = String(date.getMonth() + 1).padStart(2, '0');
+    var yy = date.getFullYear();
+    var hh = String(date.getHours()).padStart(2, '0');
+    var mn = String(date.getMinutes()).padStart(2, '0');
+    return dd + '/' + mm + '/' + yy + ' ' + hh + ':' + mn;
+  } catch (e) {
+    return String(d).substring(0, 16).replace('T', ' ');
+  }
+}
+
+function _ppvDiasDesde(isoDate) {
+  if (!isoDate) return null;
+  try {
+    var d = new Date(isoDate);
+    if (isNaN(d.getTime())) return null;
+    var diff = (Date.now() - d.getTime()) / 86400000;
+    return Math.max(0, Math.floor(diff));
+  } catch (e) { return null; }
+}
+</script>

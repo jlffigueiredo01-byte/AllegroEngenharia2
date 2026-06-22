@@ -19,7 +19,7 @@ function renderChamados(area) {
         '<h1 class="page-title">🛠️ Chamados</h1>' +
         '<p class="page-subtitle">Pós-venda com método: descrever → atender → resolver (causa raiz) → fechar (lição aprendida).</p>' +
       '</div>' +
-      '<select class="form-input" id="tkt-filtro" style="width:200px">' +
+      '<select class="sga-form-select" id="tkt-filtro" style="width:200px">' +
         '<option value="ABERTOS"' + (_tktFiltroStatus === 'ABERTOS' ? ' selected' : '') + '>Em aberto (todos)</option>' +
         '<option value="ABERTO">Abertos (novos)</option>' +
         '<option value="EM_ATENDIMENTO">Em atendimento</option>' +
@@ -30,7 +30,9 @@ function renderChamados(area) {
         '<option value="TODOS">Todos</option>' +
       '</select>' +
     '</div>' +
-    '<div id="tkt-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+    '<div id="tkt-list-wrap"></div>';
+  // skeleton enquanto carrega a lista
+  (function(){ var sk = document.getElementById('tkt-list-wrap'); if (sk && window.SGA && SGA.skeleton) SGA.skeleton(sk, { type: 'list', count: 5 }); })();
   document.getElementById('tkt-filtro').addEventListener('change', function () {
     _tktFiltroStatus = this.value;
     _tktRenderList();
@@ -45,12 +47,14 @@ function renderChamados(area) {
 }
 
 function _tktLoad() {
+  var wrap = document.getElementById('tkt-list-wrap');
+  if (wrap && window.SGA && SGA.skeleton) SGA.skeleton(wrap, { type: 'list', count: 5 });
   google.script.run.withSuccessHandler(function (r) {
     _tktList = (r && r.ok && r.data) ? r.data : [];
     _tktRenderList();
   }).withFailureHandler(function (e) {
     var w = document.getElementById('tkt-list-wrap');
-    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+    if (w) w.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div><h3 class="sga-empty__title">Não foi possível carregar</h3><p class="sga-empty__text">' + escapeHtml(e.message || e) + '</p></div>';
   }).Api_tktGetAll({});
 }
 
@@ -67,9 +71,9 @@ function _tktSlaInfo(t) {
   if (!horas || isNaN(abertoEm.getTime())) return '';
   var limite = new Date(abertoEm.getTime() + horas * 3600000);
   var resta = limite - new Date();
-  if (resta < 0) return '<span style="color:#b42318;font-weight:700;font-size:11px">SLA estourado</span>';
-  if (resta < 24 * 3600000) return '<span style="color:#b54708;font-weight:700;font-size:11px">SLA &lt; 24h</span>';
-  return '<span style="color:#98a2b3;font-size:11px">SLA ' + Math.floor(resta / 86400000) + 'd</span>';
+  if (resta < 0) return '<span style="color:var(--sga-color-danger);font-weight:700;font-size:11px">SLA estourado</span>';
+  if (resta < 24 * 3600000) return '<span style="color:var(--sga-color-warning);font-weight:700;font-size:11px">SLA &lt; 24h</span>';
+  return '<span style="color:var(--sga-text-soft);font-size:11px">SLA ' + Math.floor(resta / 86400000) + 'd</span>';
 }
 
 function _tktRenderList() {
@@ -83,33 +87,62 @@ function _tktRenderList() {
     return t.status === _tktFiltroStatus;
   });
   if (!lista.length) {
-    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
-      '<div class="empty-icon">🛠️</div><div class="empty-title">Nenhum chamado neste filtro</div>' +
-      '<div class="empty-desc">Chamados nascem na Visão 360 do cliente, já vinculados.</div></div></div></div>';
+    var hasAny = _tktList && _tktList.length > 0;
+    if (window.SGA && SGA.empty) {
+      if (hasAny) {
+        SGA.empty(w, {
+          icon: '🔍',
+          title: 'Nenhum chamado neste filtro',
+          text: 'Tente outro filtro de status para ver mais chamados.',
+          variant: 'filtered'
+        });
+      } else {
+        SGA.empty(w, {
+          icon: '🎫',
+          title: 'Nenhum chamado registrado',
+          text: 'Chamados nascem na Visão 360 do cliente — abra uma empresa e use a aba de chamados para criar o primeiro.'
+        });
+      }
+    } else {
+      w.innerHTML = '<div class="sga-empty">' +
+        '<div class="sga-empty__icon">' + (hasAny ? '🔍' : '🎫') + '</div>' +
+        '<h3 class="sga-empty__title">' + (hasAny ? 'Nenhum chamado neste filtro' : 'Nenhum chamado registrado') + '</h3>' +
+        '<p class="sga-empty__text">Chamados nascem na Visão 360 do cliente, já vinculados.</p>' +
+      '</div>';
+    }
     return;
   }
   var rows = '';
   for (var i = 0; i < lista.length; i++) {
     var t = lista[i];
-    rows += '<tr style="cursor:pointer" class="tkt-row" data-id="' + escapeHtml(t.id) + '">' +
-      '<td><code style="font-size:11px">' + escapeHtml(t.id) + '</code></td>' +
-      '<td>' + escapeHtml(t.company_name || t.company_id || '') + '</td>' +
-      '<td><b>' + escapeHtml(t.title || '') + '</b></td>' +
-      '<td style="text-align:center"><span class="badge ' + (t.priority === 'CRITICA' || t.priority === 'ALTA' ? 'badge-red' : 'badge-gray') + '">' + escapeHtml(t.priority || '') + '</span></td>' +
-      '<td style="text-align:center"><span class="badge ' + _tktBadge(t.status) + '">' + escapeHtml(t.status || '') + '</span></td>' +
-      '<td style="text-align:center">' + _tktSlaInfo(t) + '</td>' +
-      '<td style="text-align:right;font-size:12px">' +
+    rows += '<tr style="cursor:pointer" class="sga-table__row tkt-row" data-id="' + escapeHtml(t.id) + '">' +
+      '<td class="sga-table__td"><code style="font-size:11px">' + escapeHtml(t.id) + '</code></td>' +
+      '<td class="sga-table__td">' + escapeHtml(t.company_name || t.company_id || '') + '</td>' +
+      '<td class="sga-table__td"><b>' + escapeHtml(t.title || '') + '</b></td>' +
+      '<td class="sga-table__td" style="text-align:center"><span class="badge ' + (t.priority === 'CRITICA' || t.priority === 'ALTA' ? 'badge-red' : 'badge-gray') + '">' + escapeHtml(t.priority || '') + '</span></td>' +
+      '<td class="sga-table__td" style="text-align:center"><span class="badge ' + _tktBadge(t.status) + '">' + escapeHtml(t.status || '') + '</span></td>' +
+      '<td class="sga-table__td" style="text-align:center">' + _tktSlaInfo(t) + '</td>' +
+      '<td class="sga-table__td" style="text-align:right;font-size:12px">' +
         (Number(t.custo_total) > 0 ? formatBRL(Number(t.custo_total)) : '') +
         (t.cobranca_status === 'PENDENTE' ? ' <span class="badge badge-red" style="font-size:10px">a cobrar</span>' : '') +
         (t.cobranca_status === 'COBRADO' ? ' <span class="badge badge-green" style="font-size:10px">✓</span>' : '') +
       '</td>' +
-      '<td style="font-size:11px;color:#98a2b3">' + formatDate(t.opened_at || t.created_at) + '</td>' +
+      '<td class="sga-table__td" style="font-size:11px;color:var(--sga-text-soft)">' + formatDate(t.opened_at || t.created_at) + '</td>' +
     '</tr>';
   }
   w.innerHTML =
-    '<div class="card"><div class="table-wrap"><table class="data-table">' +
-      '<thead><tr><th>ID</th><th>Cliente</th><th>Título</th><th>Prior.</th><th>Status</th><th>SLA</th><th>Custo</th><th>Aberto em</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody></table></div></div>';
+    '<div class="sga-table-wrap"><table class="sga-table sga-table--compact">' +
+      '<thead><tr>' +
+        '<th class="sga-table__th">ID</th>' +
+        '<th class="sga-table__th">Cliente</th>' +
+        '<th class="sga-table__th">Título</th>' +
+        '<th class="sga-table__th">Prior.</th>' +
+        '<th class="sga-table__th">Status</th>' +
+        '<th class="sga-table__th">SLA</th>' +
+        '<th class="sga-table__th">Custo</th>' +
+        '<th class="sga-table__th">Aberto em</th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>';
   var trs = w.querySelectorAll('.tkt-row');
   for (var b = 0; b < trs.length; b++) {
     trs[b].addEventListener('click', function () { _tktOpen(this.getAttribute('data-id')); });
@@ -128,19 +161,20 @@ function _tktOpen(ticketId) {
   }
   var area = document.getElementById('section-content');
   area.innerHTML =
-    '<button class="btn btn-ghost btn-sm" id="tkt-voltar" style="margin-bottom:10px">← Voltar aos chamados</button>' +
-    '<div class="card"><div class="card-body" id="tkt-m-body"><div class="spinner-ring" style="margin:20px auto"></div></div></div>';
+    '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tkt-voltar" style="margin-bottom:10px">← Voltar aos chamados</button>' +
+    '<div class="card"><div class="card-body" id="tkt-m-body"></div></div>';
+  (function(){ var sk = document.getElementById('tkt-m-body'); if (sk && window.SGA && SGA.skeleton) SGA.skeleton(sk, { type: 'lines', count: 4 }); })();
   document.getElementById('tkt-voltar').addEventListener('click', function () {
     renderChamados(document.getElementById('section-content'));
   });
   google.script.run.withSuccessHandler(function (r) {
     if (!r || !r.ok) {
-      document.getElementById('tkt-m-body').innerHTML = '<p style="color:#b42318">Erro: ' + escapeHtml(r ? r.error : 'sem resposta') + '</p>';
+      document.getElementById('tkt-m-body').innerHTML = '<p style="color:var(--sga-color-danger)">Erro: ' + escapeHtml(r ? r.error : 'sem resposta') + '</p>';
       return;
     }
     _tktRenderDetail(r.data);
   }).withFailureHandler(function (e) {
-    document.getElementById('tkt-m-body').innerHTML = '<p style="color:#b42318">Falha: ' + escapeHtml(e.message || e) + '</p>';
+    document.getElementById('tkt-m-body').innerHTML = '<p style="color:var(--sga-color-danger)">Falha: ' + escapeHtml(e.message || e) + '</p>';
   }).Api_tktGetDetail(ticketId);
 }
 
@@ -159,24 +193,24 @@ function _tktRenderDetail(d) {
 
   var feed = '';
   if (t.description) {
-    feed += '<div style="background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12.5px">' +
+    feed += '<div style="background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-md);padding:8px 12px;margin-bottom:6px;font-size:12.5px">' +
       '<b>Descrição (1D):</b> ' + escapeHtml(t.description) + '</div>';
   }
   for (var i = 0; i < d.updates.length; i++) {
     var u = d.updates[i];
     var icon = u.tipo === 'ANEXO' ? '📎' : (u.tipo === 'STATUS' ? '🔁' : (u.tipo === 'CUSTO' ? '💸' : (u.tipo === 'SISTEMA' ? '🏁' : '💬')));
-    feed += '<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px">' +
+    feed += '<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--sga-border-default);font-size:12.5px">' +
       '<span>' + icon + '</span>' +
       '<div style="flex:1">' +
         (u.anexo_url
           ? '<a href="' + escapeHtml(u.anexo_url) + '" target="_blank">' + escapeHtml(u.anexo_name || 'anexo') + '</a> '
           : '') +
         escapeHtml(u.texto || '') +
-        (u.tipo === 'CUSTO' && u.valor ? ' <b style="color:#b42318">' + formatBRL(Number(u.valor)) + '</b>' : '') +
-        '<div style="color:#98a2b3;font-size:11px">' + formatDate(u.timestamp) + ' · ' + escapeHtml(u.user_name || '') + '</div>' +
+        (u.tipo === 'CUSTO' && u.valor ? ' <b style="color:var(--sga-color-danger)">' + formatBRL(Number(u.valor)) + '</b>' : '') +
+        '<div style="color:var(--sga-text-soft);font-size:11px">' + formatDate(u.timestamp) + ' · ' + escapeHtml(u.user_name || '') + '</div>' +
       '</div></div>';
   }
-  if (!feed) feed = '<p style="color:#98a2b3;font-size:12px">Sem interações ainda — alimente o chamado abaixo.</p>';
+  if (!feed) feed = '<p style="color:var(--sga-text-soft);font-size:12px">Sem interações ainda — alimente o chamado abaixo.</p>';
 
   b.innerHTML =
     '<h2 style="margin:0 0 10px;font-size:19px">🛠️ ' + escapeHtml(t.id) + ' — ' + escapeHtml(t.title || '') + '</h2>' +
@@ -196,17 +230,17 @@ function _tktRenderDetail(d) {
         _tktSlaInfo(t) +
       '</div>' +
     '</div>' +
-    '<div style="font-size:11.5px;color:#667085;margin:6px 0 12px">📋 ' + (_TKT_8D_HINT[t.status] || '') + '</div>' +
-    (t.root_cause ? '<div style="background:#ecfdf3;border:1px solid #abefc6;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12.5px"><b>Causa raiz (4D):</b> ' + escapeHtml(t.root_cause) + (t.resolution_notes ? '<br><b>Solução (5D):</b> ' + escapeHtml(t.resolution_notes) : '') + '</div>' : '') +
+    '<div style="font-size:11.5px;color:var(--sga-text-muted);margin:6px 0 12px">📋 ' + (_TKT_8D_HINT[t.status] || '') + '</div>' +
+    (t.root_cause ? '<div style="background:var(--sga-color-success-bg);border:1px solid var(--sga-color-success-border);border-radius:var(--sga-radius-md);padding:8px 12px;margin-bottom:10px;font-size:12.5px"><b>Causa raiz (4D):</b> ' + escapeHtml(t.root_cause) + (t.resolution_notes ? '<br><b>Solução (5D):</b> ' + escapeHtml(t.resolution_notes) : '') + '</div>' : '') +
     '<div id="tkt-flow-btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>' +
     '<div id="tkt-inline-form" style="margin-bottom:14px"></div>' +
     '<div class="form-label" style="font-weight:700;margin-bottom:4px">Linha do tempo do chamado</div>' +
     '<div style="max-height:300px;overflow:auto;margin-bottom:12px">' + feed + '</div>' +
     '<div style="display:flex;gap:8px;align-items:flex-start">' +
-      '<textarea class="form-input" id="tkt-comment" rows="2" placeholder="alimentar o chamado: diagnóstico, contenção, contato com o cliente..." style="flex:1"></textarea>' +
+      '<textarea class="sga-form-textarea" id="tkt-comment" rows="2" placeholder="alimentar o chamado: diagnóstico, contenção, contato com o cliente..." style="flex:1"></textarea>' +
       '<div style="display:flex;flex-direction:column;gap:6px">' +
-        '<button class="btn btn-primary btn-sm" id="tkt-btn-comment">💬 Comentar</button>' +
-        '<label class="btn btn-ghost btn-sm" style="text-align:center;cursor:pointer">📎 Anexar<input type="file" id="tkt-file" style="display:none"></label>' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="tkt-btn-comment">💬 Comentar</button>' +
+        '<label class="sga-btn sga-btn--ghost sga-btn--sm" style="text-align:center;cursor:pointer">📎 Anexar<input type="file" id="tkt-file" style="display:none"></label>' +
       '</div>' +
     '</div>';
 
@@ -219,25 +253,25 @@ function _tktRenderFlowButtons(t) {
   var box = document.getElementById('tkt-flow-btns');
   var btns = [];
   if (t.status === 'ABERTO') {
-    btns.push({ label: '▶ Iniciar atendimento', cls: 'btn-primary', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
+    btns.push({ label: '▶ Iniciar atendimento', cls: 'sga-btn--primary', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
   } else if (t.status === 'EM_ATENDIMENTO') {
-    btns.push({ label: '⏸ Aguardando cliente', cls: 'btn-ghost', fn: function () { _tktMudarStatus('AGUARDANDO_CLIENTE'); } });
-    btns.push({ label: '✅ Resolver (solução + causa raiz)', cls: 'btn-success', fn: _tktResolver });
+    btns.push({ label: '⏸ Aguardando cliente', cls: 'sga-btn--ghost', fn: function () { _tktMudarStatus('AGUARDANDO_CLIENTE'); } });
+    btns.push({ label: '✅ Resolver (solução + causa raiz)', cls: 'sga-btn--primary', fn: _tktResolver });
   } else if (t.status === 'AGUARDANDO_CLIENTE') {
-    btns.push({ label: '▶ Retomar atendimento', cls: 'btn-primary', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
-    btns.push({ label: '✅ Resolver (solução + causa raiz)', cls: 'btn-success', fn: _tktResolver });
+    btns.push({ label: '▶ Retomar atendimento', cls: 'sga-btn--primary', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
+    btns.push({ label: '✅ Resolver (solução + causa raiz)', cls: 'sga-btn--primary', fn: _tktResolver });
   } else if (t.status === 'RESOLVIDO') {
-    btns.push({ label: '🔒 Fechar (origem do erro + cobrança)', cls: 'btn-primary', fn: function () { _tktFechar(t); } });
-    btns.push({ label: '↩ Reabrir atendimento', cls: 'btn-ghost', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
+    btns.push({ label: '🔒 Fechar (origem do erro + cobrança)', cls: 'sga-btn--primary', fn: function () { _tktFechar(t); } });
+    btns.push({ label: '↩ Reabrir atendimento', cls: 'sga-btn--ghost', fn: function () { _tktMudarStatus('EM_ATENDIMENTO'); } });
   } else if (t.status === 'FECHADO' && t.cobranca_status === 'PENDENTE') {
-    btns.push({ label: '✔ Marcar cobrança realizada (' + formatBRL(Number(t.custo_total || 0)) + ' de ' + t.cobranca_de + ')', cls: 'btn-success', fn: _tktMarcarCobrado });
+    btns.push({ label: '✔ Marcar cobrança realizada (' + formatBRL(Number(t.custo_total || 0)) + ' de ' + t.cobranca_de + ')', cls: 'sga-btn--primary', fn: _tktMarcarCobrado });
   }
   if (t.status === 'EM_ATENDIMENTO' || t.status === 'AGUARDANDO_CLIENTE' || t.status === 'RESOLVIDO') {
-    btns.push({ label: '💸 Lançar custo', cls: 'btn-ghost', fn: _tktLancarCusto });
+    btns.push({ label: '💸 Lançar custo', cls: 'sga-btn--ghost', fn: _tktLancarCusto });
   }
   var html = '';
   for (var i = 0; i < btns.length; i++) {
-    html += '<button class="btn ' + btns[i].cls + ' btn-sm" data-fi="' + i + '">' + btns[i].label + '</button>';
+    html += '<button class="sga-btn ' + btns[i].cls + ' sga-btn--sm" data-fi="' + i + '">' + btns[i].label + '</button>';
   }
   box.innerHTML = html;
   var els = box.querySelectorAll('button');
@@ -275,13 +309,13 @@ function _tktResolver() {
   _tktBusy(false);
   var box = document.getElementById('tkt-inline-form');
   box.innerHTML =
-    '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">' +
+    '<div style="background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-md);padding:12px 14px">' +
       '<div style="font-weight:700;margin-bottom:8px">✅ Resolver — validação da solução (4D/5D)</div>' +
-      '<label style="font-size:12px;display:block">Solução aplicada *<br><textarea class="form-input" id="tktf-solucao" rows="2" placeholder="o que resolveu o problema"></textarea></label>' +
-      '<label style="font-size:12px;display:block;margin-top:6px">Causa raiz *<br><input class="form-input" id="tktf-causa" placeholder="por que o problema aconteceu"></label>' +
+      '<label style="font-size:12px;display:block">Solução aplicada *<br><textarea class="sga-form-textarea" id="tktf-solucao" rows="2" placeholder="o que resolveu o problema"></textarea></label>' +
+      '<label style="font-size:12px;display:block;margin-top:6px">Causa raiz *<br><input class="sga-form-input" id="tktf-causa" placeholder="por que o problema aconteceu"></label>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
-        '<button class="btn btn-success btn-sm" id="tktf-resolver-ok">Confirmar resolução</button>' +
-        '<button class="btn btn-ghost btn-sm" id="tktf-cancel">Cancelar</button>' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="tktf-resolver-ok">Confirmar resolução</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tktf-cancel">Cancelar</button>' +
       '</div>' +
     '</div>';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -308,28 +342,28 @@ function _tktFechar(t) {
     return '<label style="display:block;font-size:12.5px;margin:3px 0"><input type="radio" name="' + name + '" value="' + val + '"' + (checked ? ' checked' : '') + '> ' + label + '</label>';
   };
   box.innerHTML =
-    '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">' +
+    '<div style="background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-md);padding:12px 14px">' +
       '<div style="font-weight:700;margin-bottom:8px">🔒 Fechar chamado — endgate (classificação obrigatória)</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
-        '<div><div style="font-size:11px;font-weight:700;color:#14335f;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Onde o erro surgiu? *</div>' +
+        '<div><div style="font-size:11px;font-weight:700;color:var(--sga-color-primary-dark);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Onde o erro surgiu? *</div>' +
           radio('tktf-origem', 'CLIENTE', '👤 Cliente — mau uso, infra, operação', true) +
           radio('tktf-origem', 'HYDRONIX', '🏭 Hydronix — defeito de fabricação (garantia)') +
           radio('tktf-origem', 'ALLEGRO', '🔧 Allegro — especificação/instalação/config') +
           radio('tktf-origem', 'NAO_IDENTIFICADO', '❓ Não identificado / sem defeito') +
         '</div>' +
         (custo > 0
-          ? '<div><div style="font-size:11px;font-weight:700;color:#14335f;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Quem paga ' + formatBRL(custo) + '? *</div>' +
+          ? '<div><div style="font-size:11px;font-weight:700;color:var(--sga-color-primary-dark);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Quem paga ' + formatBRL(custo) + '? *</div>' +
             radio('tktf-cobranca', 'HYDRONIX', '🏭 Hydronix — repassar ao fabricante') +
             radio('tktf-cobranca', 'CLIENTE', '👤 Cliente — faturar') +
             radio('tktf-cobranca', 'ALLEGRO', '🔵 Allegro — absorver', true) +
           '</div>'
-          : '<div style="font-size:12px;color:#98a2b3;align-self:center">Sem custos lançados neste chamado.</div>') +
+          : '<div style="font-size:12px;color:var(--sga-text-soft);align-self:center">Sem custos lançados neste chamado.</div>') +
       '</div>' +
       '<label style="font-size:12px;display:block;margin-top:8px">Lição aprendida (7D/8D — opcional)<br>' +
-        '<input class="form-input" id="tktf-licao" placeholder="o que evita a reincidência?"></label>' +
+        '<input class="sga-form-input" id="tktf-licao" placeholder="o que evita a reincidência?"></label>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
-        '<button class="btn btn-primary btn-sm" id="tktf-fechar-ok">Fechar chamado</button>' +
-        '<button class="btn btn-ghost btn-sm" id="tktf-cancel2">Cancelar</button>' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="tktf-fechar-ok">Fechar chamado</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tktf-cancel2">Cancelar</button>' +
       '</div>' +
     '</div>';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -361,15 +395,15 @@ function _tktLancarCusto() {
   _tktBusy(false);
   var box = document.getElementById('tkt-inline-form');
   box.innerHTML =
-    '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">' +
+    '<div style="background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-md);padding:12px 14px">' +
       '<div style="font-weight:700;margin-bottom:8px">💸 Lançar custo de resolução</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-        '<input class="form-input" id="tktf-custo-desc" placeholder="peça, deslocamento, horas técnicas..." style="flex:1;min-width:220px">' +
-        '<input class="form-input" id="tktf-custo-val" type="number" min="0" step="0.01" placeholder="valor R$" style="width:130px">' +
-        '<button class="btn btn-primary btn-sm" id="tktf-custo-ok">Lançar</button>' +
-        '<button class="btn btn-ghost btn-sm" id="tktf-cancel3">Cancelar</button>' +
+        '<input class="sga-form-input" id="tktf-custo-desc" placeholder="peça, deslocamento, horas técnicas..." style="flex:1;min-width:220px">' +
+        '<input class="sga-form-input" id="tktf-custo-val" type="number" min="0" step="0.01" placeholder="valor R$" style="width:130px">' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="tktf-custo-ok">Lançar</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tktf-cancel3">Cancelar</button>' +
       '</div>' +
-      '<p style="font-size:11px;color:#98a2b3;margin:6px 0 0">Dica: despesas com comprovante lance pela guia Despesas vinculando a este chamado — viram custo aqui automaticamente.</p>' +
+      '<p style="font-size:11px;color:var(--sga-text-soft);margin:6px 0 0">Dica: despesas com comprovante lance pela guia Despesas vinculando a este chamado — viram custo aqui automaticamente.</p>' +
     '</div>';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   document.getElementById('tktf-cancel3').addEventListener('click', function () { box.innerHTML = ''; });
@@ -388,13 +422,21 @@ function _tktLancarCusto() {
 }
 
 function _tktMarcarCobrado() {
-  if (!confirm('Confirmar que a cobrança foi realizada (NF emitida / reembolso recebido)?')) { _tktBusy(false); return; }
-  google.script.run.withSuccessHandler(function (r) {
-    if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); _tktBusy(false); return; }
-    showAlert('Cobrança registrada como realizada ✓', 'success');
-    _tktRefresh();
-  }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); _tktBusy(false); })
-  .Api_tktMarcarCobrado(_tktDetailId);
+  var doMark = function () {
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); _tktBusy(false); return; }
+      showAlert('Cobrança registrada como realizada ✓', 'success');
+      _tktRefresh();
+    }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); _tktBusy(false); })
+    .Api_tktMarcarCobrado(_tktDetailId);
+  };
+  if (window.SGA && SGA.confirm) {
+    SGA.confirm('Confirmar que a cobrança foi realizada (NF emitida / reembolso recebido)?', { title: 'Confirmar cobrança' })
+      .then(function (ok) { if (!ok) { _tktBusy(false); return; } doMark(); });
+  } else {
+    if (!confirm('Confirmar que a cobrança foi realizada (NF emitida / reembolso recebido)?')) { _tktBusy(false); return; }
+    doMark();
+  }
 }
 
 function _tktComentar() {

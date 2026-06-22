@@ -27,12 +27,12 @@ function _buildContactsShell() {
     '    <div class="page-title">Contatos</div>',
     '    <div class="page-subtitle">Gerencie os contatos da sua base</div>',
     '  </div>',
-    '  <button class="btn btn-primary" onclick="_openNewContactModal()">+ Novo Contato</button>',
+    '  <button class="sga-btn sga-btn--primary" onclick="_openNewContactModal()">+ Novo Contato</button>',
     '</div>',
 
     '<div class="card" style="margin-bottom:16px;">',
     '  <div class="card-body" style="padding:12px 16px;">',
-    '    <input id="contacts-search" class="form-input" type="text"',
+    '    <input id="contacts-search" class="sga-form-input" type="text"',
     '      placeholder="Buscar por nome, e-mail ou empresa..."',
     '      oninput="_filterContacts()"',
     '      style="max-width:380px;" />',
@@ -41,7 +41,7 @@ function _buildContactsShell() {
 
     '<div id="contacts-stats" class="card" style="margin-bottom:16px; display:none;">',
     '  <div class="card-body" style="padding:10px 16px; display:flex; gap:24px; align-items:center;">',
-    '    <span id="contacts-count-label" style="font-size:14px; color:#555;"></span>',
+    '    <span id="contacts-count-label" style="font-size:14px; color:var(--sga-text-muted);"></span>',
     '  </div>',
     '</div>',
 
@@ -62,12 +62,13 @@ function _buildContactsShell() {
 
 function _loadContacts() {
   var wrap = document.getElementById('contacts-table-wrap');
-  wrap.innerHTML = '<div style="padding:32px; text-align:center;"><div class="spinner-ring"></div></div>';
+  if (window.SGA && SGA.skeleton) SGA.skeleton(wrap, { type: 'list', count: 5 });
+  else wrap.innerHTML = '';
 
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res || !res.ok) {
-        wrap.innerHTML = '<div class="empty-state"><div class="empty-title">Erro ao carregar contatos</div><div class="empty-desc">' + escapeHtml((res && res.error) || 'Erro desconhecido') + '</div></div>';
+        wrap.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div><h3 class="sga-empty__title">Erro ao carregar contatos</h3><p class="sga-empty__text">' + escapeHtml((res && res.error) || 'Erro desconhecido') + '</p></div>';
         return;
       }
       _contacts = res.data || [];
@@ -75,7 +76,7 @@ function _loadContacts() {
       _ct_updateStats(_contacts.length);
     })
     .withFailureHandler(function(err) {
-      wrap.innerHTML = '<div class="empty-state"><div class="empty-title">Falha na requisição</div><div class="empty-desc">' + escapeHtml(String(err)) + '</div></div>';
+      wrap.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div><h3 class="sga-empty__title">Falha na requisição</h3><p class="sga-empty__text">' + escapeHtml(String(err)) + '</p></div>';
     })
     .Api_getContacts();
 }
@@ -88,13 +89,25 @@ function _renderContactsTable(list) {
   var wrap = document.getElementById('contacts-table-wrap');
 
   if (!list || list.length === 0) {
-    wrap.innerHTML = [
-      '<div class="empty-state">',
-      '  <div class="empty-icon">👥</div>',
-      '  <div class="empty-title">Nenhum contato encontrado</div>',
-      '  <div class="empty-desc">Adicione o primeiro contato clicando em "Novo Contato".</div>',
-      '</div>'
-    ].join('\n');
+    if (window.SGA && SGA.empty) {
+      SGA.empty(wrap, {
+        icon: '👥',
+        title: 'Nenhum contato cadastrado',
+        text: 'Adicione o primeiro contato para vincular pessoas às empresas e oportunidades.',
+        action: {
+          label: '+ Novo Contato',
+          onClick: function () { if (typeof _openNewContactModal === 'function') _openNewContactModal(); }
+        }
+      });
+    } else {
+      wrap.innerHTML = [
+        '<div class="sga-empty">',
+        '  <div class="sga-empty__icon">👥</div>',
+        '  <h3 class="sga-empty__title">Nenhum contato cadastrado</h3>',
+        '  <p class="sga-empty__text">Adicione o primeiro contato clicando em "Novo Contato".</p>',
+        '</div>'
+      ].join('\n');
+    }
     return;
   }
 
@@ -112,7 +125,7 @@ function _renderContactsTable(list) {
       '  <td>' + escapeHtml(c.email || '') + '</td>',
       '  <td>' + escapeHtml(c.role || '') + '</td>',
       '  <td>' + activeBadge + '</td>',
-      '  <td><button class="btn btn-ghost btn-sm" onclick="_openContactDetail(' + "'" + escapeHtml(c.id) + "'" + ')">Ver</button></td>',
+      '  <td><button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_openContactDetail(' + "'" + escapeHtml(c.id) + "'" + ')">Ver</button></td>',
       '</tr>'
     ].join('\n');
   }
@@ -187,7 +200,7 @@ function _ct_buildDetailModal() {
     '    <h2 class="card-title" style="margin:0 0 20px 0;">Detalhes do Contato</h2>',
     '    <div id="contacts-detail-body"></div>',
     '    <div style="margin-top:24px; display:flex; justify-content:flex-end; gap:8px;">',
-    '      <button class="btn btn-ghost" onclick="_ct_closeDetailModal()">Fechar</button>',
+    '      <button class="sga-btn sga-btn--ghost" onclick="_ct_closeDetailModal()">Fechar</button>',
     '    </div>',
     '  </div>',
     '</div>'
@@ -286,8 +299,8 @@ function _buildNewContactModal() {
     '      <div id="contacts-new-error" style="display:none; color:#e53e3e; font-size:13px; margin-bottom:12px;"></div>',
 
     '      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">',
-    '        <button type="button" class="btn btn-ghost" onclick="_closeNewContactModal()">Cancelar</button>',
-    '        <button type="submit" id="nc-submit-btn" class="btn btn-primary">Salvar</button>',
+    '        <button type="button" class="sga-btn sga-btn--ghost" onclick="_closeNewContactModal()">Cancelar</button>',
+    '        <button type="submit" id="nc-submit-btn" class="sga-btn sga-btn--primary">Salvar</button>',
     '      </div>',
     '    </form>',
     '  </div>',

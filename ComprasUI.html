@@ -16,29 +16,32 @@ function renderCompras(area) {
         '<p class="page-subtitle">Ordens de compra para Hydronix e fornecedores nacionais.</p>' +
       '</div>' +
       '<div style="display:flex;gap:8px">' +
-        '<button class="btn btn-success" id="po-btn-from-prop">📄→📦 Gerar da proposta</button>' +
-        '<button class="btn btn-primary" id="po-btn-new">+ Nova PO</button>' +
+        '<button class="sga-btn sga-btn--secondary" id="po-btn-from-prop">📄→📦 Gerar da proposta</button>' +
+        '<button class="sga-btn sga-btn--primary" id="po-btn-new">+ Nova PO</button>' +
       '</div>' +
     '</div>' +
     '<div id="po-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
-    '<div id="po-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+    '<div id="po-list-wrap"></div>';
+  (function(){ var sk = document.getElementById('po-list-wrap'); if (sk && window.SGA && SGA.skeleton) SGA.skeleton(sk, { type: 'list', count: 5 }); })();
   document.getElementById('po-btn-new').addEventListener('click', _poShowForm);
   document.getElementById('po-btn-from-prop').addEventListener('click', _poFromProposalForm);
   _poLoad();
 }
 
 function _poLoad() {
+  var wrap = document.getElementById('po-list-wrap');
+  if (wrap && window.SGA && SGA.skeleton) SGA.skeleton(wrap, { type: 'list', count: 5 });
   google.script.run.withSuccessHandler(function (r) {
     _poList = (r && r.ok && r.data) ? r.data : [];
     _poRenderList();
   }).withFailureHandler(function (e) {
     var w = document.getElementById('po-list-wrap');
-    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+    if (w) w.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div><h3 class="sga-empty__title">Não foi possível carregar</h3><p class="sga-empty__text">' + escapeHtml(e.message || e) + '</p></div>';
   }).Api_poGetAll();
 }
 
 function _poBadge(st) {
-  var map = { RASCUNHO: 'badge-gray', EMITIDA: 'badge-blue', RECEBIDA_PARCIAL: 'badge-yellow', RECEBIDA: 'badge-green', CANCELADA: 'badge-red' };
+  var map = { RASCUNHO: 'badge-gray', APROVADA: 'badge-yellow', EMITIDA: 'badge-blue', RECEBIDA_PARCIAL: 'badge-yellow', RECEBIDA: 'badge-green', CANCELADA: 'badge-red' };
   return map[st] || 'badge-gray';
 }
 
@@ -46,9 +49,26 @@ function _poRenderList() {
   var w = document.getElementById('po-list-wrap');
   if (!w) return;
   if (!_poList.length) {
-    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
-      '<div class="empty-icon">📦</div><div class="empty-title">Nenhuma ordem de compra</div>' +
-      '<div class="empty-desc">Crie a primeira PO com o botão acima.</div></div></div></div>';
+    if (window.SGA && SGA.empty) {
+      SGA.empty(w, {
+        icon: '🛒',
+        title: 'Nenhuma ordem de compra ainda',
+        text: 'Crie a primeira PO para começar a registrar pedidos a fornecedores.',
+        action: {
+          label: '+ Nova PO',
+          onClick: function () {
+            var btn = document.getElementById('po-btn-new');
+            if (btn) btn.click();
+          }
+        }
+      });
+    } else {
+      w.innerHTML = '<div class="sga-empty">' +
+        '<div class="sga-empty__icon">🛒</div>' +
+        '<h3 class="sga-empty__title">Nenhuma ordem de compra ainda</h3>' +
+        '<p class="sga-empty__text">Crie a primeira PO com o botão acima.</p>' +
+      '</div>';
+    }
     return;
   }
   var rows = '';
@@ -56,46 +76,105 @@ function _poRenderList() {
     var p = _poList[i];
     var nItems = 0;
     try { nItems = (JSON.parse(p.items_json || '[]') || []).length; } catch (e) {}
-    rows += '<tr>' +
-      '<td><b>' + escapeHtml(p.po_number || p.id) + '</b></td>' +
-      '<td style="font-size:12px">' + escapeHtml(p.supplier_id || '') + '</td>' +
-      '<td><span class="badge ' + _poBadge(p.status) + '">' + escapeHtml(p.status || '') + '</span></td>' +
-      '<td style="text-align:right">' + escapeHtml(p.currency || 'USD') + ' ' + (Number(p.total_amount || 0)).toFixed(2) + '</td>' +
-      '<td style="text-align:center">' + nItems + '</td>' +
-      '<td style="font-size:12px">' + escapeHtml(p.proposal_id || '') + '</td>' +
-      '<td style="white-space:nowrap">' +
+    rows += '<tr class="sga-table__row">' +
+      '<td class="sga-table__td"><b>' + escapeHtml(p.po_number || p.id) + '</b></td>' +
+      '<td class="sga-table__td" style="font-size:12px">' + escapeHtml(p.supplier_id || '') + '</td>' +
+      '<td class="sga-table__td"><span class="badge ' + _poBadge(p.status) + '">' + escapeHtml(p.status || '') + '</span></td>' +
+      '<td class="sga-table__td" style="text-align:right">' + escapeHtml(p.currency || 'USD') + ' ' + (Number(p.total_amount || 0)).toFixed(2) + '</td>' +
+      '<td class="sga-table__td" style="text-align:center">' + nItems + '</td>' +
+      '<td class="sga-table__td" style="font-size:12px">' + escapeHtml(p.proposal_id || '') + '</td>' +
+      '<td class="sga-table__td sga-table__td--actions" style="white-space:nowrap">' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm po-view" data-id="' + escapeHtml(p.id) + '">📄 Ver</button> ' +
         (p.status === 'RASCUNHO'
-          ? '<button class="btn btn-primary btn-sm po-emit" data-id="' + escapeHtml(p.id) + '">Emitir</button> ' +
-            '<button class="btn btn-ghost btn-sm po-cancel" data-id="' + escapeHtml(p.id) + '">Cancelar</button>'
-          : '') +
+          ? '<button class="sga-btn sga-btn--secondary sga-btn--sm po-approve" data-id="' + escapeHtml(p.id) + '">Aprovar</button> ' +
+            '<button class="sga-btn sga-btn--ghost sga-btn--sm po-cancel" data-id="' + escapeHtml(p.id) + '">Cancelar</button>'
+          : (p.status === 'APROVADA'
+            ? '<button class="sga-btn sga-btn--primary sga-btn--sm po-emit" data-id="' + escapeHtml(p.id) + '">Emitir + enviar</button> ' +
+              '<button class="sga-btn sga-btn--ghost sga-btn--sm po-cancel" data-id="' + escapeHtml(p.id) + '">Cancelar</button>'
+            : '')) +
       '</td>' +
     '</tr>';
   }
   w.innerHTML =
-    '<div class="card"><div class="table-wrap"><table class="data-table">' +
-      '<thead><tr><th>PO</th><th>Fornecedor</th><th>Status</th><th style="text-align:right">Total</th><th>Itens</th><th>Proposta</th><th></th></tr></thead>' +
-      '<tbody>' + rows + '</tbody></table></div></div>';
+    '<div class="sga-table-wrap"><table class="sga-table">' +
+      '<thead><tr>' +
+        '<th class="sga-table__th">PO</th>' +
+        '<th class="sga-table__th">Fornecedor</th>' +
+        '<th class="sga-table__th">Status</th>' +
+        '<th class="sga-table__th" style="text-align:right">Total</th>' +
+        '<th class="sga-table__th">Itens</th>' +
+        '<th class="sga-table__th">Proposta</th>' +
+        '<th class="sga-table__th sga-table__th--actions"></th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>';
 
+  var views = w.querySelectorAll('.po-view');
+  for (var v = 0; v < views.length; v++) {
+    views[v].addEventListener('click', function () { _poVerDocumento(this.getAttribute('data-id')); });
+  }
+  var approves = w.querySelectorAll('.po-approve');
+  for (var ap = 0; ap < approves.length; ap++) {
+    approves[ap].addEventListener('click', function () {
+      var id = this.getAttribute('data-id');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+          showAlert('PO aprovada! Agora você pode emitir e enviar ao fornecedor.', 'success'); _poLoad();
+        })
+        .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+        .Api_poAprovar(id);
+    });
+  }
   var emits = w.querySelectorAll('.po-emit');
   for (var a = 0; a < emits.length; a++) {
     emits[a].addEventListener('click', function () {
       var id = this.getAttribute('data-id');
-      google.script.run.withSuccessHandler(function (res) {
-        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
-        showAlert('PO emitida!', 'success'); _poLoad();
-      }).Api_poEmitir(id);
+      var go = function () {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+            var em = res.email || {};
+            showAlert('PO emitida!' + (em.sent ? ' Documento enviado para ' + em.to : (em.error ? ' (e-mail NÃO enviado: ' + em.error + ')' : '')), em.sent ? 'success' : 'warning');
+            _poLoad();
+          })
+          .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+          .Api_poEmitir(id);
+      };
+      var msg = 'Emitir esta PO e enviar o documento por e-mail ao fornecedor cadastrado?';
+      if (window.SGA && SGA.confirm) { SGA.confirm(msg, { title: 'Emitir + enviar', okLabel: 'Emitir' }).then(function (ok) { if (ok) go(); }); }
+      else if (confirm(msg)) { go(); }
     });
   }
   var cancels = w.querySelectorAll('.po-cancel');
   for (var c = 0; c < cancels.length; c++) {
     cancels[c].addEventListener('click', function () {
       var id = this.getAttribute('data-id');
-      var motivo = prompt('Motivo do cancelamento:');
-      if (!motivo) return;
-      google.script.run.withSuccessHandler(function (res) {
-        if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
-        showAlert('PO cancelada.', 'success'); _poLoad();
-      }).Api_poCancelar(id, motivo);
+      var doCancel = function (motivo) {
+        if (!motivo) return;
+        google.script.run.withSuccessHandler(function (res) {
+          if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+          showAlert('PO cancelada.', 'success'); _poLoad();
+        }).Api_poCancelar(id, motivo);
+      };
+      if (window.SGA && SGA.openModal) {
+        SGA.openModal({
+          title: 'Cancelar PO',
+          size: 'sm',
+          body: '<div class="sga-form-group"><label class="sga-form-label" for="po-cancel-motivo">Motivo do cancelamento</label>' +
+                '<textarea id="po-cancel-motivo" class="sga-form-textarea" rows="3" data-sga-autofocus placeholder="explique o motivo..."></textarea></div>',
+          footer: [
+            { label: 'Voltar', variant: 'ghost', onClick: 'close' },
+            { label: 'Cancelar PO', variant: 'danger', primary: true, onClick: function (ctx) {
+              var v = (ctx.modal.querySelector('#po-cancel-motivo').value || '').trim();
+              if (!v) { showAlert('Informe o motivo.', 'warning'); return false; }
+              doCancel(v);
+            }}
+          ]
+        });
+      } else {
+        var motivo = prompt('Motivo do cancelamento:');
+        doCancel(motivo);
+      }
     });
   }
 }
@@ -108,11 +187,11 @@ function _poFromProposalForm() {
   w.innerHTML =
     '<div class="card"><div class="card-header"><div class="card-title">Gerar PO de proposta FECHADA</div></div>' +
     '<div class="card-body"><div style="display:flex;gap:10px;flex-wrap:wrap">' +
-      '<select class="form-input" id="pofp-prop" style="flex:1;min-width:220px"><option value="">Carregando propostas...</option></select>' +
-      '<select class="form-input" id="pofp-sup" style="flex:1;min-width:220px"><option value="">Carregando fornecedores...</option></select>' +
-      '<button class="btn btn-primary" id="pofp-go">Gerar</button>' +
-      '<button class="btn btn-ghost" id="pofp-cancel">Cancelar</button>' +
-    '</div><p style="font-size:12px;color:#94a3b8;margin:8px 0 0">Os itens Hydronix da proposta entram com preço de COMPRA (tabela − desconto). Linhas de serviço são ignoradas.</p></div></div>';
+      '<select class="sga-form-select" id="pofp-prop" style="flex:1;min-width:220px"><option value="">Carregando propostas...</option></select>' +
+      '<select class="sga-form-select" id="pofp-sup" style="flex:1;min-width:220px"><option value="">Carregando fornecedores...</option></select>' +
+      '<button class="sga-btn sga-btn--primary" id="pofp-go">Gerar</button>' +
+      '<button class="sga-btn sga-btn--ghost" id="pofp-cancel">Cancelar</button>' +
+    '</div><p style="font-size:12px;color:var(--sga-text-soft);margin:8px 0 0">Os itens Hydronix da proposta entram com preço de COMPRA (tabela − desconto). Linhas de serviço são ignoradas.</p></div></div>';
 
   document.getElementById('pofp-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
   document.getElementById('pofp-go').addEventListener('click', function () {
@@ -162,18 +241,18 @@ function _poShowForm() {
     '<div class="card-body">' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
         '<label style="font-size:12px;flex:1;min-width:220px">Fornecedor *<br>' +
-          '<select class="form-input" id="po-supplier"><option value="">Carregando...</option></select></label>' +
-        '<label style="font-size:12px">Moeda<br><select class="form-input" id="po-currency" style="width:100px">' +
+          '<select class="sga-form-select" id="po-supplier"><option value="">Carregando...</option></select></label>' +
+        '<label style="font-size:12px">Moeda<br><select class="sga-form-select" id="po-currency" style="width:100px">' +
           '<option>USD</option><option>BRL</option></select></label>' +
-        '<label style="font-size:12px">Proposta vinculada<br><input class="form-input" id="po-proposal" type="text" placeholder="opcional (id/numero)" style="width:180px"></label>' +
-        '<label style="font-size:12px">Entrega prevista<br><input class="form-input" id="po-eta" type="date" style="width:160px"></label>' +
+        '<label style="font-size:12px">Proposta vinculada<br><input class="sga-form-input" id="po-proposal" type="text" placeholder="opcional (id/numero)" style="width:180px"></label>' +
+        '<label style="font-size:12px">Entrega prevista<br><input class="sga-form-input" id="po-eta" type="date" style="width:160px"></label>' +
       '</div>' +
-      '<div class="form-label" style="font-weight:700;margin:12px 0 4px">Itens</div>' +
+      '<div class="sga-form-label" style="font-weight:700;margin:12px 0 4px">Itens</div>' +
       '<div id="po-items"></div>' +
-      '<button class="btn btn-ghost btn-sm" id="po-add-item">+ item</button>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="po-add-item">+ item</button>' +
       '<div style="margin-top:12px;display:flex;gap:8px;align-items:center">' +
-        '<button class="btn btn-primary" id="po-save">Criar PO (rascunho)</button>' +
-        '<button class="btn btn-ghost" id="po-form-cancel">Cancelar</button>' +
+        '<button class="sga-btn sga-btn--primary" id="po-save">Criar PO (rascunho)</button>' +
+        '<button class="sga-btn sga-btn--ghost" id="po-form-cancel">Cancelar</button>' +
         '<span id="po-total-preview" style="margin-left:auto;font-weight:700"></span>' +
       '</div>' +
     '</div></div>';
@@ -212,11 +291,11 @@ function _poAddItemRow() {
   row.className = 'po-item-row';
   row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px';
   row.innerHTML =
-    '<input class="form-input po-it-code" type="text" placeholder="código (ex.: HMXT01)" style="width:150px">' +
-    '<input class="form-input po-it-desc" type="text" placeholder="descrição" style="flex:1">' +
-    '<input class="form-input po-it-qty" type="number" min="1" value="1" style="width:70px" title="qtde">' +
-    '<input class="form-input po-it-price" type="number" min="0" step="0.01" value="0" style="width:110px" title="preço unit.">' +
-    '<button class="btn btn-ghost btn-sm po-row-del">🗑</button>';
+    '<input class="sga-form-input po-it-code" type="text" placeholder="código (ex.: HMXT01)" style="width:150px">' +
+    '<input class="sga-form-input po-it-desc" type="text" placeholder="descrição" style="flex:1">' +
+    '<input class="sga-form-input po-it-qty" type="number" min="1" value="1" style="width:70px" title="qtde">' +
+    '<input class="sga-form-input po-it-price" type="number" min="0" step="0.01" value="0" style="width:110px" title="preço unit.">' +
+    '<button class="sga-btn sga-btn--ghost sga-btn--sm po-row-del">🗑</button>';
   row.querySelector('.po-row-del').addEventListener('click', function () { row.parentNode.removeChild(row); _poPreviewTotal(); });
   row.querySelector('.po-it-qty').addEventListener('input', _poPreviewTotal);
   row.querySelector('.po-it-price').addEventListener('input', _poPreviewTotal);
@@ -277,5 +356,39 @@ function _poCreate() {
       showAlert('Falha: ' + (err.message || err), 'error');
     })
     .Api_poCreate(payload);
+}
+
+/* FB-029: visualização do documento "Solicitação de Compra — SC". */
+function _poVerDocumento(id) {
+  showAlert('Gerando documento...', 'info');
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
+      var html = res.data || '';
+      if (window.SGA && SGA.openModal) {
+        SGA.openModal({
+          title: '📄 Solicitação de Compra — documento',
+          size: 'lg',
+          body: '<div style="max-height:68vh;overflow:auto;background:#fff;border:1px solid var(--sga-border-default);border-radius:6px">' + html + '</div>',
+          footer: [
+            { label: '🖨 Imprimir / PDF', variant: 'secondary', onClick: function () { _poImprimir(html); return false; } },
+            { label: 'Fechar', variant: 'ghost', onClick: 'close' }
+          ]
+        });
+      } else {
+        _poImprimir(html);
+      }
+    })
+    .withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); })
+    .Api_poGerarHTML(id);
+}
+
+function _poImprimir(html) {
+  var win = window.open('', '_blank');
+  if (!win) { showAlert('Permita pop-ups para imprimir/salvar em PDF.', 'warning'); return; }
+  win.document.write('<html><head><meta charset="utf-8"><title>Solicitação de Compra</title></head><body>' + html + '</body></html>');
+  win.document.close();
+  win.focus();
+  setTimeout(function () { try { win.print(); } catch (e) {} }, 500);
 }
 </script>

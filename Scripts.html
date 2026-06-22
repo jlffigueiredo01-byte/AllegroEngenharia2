@@ -279,7 +279,8 @@ function showSection(section) {
     case 'dashboard':     renderDashboard(area);     break;
     case 'companies':     renderCompanies(area);     break;
     case 'contacts':      renderContacts(area);      break;
-    case 'opportunities': renderOpportunities(area); break;
+    // FB-26/27: 'opportunities' removida — redireciona pra Propostas
+    case 'opportunities': showSection('quotes'); return;
     case 'quotes':        renderQuotes(area);        break;
     case 'expenses':      renderExpenses(area);      break;
     case 'actioncards':   renderActionCards(area);   break;
@@ -292,6 +293,7 @@ function showSection(section) {
     case 'chamados':      renderChamados(area);       break;
     case 'config':        renderConfig(area);        break;
     case 'melhorias':     renderMelhorias(area);      break;
+    case 'triagens':      renderTriagens(area);       break;
     case 'usuarios':      renderUsuarios(area);       break;
     default:
       area.innerHTML = '<div class="empty-state"><div class="empty-icon">❓</div>' +
@@ -546,24 +548,24 @@ function buildModulePlaceholder(icon, bgColor, textColor, title, desc, features,
  * @param {number} duration Duração em ms (padrão: 4500)
  */
 function showAlert(msg, type, duration) {
+  // Shim para o novo Design System — todas as chamadas legadas viram SGA.toast
+  if (window.SGA && typeof window.SGA.toast === 'function') {
+    return window.SGA.toast(msg, type || 'info', { duration: duration });
+  }
+  // Fallback antigo (caso SGA nao tenha carregado por algum motivo)
   type = type || 'info';
   duration = duration || 4500;
-
   var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
   var icon = icons[type] || 'ℹ️';
-
   var container = document.getElementById('toast-container');
+  if (!container) { return; }
   var toast = document.createElement('div');
   toast.className = 'toast toast-' + type;
-
   toast.innerHTML =
     '<span class="toast-icon">' + icon + '</span>' +
     '<span class="toast-body">' + escapeHtml(String(msg)) + '</span>' +
     '<button class="toast-close" onclick="dismissToast(this.parentNode)" aria-label="Fechar">×</button>';
-
   container.appendChild(toast);
-
-  // Auto-dismiss
   var timer = setTimeout(function () { dismissToast(toast); }, duration);
   toast._dismissTimer = timer;
 }

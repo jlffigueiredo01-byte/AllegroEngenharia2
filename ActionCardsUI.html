@@ -8,6 +8,7 @@
 var _acCards = [];
 var _acUsers = [];
 var _acDragId = null;
+var _acFilterUserId = ''; // FB-15: filtro de cards por usuario (vazio = todos)
 
 var _AC_STATUS_LABELS = {
   'ABERTO':        'Aberto',
@@ -33,19 +34,17 @@ function renderActionCards(area) {
         '<h1 class="page-title">🗂 Action Cards</h1>' +
         '<p class="page-subtitle">Kanban da equipe — tarefas, follow-ups e ações internas.</p>' +
       '</div>' +
-      '<button class="btn btn-primary" onclick="_openNewCardModal()">+ Novo Card</button>' +
+      '<button class="sga-btn sga-btn--primary" onclick="_openNewCardModal()">+ Novo Card</button>' +
     '</div>' +
     '<div id="ac-workload" style="margin-bottom:20px;"></div>' +
-    '<div id="ac-kanban" class="ac-kanban-board"></div>' +
-    '<div id="ac-modal-layer" class="hidden" ' +
-      'style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);' +
-      'z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;">' +
-    '</div>';
+    '<div id="ac-kanban" class="ac-kanban-board"></div>';
   _loadAcData();
 }
 
 /* ── Carregamento de dados (paralelo) ── */
 function _loadAcData() {
+  var kanban = document.getElementById('ac-kanban');
+  if (kanban && window.SGA && SGA.skeleton) SGA.skeleton(kanban, { type: 'list', count: 6 });
   var pending = 2;
   function check() { if (--pending === 0) _refreshBoard(); }
   google.script.run
@@ -63,12 +62,22 @@ function _refreshBoard() {
   _renderKanban();
 }
 
-/* ── Barra de carga da equipe ── */
+/* ── Barra de carga da equipe (FB-15: badges clicaveis filtram o board) ── */
 function _renderWorkload() {
   var el = document.getElementById('ac-workload');
   if (!el || !_acUsers.length) { if (el) el.innerHTML = ''; return; }
   var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">' +
-    '<span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-right:4px;">Carga da equipe:</span>';
+    '<span style="font-size:var(--sga-font-size-xs);font-weight:700;color:var(--sga-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-right:4px;">Carga da equipe:</span>';
+  // Botao "Todos" pra limpar o filtro
+  var totN = 0;
+  for (var t = 0; t < _acCards.length; t++) {
+    if (_acCards[t].status === 'ABERTO' || _acCards[t].status === 'EM_ANDAMENTO') totN++;
+  }
+  var todosActive = !_acFilterUserId;
+  html += '<button type="button" onclick="_acSetFilter(\'\')" ' +
+    'style="background:' + (todosActive ? 'var(--sga-color-primary-dark)' : 'var(--sga-border-default)') + ';color:' + (todosActive ? 'var(--sga-text-on-primary)' : 'var(--sga-text-default)') + ';' +
+    'border:0;cursor:pointer;border-radius:var(--sga-radius-pill);padding:3px 12px;font-size:var(--sga-font-size-sm);font-weight:600;">' +
+    'Todos · ' + totN + '</button>';
   for (var i = 0; i < _acUsers.length; i++) {
     var u = _acUsers[i];
     var n = 0;
@@ -76,31 +85,61 @@ function _renderWorkload() {
       var c = _acCards[j];
       if (c.assigned_to === u.id && (c.status === 'ABERTO' || c.status === 'EM_ANDAMENTO')) n++;
     }
-    var bg    = n <= 2 ? '#dcfce7' : n <= 4 ? '#fef3c7' : '#fee2e2';
-    var color = n <= 2 ? '#15803d' : n <= 4 ? '#b45309' : '#b91c1c';
-    html += '<span style="background:' + bg + ';color:' + color + ';border-radius:999px;' +
-      'padding:3px 12px;font-size:12px;font-weight:600;">' +
-      escapeHtml(u.name) + ' · ' + n + '</span>';
+    var bg    = n <= 2 ? 'var(--sga-color-success-bg)' : n <= 4 ? 'var(--sga-color-warning-bg)' : 'var(--sga-color-danger-bg)';
+    var color = n <= 2 ? 'var(--sga-color-success)' : n <= 4 ? 'var(--sga-color-warning)' : 'var(--sga-color-danger)';
+    var active = _acFilterUserId === u.id;
+    var border = active ? '2px solid var(--sga-color-primary-dark)' : '2px solid transparent';
+    html += '<button type="button" onclick="_acSetFilter(\'' + escapeHtml(u.id) + '\')" ' +
+      'title="Clique para filtrar action cards de ' + escapeHtml(u.name) + '" ' +
+      'style="background:' + bg + ';color:' + color + ';border:' + border + ';cursor:pointer;' +
+      'border-radius:var(--sga-radius-pill);padding:3px 12px;font-size:var(--sga-font-size-sm);font-weight:600;">' +
+      escapeHtml(u.name) + ' · ' + n + '</button>';
   }
   html += '</div>';
+  // Aviso de filtro ativo
+  if (_acFilterUserId) {
+    var uname = '';
+    for (var k = 0; k < _acUsers.length; k++) if (_acUsers[k].id === _acFilterUserId) uname = _acUsers[k].name;
+    html += '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin-top:6px;">' +
+      '🔎 Mostrando apenas action cards de <b>' + escapeHtml(uname) + '</b>. ' +
+      '<a href="#" onclick="event.preventDefault();_acSetFilter(\'\')" style="color:var(--sga-color-primary-dark)">limpar filtro</a></div>';
+  }
   el.innerHTML = html;
+}
+
+/* FB-15: muda o filtro de usuario e re-renderiza o board. */
+function _acSetFilter(userId) {
+  _acFilterUserId = userId || '';
+  _refreshBoard();
+}
+
+/* FB-15: aplica filtro ao array de cards (chamado antes do render do board). */
+function _acFiltrarPorUsuario(cards) {
+  if (!_acFilterUserId) return cards;
+  var out = [];
+  for (var i = 0; i < cards.length; i++) {
+    if (cards[i].assigned_to === _acFilterUserId) out.push(cards[i]);
+  }
+  return out;
 }
 
 /* ── Board Kanban ── */
 function _renderKanban() {
   var el = document.getElementById('ac-kanban');
   if (!el) return;
+  // FB-15: aplica filtro de usuario antes de distribuir nas colunas
+  var visiveis = _acFiltrarPorUsuario(_acCards);
   var open = [], inp = [], fin = [], can = [];
-  for (var i = 0; i < _acCards.length; i++) {
-    var c = _acCards[i];
+  for (var i = 0; i < visiveis.length; i++) {
+    var c = visiveis[i];
     if      (c.status === 'ABERTO')       open.push(c);
     else if (c.status === 'EM_ANDAMENTO') inp.push(c);
     else if (c.status === 'CONCLUIDO')    fin.push(c);
     else if (c.status === 'CANCELADO')    can.push(c);
   }
   el.innerHTML =
-    _acColumn('ABERTO',       'Aberto',       open, '#1a56db', '#eff6ff') +
-    _acColumn('EM_ANDAMENTO', 'Em andamento', inp,  '#d97706', '#fffbeb') +
+    _acColumn('ABERTO',       'Aberto',       open, 'var(--sga-color-primary)', 'var(--sga-color-info-bg)') +
+    _acColumn('EM_ANDAMENTO', 'Em andamento', inp,  'var(--sga-color-warning)', 'var(--sga-color-warning-bg)') +
     _acDoneColumn(fin, can);
   _acAttachDrop();
 }
@@ -108,17 +147,22 @@ function _renderKanban() {
 function _acColumn(status, label, cards, border, headBg) {
   var cardsHtml = '';
   if (!cards.length) {
-    cardsHtml = '<div style="text-align:center;padding:20px 0;color:#94a3b8;font-size:12px;">Nenhum card</div>';
+    cardsHtml = '<div class="sga-empty sga-empty--compact" style="padding:14px 8px;gap:6px;">' +
+      '<div class="sga-empty__icon">📌</div>' +
+      '<h3 class="sga-empty__title" style="font-size:13px;">Nenhum card aqui</h3>' +
+      '<p class="sga-empty__text" style="font-size:12px;">Arraste cards ou crie um novo.</p>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" type="button" onclick="_openNewCardModal&amp;&amp;_openNewCardModal()">+ Novo card</button>' +
+    '</div>';
   } else {
     for (var i = 0; i < cards.length; i++) cardsHtml += _acCardHtml(cards[i]);
   }
   return '<div class="ac-col" data-col-status="' + status + '" ' +
-    'style="flex:1;min-width:200px;max-width:300px;background:#fff;border-radius:10px;' +
-    'border-top:3px solid ' + border + ';box-shadow:0 1px 4px rgba(0,0,0,.07);">' +
+    'style="flex:1;min-width:260px;background:var(--sga-bg-surface);border-radius:var(--sga-radius-md);' +
+    'border-top:3px solid ' + border + ';box-shadow:var(--sga-shadow-sm);">' +
     '<div style="background:' + headBg + ';padding:12px 16px;border-radius:7px 7px 0 0;' +
     'display:flex;align-items:center;justify-content:space-between;">' +
     '<span style="font-weight:700;font-size:13px;">' + label + '</span>' +
-    '<span class="badge badge-blue" style="font-size:11px;">' + cards.length + '</span>' +
+    '<span class="sga-badge sga-badge--info">' + cards.length + '</span>' +
     '</div>' +
     '<div class="ac-col-body" data-col-status="' + status + '" ' +
     'style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:80px;">' +
@@ -126,9 +170,9 @@ function _acColumn(status, label, cards, border, headBg) {
 }
 
 function _acDoneColumn(fin, can) {
-  var finHtml = _acDoneSection('CONCLUIDO', 'Concluído', fin, '#16a34a', '#f0fdf4', '#dcfce7', 'badge-green');
-  var canHtml = _acDoneSection('CANCELADO', 'Cancelado', can, '#dc2626', '#fef2f2', '#fee2e2', 'badge-red');
-  return '<div style="flex:1;min-width:200px;max-width:300px;display:flex;flex-direction:column;gap:12px;">' +
+  var finHtml = _acDoneSection('CONCLUIDO', 'Concluído', fin, 'var(--sga-color-success)', 'var(--sga-color-success-bg)', 'var(--sga-color-success-bg)', 'sga-badge--success');
+  var canHtml = _acDoneSection('CANCELADO', 'Cancelado', can, 'var(--sga-color-danger)', 'var(--sga-color-danger-bg)', 'var(--sga-color-danger-bg)', 'sga-badge--danger');
+  return '<div style="flex:1;min-width:260px;display:flex;flex-direction:column;gap:12px;">' +
     finHtml + canHtml + '</div>';
 }
 
@@ -138,22 +182,25 @@ function _acDoneSection(status, label, cards, border, headBg, colBg, badgeCls) {
   var id    = 'ac-more-' + status.toLowerCase();
   var cardsHtml = '';
   for (var i = 0; i < slice.length; i++) cardsHtml += _acCardHtml(slice[i]);
-  if (!cards.length) cardsHtml = '<div style="text-align:center;padding:10px 0;color:#94a3b8;font-size:12px;">Nenhum card</div>';
+  if (!cards.length) cardsHtml = '<div class="sga-empty sga-empty--compact" style="padding:10px 8px;gap:4px;">' +
+    '<div class="sga-empty__icon" style="font-size:22px;">📌</div>' +
+    '<p class="sga-empty__text" style="font-size:12px;">Nenhum card aqui ainda.</p>' +
+  '</div>';
   var moreHtml = '';
   if (rest.length) {
     var restCards = '';
     for (var j = 0; j < rest.length; j++) restCards += _acCardHtml(rest[j]);
     moreHtml = '<div id="' + id + '" style="display:none;flex-direction:column;gap:8px;">' + restCards + '</div>' +
-      '<button class="btn btn-ghost btn-sm" style="font-size:11px;margin-top:4px;" ' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm" style="margin-top:4px;" ' +
       'onclick="_acToggleMore(\'' + id + '\',this)">Ver mais (' + rest.length + ')</button>';
   }
   return '<div class="ac-col" data-col-status="' + status + '" ' +
-    'style="background:' + colBg + ';border-radius:10px;border-top:3px solid ' + border + ';' +
-    'box-shadow:0 1px 4px rgba(0,0,0,.07);">' +
+    'style="background:' + colBg + ';border-radius:var(--sga-radius-md);border-top:3px solid ' + border + ';' +
+    'box-shadow:var(--sga-shadow-sm);">' +
     '<div style="background:' + headBg + ';padding:10px 16px;border-radius:7px 7px 0 0;' +
     'display:flex;align-items:center;justify-content:space-between;">' +
     '<span style="font-weight:700;font-size:13px;">' + label + '</span>' +
-    '<span class="badge ' + badgeCls + '" style="font-size:11px;">' + cards.length + '</span>' +
+    '<span class="sga-badge ' + badgeCls + '">' + cards.length + '</span>' +
     '</div>' +
     '<div class="ac-col-body" data-col-status="' + status + '" ' +
     'style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:50px;">' +
@@ -167,24 +214,24 @@ function _acCardHtml(card) {
     if (_acUsers[i].id === card.assigned_to) { assignee = _acUsers[i].name; break; }
   }
   var urgBadge = (card.urgent === 'TRUE' || card.urgent === true)
-    ? '<div style="font-size:10px;font-weight:700;color:#dc2626;margin-bottom:3px;">🔴 URGENTE</div>' : '';
+    ? '<div style="font-size:10px;font-weight:700;color:var(--sga-color-danger);margin-bottom:3px;">🔴 URGENTE</div>' : '';
   var quoteBadge = card.quote_id
-    ? '<span style="background:#eff6ff;color:#1a56db;border-radius:4px;padding:1px 6px;font-size:11px;margin-right:4px;">📄 ' + escapeHtml(card.quote_id) + '</span>' : '';
+    ? '<span style="background:var(--sga-color-info-bg);color:var(--sga-color-primary);border-radius:var(--sga-radius-sm);padding:1px 6px;font-size:var(--sga-font-size-xs);margin-right:4px;">📄 ' + escapeHtml(card.quote_id) + '</span>' : '';
 
   return '<div class="ac-card" draggable="true" ' +
     'data-card-id="' + escapeHtml(card.id) + '" data-status="' + escapeHtml(card.status) + '" ' +
     'ondragstart="_acDragStart(event,this)" ' +
-    'style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;' +
-    'cursor:grab;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.06);">' +
+    'style="background:var(--sga-bg-surface);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-sm);padding:10px 12px;' +
+    'cursor:grab;position:relative;box-shadow:var(--sga-shadow-sm);">' +
     urgBadge +
     '<div style="font-weight:700;font-size:13px;padding-right:22px;margin-bottom:4px;line-height:1.3;">' + escapeHtml(card.title) + '</div>' +
-    (excerpt ? '<div style="font-size:12px;color:#64748b;margin-bottom:6px;">' + escapeHtml(excerpt) + '</div>' : '') +
+    (excerpt ? '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin-bottom:6px;">' + escapeHtml(excerpt) + '</div>' : '') +
     (quoteBadge ? '<div style="margin-bottom:4px;">' + quoteBadge + '</div>' : '') +
-    (assignee ? '<div style="font-size:11px;color:#94a3b8;">👤 ' + escapeHtml(assignee) + '</div>' : '') +
-    (card.created_at ? '<div style="font-size:10px;color:#cbd5e1;margin-top:3px;">' + formatDate(card.created_at) + '</div>' : '') +
+    (assignee ? '<div style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);">👤 ' + escapeHtml(assignee) + '</div>' : '') +
+    (card.created_at ? '<div style="font-size:10px;color:var(--sga-text-soft);margin-top:3px;">' + formatDate(card.created_at) + '</div>' : '') +
     '<button onclick="_ac_openDetailModal(\'' + escapeHtml(card.id) + '\')" ' +
     'style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;' +
-    'color:#94a3b8;font-size:16px;padding:0 2px;line-height:1;" title="Detalhes">⋯</button>' +
+    'color:var(--sga-text-soft);font-size:16px;padding:0 2px;line-height:1;" title="Detalhes">⋯</button>' +
     '</div>';
 }
 
@@ -209,7 +256,7 @@ function _acAttachDrop() {
   var cols = document.querySelectorAll('[data-col-status]');
   for (var i = 0; i < cols.length; i++) {
     (function(col) {
-      col.ondragover  = function(e) { e.preventDefault(); col.style.outline = '2px dashed #1a56db'; };
+      col.ondragover  = function(e) { e.preventDefault(); col.style.outline = '2px dashed var(--sga-color-primary)'; };
       col.ondragleave = function()  { col.style.outline = ''; };
       col.ondrop      = function(e) {
         e.preventDefault();
@@ -242,59 +289,66 @@ function _acUserOptions(selectedId) {
   return html;
 }
 
-function _acShowModal(html) {
-  var layer = document.getElementById('ac-modal-layer');
-  if (!layer) return;
-  layer.innerHTML = '<div style="background:#fff;border-radius:12px;padding:28px 24px;' +
-    'width:100%;max-width:440px;max-height:90vh;overflow-y:auto;' +
-    'box-shadow:0 20px 60px rgba(0,0,0,0.25);">' + html + '</div>';
-  layer.classList.remove('hidden');
+// Modal API: agora delegado para SGA.openModal. Mantém handle global para
+// que onclick="_closeAcModal()" inline continue funcionando.
+var _acCurrentModal = null;
+
+function _acShowModal(config) {
+  // config: { title, size, body, footer }  — formato SGA.openModal
+  if (_acCurrentModal) { try { _acCurrentModal.close(); } catch(e){} _acCurrentModal = null; }
+  _acCurrentModal = SGA.openModal({
+    title: config.title || '',
+    size: config.size || 'sm',
+    body: config.body || '',
+    footer: config.footer || [],
+    onClose: function () { _acCurrentModal = null; _acDragId = null; }
+  });
+  return _acCurrentModal;
 }
 
 function _closeAcModal() {
-  var layer = document.getElementById('ac-modal-layer');
-  if (!layer) return;
-  layer.innerHTML = '';
-  layer.classList.add('hidden');
+  if (_acCurrentModal) { try { _acCurrentModal.close(); } catch(e){} _acCurrentModal = null; }
   _acDragId = null;
 }
 
 /* ── Modal: Novo Card ── */
 function _openNewCardModal() {
-  _acShowModal(
-    '<h3 style="margin:0 0 18px;font-size:16px;font-weight:700;">Novo Action Card</h3>' +
-    '<div class="form-group">' +
-      '<label class="form-label">Título *</label>' +
-      '<input id="ac-n-title" type="text" class="form-input">' +
-    '</div>' +
-    '<div class="form-group">' +
-      '<label class="form-label">Mensagem</label>' +
-      '<textarea id="ac-n-msg" rows="3" class="form-input" style="resize:vertical;"></textarea>' +
-    '</div>' +
-    '<div class="form-row-2">' +
-      '<div class="form-group">' +
-        '<label class="form-label">Proposta ID</label>' +
-        '<input id="ac-n-quote" type="text" class="form-input" placeholder="Ex: OPP-001">' +
+  _acShowModal({
+    title: 'Novo Action Card',
+    size: 'sm',
+    body:
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label" for="ac-n-title">Título <span class="sga-form-required">*</span></label>' +
+        '<input id="ac-n-title" type="text" class="sga-form-input" data-sga-autofocus>' +
       '</div>' +
-      '<div class="form-group">' +
-        '<label class="form-label">Atribuir a</label>' +
-        '<select id="ac-n-assign" class="form-input">' + _acUserOptions('') + '</select>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label" for="ac-n-msg">Mensagem</label>' +
+        '<textarea id="ac-n-msg" rows="3" class="sga-form-textarea"></textarea>' +
       '</div>' +
-    '</div>' +
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
-      '<input type="checkbox" id="ac-n-urgent" style="width:16px;height:16px;" onchange="' +
-        'document.getElementById(\'ac-n-urgwarn\').style.display=this.checked?\'block\':\'none\'">' +
-      '<label for="ac-n-urgent" style="font-size:13px;font-weight:600;cursor:pointer;">🔴 Urgente</label>' +
-    '</div>' +
-    '<div id="ac-n-urgwarn" style="display:none;background:#fef2f2;border:1px solid #fca5a5;' +
-      'border-radius:6px;padding:8px 12px;font-size:12px;color:#dc2626;margin-bottom:14px;">' +
-      '⚠️ Dispara notificação por email para o endereço configurado em ALERT_EMAIL.' +
-    '</div>' +
-    '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
-      '<button class="btn btn-ghost" onclick="_closeAcModal()">Cancelar</button>' +
-      '<button class="btn btn-primary" onclick="_submitNewCard()">Criar Card</button>' +
-    '</div>'
-  );
+      '<div class="sga-form-row">' +
+        '<div class="sga-form-group">' +
+          '<label class="sga-form-label" for="ac-n-quote">Proposta ID</label>' +
+          '<input id="ac-n-quote" type="text" class="sga-form-input" placeholder="Ex: OPP-001">' +
+        '</div>' +
+        '<div class="sga-form-group">' +
+          '<label class="sga-form-label" for="ac-n-assign">Atribuir a</label>' +
+          '<select id="ac-n-assign" class="sga-form-select">' + _acUserOptions('') + '</select>' +
+        '</div>' +
+      '</div>' +
+      '<label class="sga-form-check" style="margin-bottom:10px;">' +
+        '<input type="checkbox" id="ac-n-urgent" onchange="' +
+          'document.getElementById(\'ac-n-urgwarn\').style.display=this.checked?\'block\':\'none\'">' +
+        '<span>🔴 Urgente</span>' +
+      '</label>' +
+      '<div id="ac-n-urgwarn" style="display:none;background:var(--sga-color-danger-bg);border:1px solid var(--sga-color-danger-border);' +
+        'border-radius:var(--sga-radius-sm);padding:8px 12px;font-size:var(--sga-font-size-sm);color:var(--sga-color-danger);">' +
+        '⚠️ Dispara notificação por email para o endereço configurado em ALERT_EMAIL.' +
+      '</div>',
+    footer: [
+      { label: 'Cancelar', variant: 'ghost', onClick: 'close' },
+      { label: 'Criar Card', variant: 'primary', primary: true, onClick: function () { _submitNewCard(); return false; }, closeAfter: false }
+    ]
+  });
 }
 
 function _submitNewCard() {
@@ -327,24 +381,26 @@ function _openStatusModal(cardId, newStatus) {
     if (_acCards[i].id === cardId) { card = _acCards[i]; break; }
   }
   if (!card) return;
-  _acShowModal(
-    '<h3 style="margin:0 0 6px;font-size:16px;font-weight:700;">Mudar status</h3>' +
-    '<p style="font-size:13px;color:#64748b;margin:0 0 18px;">' +
-      escapeHtml(_AC_STATUS_LABELS[card.status]) + ' → <strong>' + escapeHtml(_AC_STATUS_LABELS[newStatus]) + '</strong>' +
-    '</p>' +
-    '<div class="form-group">' +
-      '<label class="form-label">Responsável *</label>' +
-      '<select id="ac-st-member" class="form-input">' + _acUserOptions(card.assigned_to) + '</select>' +
-    '</div>' +
-    '<div class="form-group">' +
-      '<label class="form-label">Nota *</label>' +
-      '<textarea id="ac-st-note" rows="3" class="form-input" style="resize:vertical;" placeholder="O que foi feito?"></textarea>' +
-    '</div>' +
-    '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
-      '<button class="btn btn-ghost" onclick="_closeAcModal()">Cancelar</button>' +
-      '<button class="btn btn-primary" onclick="_submitStatus(\'' + escapeHtml(cardId) + '\',\'' + newStatus + '\')">Confirmar</button>' +
-    '</div>'
-  );
+  _acShowModal({
+    title: 'Mudar status',
+    size: 'sm',
+    body:
+      '<p style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin:0 0 18px;">' +
+        escapeHtml(_AC_STATUS_LABELS[card.status]) + ' → <strong>' + escapeHtml(_AC_STATUS_LABELS[newStatus]) + '</strong>' +
+      '</p>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label" for="ac-st-member">Responsável <span class="sga-form-required">*</span></label>' +
+        '<select id="ac-st-member" class="sga-form-select">' + _acUserOptions(card.assigned_to) + '</select>' +
+      '</div>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label" for="ac-st-note">Nota <span class="sga-form-required">*</span></label>' +
+        '<textarea id="ac-st-note" rows="3" class="sga-form-textarea" placeholder="O que foi feito?"></textarea>' +
+      '</div>',
+    footer: [
+      { label: 'Cancelar', variant: 'ghost', onClick: 'close' },
+      { label: 'Confirmar', variant: 'primary', primary: true, onClick: function () { _submitStatus(cardId, newStatus); return false; }, closeAfter: false }
+    ]
+  });
 }
 
 function _submitStatus(cardId, newStatus) {
@@ -376,36 +432,35 @@ function _ac_openDetailModal(cardId) {
   }
   if (!card) return;
   var sLabel  = _AC_STATUS_LABELS[card.status] || card.status;
-  var sBadge  = card.status === 'ABERTO' ? 'badge-blue' : card.status === 'EM_ANDAMENTO' ? 'badge-yellow' : card.status === 'CONCLUIDO' ? 'badge-green' : 'badge-red';
+  var sBadge  = card.status === 'ABERTO' ? 'sga-badge--info' : card.status === 'EM_ANDAMENTO' ? 'sga-badge--warning' : card.status === 'CONCLUIDO' ? 'sga-badge--success' : 'sga-badge--danger';
   var assignee = '', creator = card.created_by || '';
   for (var j = 0; j < _acUsers.length; j++) {
     if (_acUsers[j].id === card.assigned_to) assignee = _acUsers[j].name;
     if (_acUsers[j].id === card.created_by)  creator  = _acUsers[j].name;
   }
-  _acShowModal(
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">' +
-      '<div>' +
-        '<h3 style="margin:0 0 6px;font-size:15px;font-weight:700;">' + escapeHtml(card.title) + '</h3>' +
-        '<span class="badge ' + sBadge + '">' + escapeHtml(sLabel) + '</span>' +
-        ((card.urgent === 'TRUE' || card.urgent === true) ? ' <span style="font-size:11px;font-weight:700;color:#dc2626;">🔴 URGENTE</span>' : '') +
+  _acShowModal({
+    title: card.title,
+    size: 'md',
+    body:
+      '<div style="margin-bottom:14px;">' +
+        '<span class="sga-badge ' + sBadge + '">' + escapeHtml(sLabel) + '</span>' +
+        ((card.urgent === 'TRUE' || card.urgent === true) ? ' <span style="font-size:var(--sga-font-size-xs);font-weight:700;color:var(--sga-color-danger);margin-left:6px;">🔴 URGENTE</span>' : '') +
       '</div>' +
-      '<button onclick="_closeAcModal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#94a3b8;padding:0;">✕</button>' +
-    '</div>' +
-    (card.message ? '<div style="font-size:13px;background:#f8fafc;border-radius:6px;padding:10px;margin-bottom:12px;white-space:pre-wrap;">' + escapeHtml(card.message) + '</div>' : '') +
-    (card.quote_id ? '<div style="margin-bottom:8px;font-size:12px;"><span style="color:#64748b;">Proposta:</span> <span style="background:#eff6ff;color:#1a56db;border-radius:4px;padding:1px 7px;">📄 ' + escapeHtml(card.quote_id) + '</span></div>' : '') +
-    (assignee ? '<div style="font-size:12px;color:#64748b;margin-bottom:4px;">👤 <b>Atribuído a:</b> ' + escapeHtml(assignee) + '</div>' : '') +
-    '<div style="font-size:12px;color:#64748b;margin-bottom:4px;">✍️ <b>Criado por:</b> ' + escapeHtml(creator) + '</div>' +
-    (card.created_at ? '<div style="font-size:11px;color:#94a3b8;margin-bottom:16px;">📅 ' + formatDate(card.created_at) + '</div>' : '') +
-    '<hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 12px;">' +
-    '<h4 style="margin:0 0 10px;font-size:13px;font-weight:700;">Histórico</h4>' +
-    '<div id="ac-hist-' + escapeHtml(cardId) + '"><div class="spinner-ring" style="margin:12px auto;"></div></div>'
-  );
+      (card.message ? '<div style="font-size:var(--sga-font-size-sm);background:var(--sga-bg-surface-alt);border-radius:var(--sga-radius-sm);padding:10px;margin-bottom:12px;white-space:pre-wrap;">' + escapeHtml(card.message) + '</div>' : '') +
+      (card.quote_id ? '<div style="margin-bottom:8px;font-size:var(--sga-font-size-sm);"><span style="color:var(--sga-text-muted);">Proposta:</span> <span style="background:var(--sga-color-info-bg);color:var(--sga-color-primary);border-radius:var(--sga-radius-sm);padding:1px 7px;">📄 ' + escapeHtml(card.quote_id) + '</span></div>' : '') +
+      (assignee ? '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin-bottom:4px;">👤 <b>Atribuído a:</b> ' + escapeHtml(assignee) + '</div>' : '') +
+      '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin-bottom:4px;">✍️ <b>Criado por:</b> ' + escapeHtml(creator) + '</div>' +
+      (card.created_at ? '<div style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);margin-bottom:16px;">📅 ' + formatDate(card.created_at) + '</div>' : '') +
+      '<hr class="sga-divider">' +
+      '<h4 style="margin:0 0 10px;font-size:var(--sga-font-size-sm);font-weight:700;">Histórico</h4>' +
+      '<div id="ac-hist-' + escapeHtml(cardId) + '"><div class="sga-skeleton-list"><div class="sga-skeleton sga-skeleton--row"></div><div class="sga-skeleton sga-skeleton--row"></div></div></div>'
+  });
   google.script.run
     .withSuccessHandler(function(r) {
       var el = document.getElementById('ac-hist-' + cardId);
       if (!el) return;
       if (!r || !r.ok || !r.data || !r.data.length) {
-        el.innerHTML = '<p style="font-size:12px;color:#94a3b8;">Sem histórico registrado.</p>';
+        el.innerHTML = '<p style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft);">Sem histórico registrado.</p>';
         return;
       }
       var h = '';
@@ -413,20 +468,20 @@ function _ac_openDetailModal(cardId) {
         var e = r.data[k];
         var from = _AC_STATUS_LABELS[e.from_status] || '';
         var to   = _AC_STATUS_LABELS[e.to_status]   || '';
-        h += '<div style="display:flex;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f1f5f9;">' +
-          '<div style="width:8px;height:8px;background:#1a56db;border-radius:50%;margin-top:5px;flex-shrink:0;"></div>' +
+        h += '<div style="display:flex;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--sga-border-default);">' +
+          '<div style="width:8px;height:8px;background:var(--sga-color-primary);border-radius:50%;margin-top:5px;flex-shrink:0;"></div>' +
           '<div>' +
-          '<div style="font-size:11px;color:#64748b;">' + formatDate(e.timestamp) +
+          '<div style="font-size:var(--sga-font-size-xs);color:var(--sga-text-muted);">' + formatDate(e.timestamp) +
             (e.member ? ' · <b>' + escapeHtml(e.member) + '</b>' : '') + '</div>' +
-          (from && to ? '<div style="font-size:11px;margin:2px 0;">' + escapeHtml(from) + ' → <b>' + escapeHtml(to) + '</b></div>' : '') +
-          (e.note ? '<div style="font-size:12px;color:#374151;margin-top:3px;">' + escapeHtml(e.note) + '</div>' : '') +
+          (from && to ? '<div style="font-size:var(--sga-font-size-xs);margin:2px 0;">' + escapeHtml(from) + ' → <b>' + escapeHtml(to) + '</b></div>' : '') +
+          (e.note ? '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-default);margin-top:3px;">' + escapeHtml(e.note) + '</div>' : '') +
           '</div></div>';
       }
       el.innerHTML = h;
     })
     .withFailureHandler(function() {
       var el = document.getElementById('ac-hist-' + cardId);
-      if (el) el.innerHTML = '<p style="font-size:12px;color:#dc2626;">Erro ao carregar histórico.</p>';
+      if (el) el.innerHTML = '<p style="font-size:var(--sga-font-size-sm);color:var(--sga-color-danger);">Erro ao carregar histórico.</p>';
     })
     .Api_acGetHistory(cardId);
 }

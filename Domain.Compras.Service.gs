@@ -74,8 +74,8 @@ function poSvcCreate(data) {
 function poSvcEmitir(poId) {
   var po = poRepoGetById(poId);
   if (!po) throw new Error('PO não encontrada: ' + poId);
-  if (po.status !== PO_STATUS.RASCUNHO) {
-    throw new Error('PO só pode ser emitida no status RASCUNHO. Status atual: ' + po.status);
+  if (po.status !== PO_STATUS.RASCUNHO && po.status !== PO_STATUS.APROVADA) {
+    throw new Error('PO só pode ser emitida em RASCUNHO ou APROVADA. Status atual: ' + po.status);
   }
 
   poRepoUpdate(poId, {
@@ -243,4 +243,155 @@ function poSvcCreateFromProposal(proposalId, supplierId) {
     'PO ' + (po.po_number || po.id) + ' gerada da proposta (' + poItems.length + ' itens' +
     (ignorados.length ? '; ignorados: ' + ignorados.join(', ') : '') + ')');
   return po;
+}
+
+/* ═══════════════════════ FB-029: aprovar · documento SC · email ═══════════════════════ */
+
+/** Aprova uma PO (RASCUNHO → APROVADA). Maria + diretores (RBAC na Api). */
+function poSvcAprovar(poId) {
+  var po = poRepoGetById(poId);
+  if (!po) throw new Error('PO não encontrada: ' + poId);
+  if (po.status !== PO_STATUS.RASCUNHO) {
+    throw new Error('PO só pode ser aprovada no status RASCUNHO. Status atual: ' + po.status);
+  }
+  var user = getCurrentUser();
+  poRepoUpdate(poId, { status: PO_STATUS.APROVADA, updated_at: nowISO() });
+  appendAuditLog('PO_APROVAR', 'PURCHASE_ORDERS', poId, 'PO aprovada por ' + (user ? user.id : '?'));
+  return poRepoGetById(poId);
+}
+
+/** Formata valor monetário simples (sem depender de Intl no servidor). */
+function _poFmtMoney(n, cur) {
+  var v = Number(n || 0).toFixed(2).split('.');
+  v[0] = v[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  var sym = cur === 'USD' ? 'US$ ' : (cur === 'BRL' ? 'R$ ' : ((cur || '') + ' '));
+  return sym + v.join(',');
+}
+
+/**
+ * Gera o HTML do documento "Solicitação de Compra — SC" de uma PO.
+ * Usado pela visualização na UI e como corpo do e-mail ao fornecedor.
+ * @param {string} poId
+ * @return {string} HTML standalone (inline styles)
+ */
+function poSvcGerarHTML(poId) {
+  var po = poRepoGetById(poId);
+  if (!po) throw new Error('PO não encontrada: ' + poId);
+  var sup = po.supplier_id ? supplierRepoGetById(po.supplier_id) : null;
+  var items = [];
+  try { items = JSON.parse(po.items_json || '[]') || []; } catch (e) {}
+  var cur = po.currency || 'USD';
+
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  };
+  var cfg = function (k, def) { try { return getConfigValue(k) || def; } catch (e) { return def; } };
+  var emp = {
+    razao:    cfg('EMPRESA_RAZAO', 'ALLEGRO DESENVOLVIMENTO E AUTOMACAO INDUSTRIAL LTDA'),
+    cnpj:     cfg('EMPRESA_CNPJ', '07.979.808/0001-01'),
+    endereco: cfg('EMPRESA_ENDERECO', 'Rua Marechal Cândido Rondon, 3171 — Cascavel, Paraná — CEP 85.811-080'),
+    tel:      cfg('EMPRESA_TELEFONE', '+55 45 99946-0898'),
+    email:    cfg('EMPRESA_EMAIL', 'contato@allegro.eng.br'),
+    depto:    'ENGENHARIA'
+  };
+
+  var respNome = po.created_by || '';
+  try {
+    var us = sheetToObjects(USERS_SHEET);
+    for (var u = 0; u < us.length; u++) { if (us[u].id === po.created_by) { respNome = us[u].name || po.created_by; break; } }
+  } catch (e) {}
+
+  var rows = '';
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var qty = Number(it.qty || 0);
+    var unit = Number(it.unit_price || 0);
+    var tot = (it.total != null) ? Number(it.total) : (qty * unit);
+    rows +=
+      '<tr>' +
+        '<td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">' + (i + 1) + '</td>' +
+        '<td style="border:1px solid #cbd5e1;padding:6px 8px">' + esc(it.code || '') + '</td>' +
+        '<td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">' + qty + '</td>' +
+        '<td style="border:1px solid #cbd5e1;padding:6px 8px">' + esc(it.description || '') + '</td>' +
+        '<td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:right">' + _poFmtMoney(unit, cur) + '</td>' +
+        '<td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:right">' + _poFmtMoney(tot, cur) + '</td>' +
+      '</tr>';
+  }
+
+  return '' +
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#1e293b;max-width:760px;margin:0 auto;padding:24px;font-size:13px;line-height:1.5">' +
+      '<div style="border-bottom:3px solid #1a56db;padding-bottom:10px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end">' +
+        '<div><div style="font-size:20px;font-weight:800;color:#1a56db">SOLICITAÇÃO DE COMPRA — SC</div>' +
+          '<div style="color:#64748b;font-size:12px">Allegro Engenharia · Hydronix</div></div>' +
+        '<div style="text-align:right;font-size:12px"><div><b>SC nº:</b> ' + esc(po.po_number || po.id) + '</div>' +
+          '<div><b>Data:</b> ' + esc(formatDate(po.created_at || nowISO())) + '</div>' +
+          '<div><b>Status:</b> ' + esc(po.status || '') + '</div></div>' +
+      '</div>' +
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><tr>' +
+        '<td style="vertical-align:top;width:50%;padding-right:10px">' +
+          '<div style="font-weight:700;color:#1a56db;font-size:11px;text-transform:uppercase;margin-bottom:4px">Responsável pela solicitação</div>' +
+          '<div><b>' + esc(respNome) + '</b></div><div>' + esc(emp.razao) + '</div>' +
+          '<div>Depto: ' + esc(emp.depto) + ' · CNPJ: ' + esc(emp.cnpj) + '</div>' +
+          '<div>' + esc(emp.tel) + ' · ' + esc(emp.email) + '</div>' +
+          (po.proposal_id ? '<div style="margin-top:4px"><b>Projeto/Proposta:</b> ' + esc(po.proposal_id) + '</div>' : '') +
+        '</td>' +
+        '<td style="vertical-align:top;width:50%;padding-left:10px;border-left:1px solid #e2e8f0">' +
+          '<div style="font-weight:700;color:#1a56db;font-size:11px;text-transform:uppercase;margin-bottom:4px">Fornecedor</div>' +
+          (sup ?
+            ('<div><b>' + esc(sup.name || '') + '</b></div>' +
+             (sup.cnpj ? '<div>CNPJ: ' + esc(sup.cnpj) + '</div>' : '') +
+             (sup.contact_name ? '<div>' + esc(sup.contact_name) + '</div>' : '') +
+             '<div>' + esc(sup.po_email || sup.contact_email || '(sem e-mail cadastrado)') +
+               (sup.contact_phone ? ' · ' + esc(sup.contact_phone) : '') + '</div>')
+            : '<div style="color:#b45309">Fornecedor não vinculado</div>') +
+        '</td>' +
+      '</tr></table>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">' +
+        '<thead><tr style="background:#1a56db;color:#fff">' +
+          '<th style="border:1px solid #1a56db;padding:6px 8px">ITEM</th>' +
+          '<th style="border:1px solid #1a56db;padding:6px 8px">COD</th>' +
+          '<th style="border:1px solid #1a56db;padding:6px 8px">QTD</th>' +
+          '<th style="border:1px solid #1a56db;padding:6px 8px;text-align:left">Descrição</th>' +
+          '<th style="border:1px solid #1a56db;padding:6px 8px">Valor unit.</th>' +
+          '<th style="border:1px solid #1a56db;padding:6px 8px">Valor total</th>' +
+        '</tr></thead><tbody>' +
+          (rows || '<tr><td colspan="6" style="border:1px solid #cbd5e1;padding:10px;text-align:center;color:#94a3b8">Sem itens</td></tr>') +
+        '</tbody><tfoot><tr>' +
+          '<td colspan="5" style="border:1px solid #cbd5e1;padding:6px 8px;text-align:right;font-weight:700">TOTAL</td>' +
+          '<td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:right;font-weight:800;color:#16a34a">' + _poFmtMoney(po.total_amount, cur) + '</td>' +
+        '</tr></tfoot></table>' +
+      '<div style="font-size:11px;color:#64748b;margin-bottom:14px">Moeda: ' + esc(cur) + '</div>' +
+      '<div style="margin-bottom:12px"><div style="font-weight:700;color:#1a56db;font-size:11px;text-transform:uppercase;margin-bottom:4px">Informações para entrega</div>' +
+        '<div>' + esc(emp.razao) + '</div><div>' + esc(emp.endereco) + '</div>' +
+        (po.expected_delivery ? '<div><b>Entrega prevista:</b> ' + esc(formatDate(po.expected_delivery)) + '</div>' : '') +
+      '</div>' +
+      '<div style="margin-top:28px;display:flex;justify-content:space-between;font-size:12px;color:#475569">' +
+        '<div style="text-align:center">_____________________________<br>Responsável Allegro</div>' +
+        '<div style="text-align:center">_____________________________<br>Fornecedor (ciência)</div>' +
+      '</div>' +
+    '</div>';
+}
+
+/**
+ * Envia o documento SC por e-mail ao fornecedor (po_email/contact_email).
+ * @param {string} poId
+ * @return {{to:string}}
+ */
+function poSvcEnviarEmail(poId) {
+  var po = poRepoGetById(poId);
+  if (!po) throw new Error('PO não encontrada: ' + poId);
+  var sup = po.supplier_id ? supplierRepoGetById(po.supplier_id) : null;
+  var to = sup ? (sup.po_email || sup.contact_email || '') : '';
+  if (!to) throw new Error('Fornecedor sem e-mail cadastrado (po_email/contact_email). Cadastre o e-mail do fornecedor antes de emitir.');
+  var html = poSvcGerarHTML(poId);
+  MailApp.sendEmail({
+    to: to,
+    subject: 'Ordem de Compra ' + (po.po_number || po.id) + ' — Allegro Engenharia',
+    htmlBody: html,
+    name: 'Allegro Engenharia'
+  });
+  appendAuditLog('PO_EMAIL', 'PURCHASE_ORDERS', poId, 'Documento SC enviado para ' + to);
+  return { to: to };
 }

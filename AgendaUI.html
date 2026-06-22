@@ -13,11 +13,13 @@ function renderAgenda(area) {
         '<h1 class="page-title">📅 Agenda</h1>' +
         '<p class="page-subtitle">Eventos criados aqui vão direto para o Google Calendar, com convite aos participantes.</p>' +
       '</div>' +
-      '<button class="btn btn-primary" id="ag-btn-new">+ Novo evento</button>' +
+      '<button class="sga-btn sga-btn--primary" id="ag-btn-new">+ Novo evento</button>' +
     '</div>' +
     '<div id="ag-form-wrap" class="hidden" style="margin-bottom:16px"></div>' +
-    '<div id="ag-list-wrap"><div class="spinner-ring" style="margin:24px auto"></div></div>';
+    '<div id="ag-list-wrap"></div>';
   document.getElementById('ag-btn-new').addEventListener('click', _agShowForm);
+  var listWrap = document.getElementById('ag-list-wrap');
+  if (listWrap && window.SGA && SGA.skeleton) SGA.skeleton(listWrap, { type: 'list', count: 4 });
   _agLoad();
 }
 
@@ -27,7 +29,14 @@ function _agLoad() {
     _agRenderList();
   }).withFailureHandler(function (e) {
     var w = document.getElementById('ag-list-wrap');
-    if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(e.message || e) + '</div>';
+    if (!w) return;
+    if (window.SGA && SGA.empty) {
+      SGA.empty(w, { icon: '⚠️', title: 'Erro ao carregar', text: String(e.message || e), variant: 'error' });
+    } else {
+      w.innerHTML = '<div class="sga-empty sga-empty--error"><div class="sga-empty__icon">⚠️</div>' +
+        '<h3 class="sga-empty__title">Erro ao carregar</h3>' +
+        '<p class="sga-empty__text">' + escapeHtml(e.message || e) + '</p></div>';
+    }
   }).Api_agendaGetProximos(30);
 }
 
@@ -41,9 +50,12 @@ function _agRenderList() {
   var w = document.getElementById('ag-list-wrap');
   if (!w) return;
   if (!_agEvents.length) {
-    w.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:28px 0">' +
-      '<div class="empty-icon">📅</div><div class="empty-title">Nada nos próximos 30 dias</div>' +
-      '<div class="empty-desc">Crie o primeiro evento — ele aparece também no seu Google Calendar.</div></div></div></div>';
+    w.innerHTML =
+      '<div class="sga-empty">' +
+        '<div class="sga-empty__icon">📅</div>' +
+        '<h3 class="sga-empty__title">Nada nos próximos 30 dias</h3>' +
+        '<p class="sga-empty__text">Crie o primeiro evento — ele aparece também no seu Google Calendar.</p>' +
+      '</div>';
     return;
   }
   // agrupa por dia
@@ -58,7 +70,7 @@ function _agRenderList() {
   var html = '';
   for (var g = 0; g < order.length; g++) {
     var day = order[g];
-    html += '<div style="font-weight:700;color:#334155;margin:14px 4px 6px">' + day + '</div>';
+    html += '<div style="font-weight:700;color:var(--sga-text-strong);margin:14px 4px 6px">' + day + '</div>';
     var list = groups[day];
     for (var k = 0; k < list.length; k++) {
       var e = list[k];
@@ -67,13 +79,13 @@ function _agRenderList() {
         var d = new Date(e.start_at);
         if (!isNaN(d.getTime())) hora = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
       } catch (ex) {}
-      html += '<div class="card" style="margin-bottom:6px"><div class="card-body" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+      html += '<div class="sga-card sga-card--bordered" style="margin-bottom:6px;padding:10px 14px;flex-direction:row;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<div><b>' + (hora ? hora + ' · ' : '') + escapeHtml(e.title || '') + '</b>' +
-          (e.description ? '<div style="font-size:12px;color:#64748b">' + escapeHtml(e.description) + '</div>' : '') +
-          (e.attendees ? '<div style="font-size:11px;color:#94a3b8">👥 ' + escapeHtml(e.attendees) + '</div>' : '') +
+          (e.description ? '<div style="font-size:12px;color:var(--sga-text-muted)">' + escapeHtml(e.description) + '</div>' : '') +
+          (e.attendees ? '<div style="font-size:11px;color:var(--sga-text-soft)">👥 ' + escapeHtml(e.attendees) + '</div>' : '') +
         '</div>' +
-        '<span class="badge badge-blue">' + escapeHtml(_AG_TYPE_LABELS[e.event_type] || e.event_type || '') + '</span>' +
-      '</div></div>';
+        '<span class="sga-badge sga-badge--info">' + escapeHtml(_AG_TYPE_LABELS[e.event_type] || e.event_type || '') + '</span>' +
+      '</div>';
     }
   }
   w.innerHTML = html;
@@ -87,26 +99,50 @@ function _agShowForm() {
   var typeOpts = '';
   for (var t in _AG_TYPE_LABELS) typeOpts += '<option value="' + t + '">' + _AG_TYPE_LABELS[t] + '</option>';
   w.innerHTML =
-    '<div class="card"><div class="card-header"><div class="card-title">Novo evento</div></div>' +
-    '<div class="card-body">' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-        '<label style="font-size:12px;flex:1;min-width:220px">Título *<br><input class="form-input" id="ag-title" placeholder="ex.: Levantamento Cimentos X"></label>' +
-        '<label style="font-size:12px;width:210px">Tipo<br><select class="form-input" id="ag-type">' + typeOpts + '</select></label>' +
+    '<div class="sga-card sga-card--bordered">' +
+      '<div class="sga-card__header"><h3 class="sga-card__title">Novo evento</h3></div>' +
+      '<div class="sga-card__body">' +
+        '<div class="sga-form-row">' +
+          '<div class="sga-form-group" style="flex:1;min-width:220px">' +
+            '<label class="sga-form-label" for="ag-title">Título <span class="sga-form-required">*</span></label>' +
+            '<input class="sga-form-input" id="ag-title" placeholder="ex.: Levantamento Cimentos X">' +
+          '</div>' +
+          '<div class="sga-form-group" style="width:210px">' +
+            '<label class="sga-form-label" for="ag-type">Tipo</label>' +
+            '<select class="sga-form-select" id="ag-type">' + typeOpts + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class="sga-form-row">' +
+          '<div class="sga-form-group" style="width:160px">' +
+            '<label class="sga-form-label" for="ag-date">Data <span class="sga-form-required">*</span></label>' +
+            '<input class="sga-form-input" id="ag-date" type="date" value="' + iso + '">' +
+          '</div>' +
+          '<div class="sga-form-group" style="width:120px">' +
+            '<label class="sga-form-label" for="ag-time">Início <span class="sga-form-required">*</span></label>' +
+            '<input class="sga-form-input" id="ag-time" type="time" value="09:00">' +
+          '</div>' +
+          '<div class="sga-form-group" style="width:130px">' +
+            '<label class="sga-form-label" for="ag-dur">Duração</label>' +
+            '<select class="sga-form-select" id="ag-dur">' +
+              '<option value="30">30 min</option><option value="60" selected>1 h</option>' +
+              '<option value="120">2 h</option><option value="240">4 h</option><option value="480">Dia todo</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="sga-form-group" style="flex:1;min-width:220px">' +
+            '<label class="sga-form-label" for="ag-att">Convidados (e-mails, separados por ;)</label>' +
+            '<input class="sga-form-input" id="ag-att" placeholder="cliente@empresa.com; jonatan@...">' +
+          '</div>' +
+        '</div>' +
+        '<div class="sga-form-group">' +
+          '<label class="sga-form-label" for="ag-desc">Pauta / observações</label>' +
+          '<textarea class="sga-form-textarea" id="ag-desc" rows="2" placeholder="pauta / observações"></textarea>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">' +
+          '<button class="sga-btn sga-btn--ghost" id="ag-cancel">Cancelar</button>' +
+          '<button class="sga-btn sga-btn--primary" id="ag-save">Criar evento + convites</button>' +
+        '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
-        '<label style="font-size:12px;width:160px">Data *<br><input class="form-input" id="ag-date" type="date" value="' + iso + '"></label>' +
-        '<label style="font-size:12px;width:120px">Início *<br><input class="form-input" id="ag-time" type="time" value="09:00"></label>' +
-        '<label style="font-size:12px;width:130px">Duração<br><select class="form-input" id="ag-dur">' +
-          '<option value="30">30 min</option><option value="60" selected>1 h</option>' +
-          '<option value="120">2 h</option><option value="240">4 h</option><option value="480">Dia todo</option></select></label>' +
-        '<label style="font-size:12px;flex:1;min-width:220px">Convidados (e-mails, separados por ;)<br><input class="form-input" id="ag-att" placeholder="cliente@empresa.com; jonatan@..."></label>' +
-      '</div>' +
-      '<textarea class="form-input" id="ag-desc" rows="2" placeholder="pauta / observações" style="margin-top:8px"></textarea>' +
-      '<div style="display:flex;gap:8px;margin-top:10px">' +
-        '<button class="btn btn-primary" id="ag-save">Criar evento + convites</button>' +
-        '<button class="btn btn-ghost" id="ag-cancel">Cancelar</button>' +
-      '</div>' +
-    '</div></div>';
+    '</div>';
   document.getElementById('ag-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
   document.getElementById('ag-save').addEventListener('click', _agSave);
 }

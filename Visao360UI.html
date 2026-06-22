@@ -30,8 +30,8 @@ function renderVisao360(area) {
       '</div>' +
     '</div>' +
     '<div id="v360-list-wrap">' +
-      '<input class="form-input" id="v360-busca" placeholder="🔎 buscar por nome, cidade ou UF..." style="max-width:420px;margin-bottom:12px">' +
-      '<div id="v360-list"><div class="spinner-ring" style="margin:24px auto"></div></div>' +
+      '<input class="sga-form-input" id="v360-busca" placeholder="🔎 buscar por nome, cidade ou UF..." style="max-width:420px;margin-bottom:12px">' +
+      '<div id="v360-list"></div>' +
     '</div>' +
     '<div id="v360-workspace" class="hidden"></div>';
 
@@ -48,11 +48,12 @@ function renderVisao360(area) {
   };
 
   if (_v360Companies.length) { boot(); return; }
+  SGA.skeleton(document.getElementById('v360-list'), { type: 'list', count: 5 });
   google.script.run.withSuccessHandler(function (r) {
     _v360Companies = (r && r.ok && r.data) ? r.data : [];
     boot();
   }).withFailureHandler(function () {
-    document.getElementById('v360-list').innerHTML = '<div class="empty-state">Erro ao carregar empresas.</div>';
+    SGA.empty(document.getElementById('v360-list'), { variant: 'error', icon: '⚠', title: 'Erro ao carregar empresas', text: 'Tente novamente.' });
   }).Api_getCompanies();
 }
 
@@ -65,26 +66,25 @@ function _v360RenderList() {
     return (String(c.name || '') + ' ' + String(c.city || '') + ' ' + String(c.state || '')).toUpperCase().indexOf(q) !== -1;
   });
   if (!lista.length) {
-    box.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state" style="padding:24px 0">' +
-      '<div class="empty-title">Nenhuma empresa encontrada</div></div></div></div>';
+    SGA.empty(box, { variant: q ? 'filtered' : 'compact', icon: '🏢', title: 'Nenhuma empresa encontrada', text: q ? 'Nenhum resultado para a busca.' : 'Nenhuma empresa cadastrada.' });
     return;
   }
   var rows = '';
   var max = Math.min(lista.length, 200);
   for (var i = 0; i < max; i++) {
     var c = lista[i];
-    rows += '<tr class="v360-emp" data-id="' + escapeHtml(c.id) + '" style="cursor:pointer">' +
-      '<td><b>' + escapeHtml(c.name || c.id) + '</b></td>' +
-      '<td>' + escapeHtml((c.city || '') + (c.state ? '/' + c.state : (c.state || ''))) + '</td>' +
-      '<td>' + escapeHtml(c.client_type || '') + '</td>' +
-      '<td style="text-align:right;color:#1a56db;font-size:12px">abrir 360 →</td>' +
+    rows += '<tr class="sga-table__row v360-emp" data-id="' + escapeHtml(c.id) + '" style="cursor:pointer">' +
+      '<td class="sga-table__td"><b>' + escapeHtml(c.name || c.id) + '</b></td>' +
+      '<td class="sga-table__td">' + escapeHtml((c.city || '') + (c.state ? '/' + c.state : (c.state || ''))) + '</td>' +
+      '<td class="sga-table__td">' + escapeHtml(c.client_type || '') + '</td>' +
+      '<td class="sga-table__td" style="text-align:right;color:var(--sga-color-primary);font-size:var(--sga-font-size-sm)">abrir 360 →</td>' +
     '</tr>';
   }
   box.innerHTML =
-    '<div class="card"><div class="table-wrap"><table class="data-table">' +
-    '<thead><tr><th>Empresa</th><th>Cidade/UF</th><th>Tipo</th><th></th></tr></thead>' +
-    '<tbody>' + rows + '</tbody></table></div></div>' +
-    (lista.length > max ? '<p style="font-size:12px;color:#98a2b3;margin-top:6px">Mostrando ' + max + ' de ' + lista.length + ' — refine a busca.</p>' : '');
+    '<div class="sga-table-wrap"><table class="sga-table">' +
+    '<thead><tr><th class="sga-table__th">Empresa</th><th class="sga-table__th">Cidade/UF</th><th class="sga-table__th">Tipo</th><th class="sga-table__th"></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>' +
+    (lista.length > max ? '<p style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft);margin-top:6px">Mostrando ' + max + ' de ' + lista.length + ' — refine a busca.</p>' : '');
   var trs = box.querySelectorAll('.v360-emp');
   for (var b = 0; b < trs.length; b++) {
     trs[b].addEventListener('click', function () { _v360Load(this.getAttribute('data-id')); });
@@ -96,18 +96,18 @@ function _v360Load(companyId) {
   var lw = document.getElementById('v360-list-wrap');
   var w = document.getElementById('v360-workspace');
   if (lw) lw.classList.add('hidden');
-  if (w) { w.classList.remove('hidden'); w.innerHTML = '<div class="spinner-ring" style="margin:32px auto"></div>'; }
+  if (w) { w.classList.remove('hidden'); SGA.skeleton(w, { type: 'list', count: 4 }); }
   google.script.run
     .withSuccessHandler(function (r) {
       if (!r || !r.ok) {
-        if (w) w.innerHTML = '<div class="empty-state">Erro: ' + escapeHtml(r ? r.error : 'sem resposta') + '</div>';
+        if (w) SGA.empty(w, { variant: 'error', icon: '⚠', title: 'Erro ao carregar', text: r ? r.error : 'Sem resposta do servidor.' });
         return;
       }
       _v360Data = r.data;
       _v360Render();
     })
     .withFailureHandler(function (e) {
-      if (w) w.innerHTML = '<div class="empty-state">Falha: ' + escapeHtml(e.message || e) + '</div>';
+      if (w) SGA.empty(w, { variant: 'error', icon: '⚠', title: 'Falha', text: e.message || String(e) });
     })
     .Api_c360(companyId);
 }
@@ -116,17 +116,17 @@ function _v360Load(companyId) {
 
 function _v360Badge(status) {
   var map = {
-    'FECHADA': 'badge-green', 'ENVIADA': 'badge-blue', 'EM_REVISAO': 'badge-yellow',
-    'PROPOSTA_GERADA': 'badge-yellow', 'APROVADA_ENVIO': 'badge-blue',
-    'RECUSADA': 'badge-red', 'CANCELADA': 'badge-red', 'SUBSTITUIDA': 'badge-gray',
-    'Lead': 'badge-blue', 'Elaborando proposta': 'badge-yellow',
-    'Proposta enviada': 'badge-blue', 'Proposta fechada': 'badge-green',
-    'Proposta recusada': 'badge-red', 'Cancelada': 'badge-red',
-    'PLANEJAMENTO': 'badge-blue', 'EM_ANDAMENTO': 'badge-yellow', 'ENTREGUE': 'badge-green',
-    'RASCUNHO': 'badge-gray', 'EMITIDA': 'badge-blue', 'RECEBIDA': 'badge-green',
-    'ABERTO': 'badge-red', 'EM_ATENDIMENTO': 'badge-yellow', 'FECHADO': 'badge-gray'
+    'FECHADA': 'sga-badge--success', 'ENVIADA': 'sga-badge--info', 'EM_REVISAO': 'sga-badge--warning',
+    'PROPOSTA_GERADA': 'sga-badge--warning', 'APROVADA_ENVIO': 'sga-badge--info',
+    'RECUSADA': 'sga-badge--danger', 'CANCELADA': 'sga-badge--danger', 'SUBSTITUIDA': 'sga-badge--neutral',
+    'Lead': 'sga-badge--info', 'Elaborando proposta': 'sga-badge--warning',
+    'Proposta enviada': 'sga-badge--info', 'Proposta fechada': 'sga-badge--success',
+    'Proposta recusada': 'sga-badge--danger', 'Cancelada': 'sga-badge--danger',
+    'PLANEJAMENTO': 'sga-badge--info', 'EM_ANDAMENTO': 'sga-badge--warning', 'ENTREGUE': 'sga-badge--success',
+    'RASCUNHO': 'sga-badge--neutral', 'EMITIDA': 'sga-badge--info', 'RECEBIDA': 'sga-badge--success',
+    'ABERTO': 'sga-badge--danger', 'EM_ATENDIMENTO': 'sga-badge--warning', 'FECHADO': 'sga-badge--neutral'
   };
-  return map[status] || 'badge-gray';
+  return map[status] || 'sga-badge--neutral';
 }
 
 function _v360Stat(icon, value, label) {
@@ -136,7 +136,7 @@ function _v360Stat(icon, value, label) {
 }
 
 function _v360ActionBtn(id, icon, label) {
-  return '<button class="btn btn-primary btn-sm" id="' + id + '" style="white-space:nowrap">' + icon + ' ' + label + '</button>';
+  return '<button class="sga-btn sga-btn--primary sga-btn--sm" id="' + id + '" style="white-space:nowrap">' + icon + ' ' + label + '</button>';
 }
 
 function _v360Render() {
@@ -147,9 +147,9 @@ function _v360Render() {
   var k = d.kpis;
 
   var html =
-    '<button class="btn btn-ghost btn-sm" id="v360-voltar" style="margin-bottom:10px">← Voltar à lista de clientes</button>' +
+    '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="v360-voltar" style="margin-bottom:10px">← Voltar à lista de clientes</button>' +
     // ── Header do cliente
-    '<div class="card" style="margin-bottom:14px"><div class="card-body" style="padding:16px">' +
+    '<div class="sga-card" style="margin-bottom:14px"><div class="sga-card__body" style="padding:16px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">' +
         '<div>' +
           '<h2 style="margin:0;font-size:22px">' + escapeHtml(c.name || c.id) + '</h2>' +
@@ -175,8 +175,8 @@ function _v360Render() {
         _v360ActionBtn('v360-act-card',  '📌', 'Action Card') +
         _v360ActionBtn('v360-act-tkt',   '🛠️', 'Chamado') +
         _v360ActionBtn('v360-act-po',    '📦', 'PO de proposta') +
-        '<button class="btn btn-ghost btn-sm" id="v360-act-exp">💸 Lançar despesa</button>' +
-        '<button class="btn btn-ghost btn-sm" id="v360-refresh" style="margin-left:auto">↻ Atualizar</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="v360-act-exp">💸 Lançar despesa</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="v360-refresh" style="margin-left:auto">↻ Atualizar</button>' +
       '</div>' +
       '<div id="v360-inline-modal"></div>' +
     '</div>' +
@@ -204,7 +204,7 @@ function _v360Render() {
 
 /* ── Funil encadeado: Oportunidade → Propostas → ações ── */
 function _v360FunnelHtml(d) {
-  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">🎯 Funil — Oportunidades & Propostas</div></div><div class="card-body" style="padding-top:6px">';
+  var html = '<div class="sga-card" style="margin-bottom:14px"><div class="sga-card__header"><div class="sga-card__title">🎯 Funil — Oportunidades & Propostas</div></div><div class="sga-card__body" style="padding-top:6px">';
   if (!d.opportunities.length && !d.proposals.length) {
     html += '<p style="color:#94a3b8;font-size:13px">Nenhuma oportunidade ainda. Crie a primeira na barra acima.</p>';
   }
@@ -219,8 +219,8 @@ function _v360FunnelHtml(d) {
         '<div><b>' + escapeHtml(o.id) + '</b> <span style="color:#475569">' + escapeHtml(o.product || '') + '</span>' +
           (o.representative ? ' <span style="color:#94a3b8;font-size:12px">· ' + escapeHtml(o.representative) + '</span>' : '') + '</div>' +
         '<div style="display:flex;gap:6px;align-items:center">' +
-          '<span class="badge ' + _v360Badge(o.status) + '">' + escapeHtml(o.status || '') + '</span>' +
-          '<button class="btn btn-success btn-sm v360-motor" data-id="' + escapeHtml(o.id) + '">💰 Proposta</button>' +
+          '<span class="sga-badge ' + _v360Badge(o.status) + '">' + escapeHtml(o.status || '') + '</span>' +
+          '<button class="sga-btn sga-btn--primary sga-btn--sm v360-motor" data-id="' + escapeHtml(o.id) + '">💰 Proposta</button>' +
         '</div>' +
       '</div>';
 
@@ -259,19 +259,19 @@ function _v360PropRow(p, d) {
     '<div>↳ <b>' + escapeHtml(p.number || p.id) + '</b> · ' + formatBRL(Number(p.total_value || 0)) +
       (p.revision_num ? ' <span style="color:#94a3b8;font-size:11px">' + escapeHtml(p.revision_num) + '</span>' : '') + '</div>' +
     '<div style="display:flex;gap:6px;align-items:center">' +
-      '<span class="badge ' + _v360Badge(p.status) + '">' + escapeHtml(p.status || '') + '</span>' +
-      '<button class="btn btn-ghost btn-sm v360-pdf" data-id="' + escapeHtml(p.id) + '" title="Imprimir PDF">🖨️</button>' +
+      '<span class="sga-badge ' + _v360Badge(p.status) + '">' + escapeHtml(p.status || '') + '</span>' +
+      '<button class="sga-btn sga-btn--ghost sga-btn--sm v360-pdf" data-id="' + escapeHtml(p.id) + '" title="Imprimir PDF">🖨️</button>' +
       (p.status === 'FECHADA'
-        ? '<button class="btn btn-primary btn-sm v360-po" data-id="' + escapeHtml(p.id) + '">📦 PO</button>'
+        ? '<button class="sga-btn sga-btn--primary sga-btn--sm v360-po" data-id="' + escapeHtml(p.id) + '">📦 PO</button>'
         : '') +
-      (proj ? '<button class="btn btn-ghost btn-sm v360-proj" data-id="' + escapeHtml(proj.id) + '" title="Abrir projeto">🏗️ ' + escapeHtml(proj.id) + '</button>' : '') +
+      (proj ? '<button class="sga-btn sga-btn--ghost sga-btn--sm v360-proj" data-id="' + escapeHtml(proj.id) + '" title="Abrir projeto">🏗️ ' + escapeHtml(proj.id) + '</button>' : '') +
     '</div>' +
   '</div>';
 }
 
 function _v360ProjectsHtml(d) {
   if (!d.projects.length) return '';
-  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">🏗️ Projetos</div></div><div class="card-body" style="padding-top:6px">';
+  var html = '<div class="sga-card" style="margin-bottom:14px"><div class="sga-card__header"><div class="sga-card__title">🏗️ Projetos</div></div><div class="sga-card__body" style="padding-top:6px">';
   for (var i = 0; i < d.projects.length; i++) {
     var p = d.projects[i];
     var ms = d.milestones_by_project[String(p.id)] || { done: 0, total: 0 };
@@ -280,8 +280,8 @@ function _v360ProjectsHtml(d) {
         ' <span style="color:#94a3b8;font-size:11px">· proposta ' + escapeHtml(p.proposal_id || '—') + '</span></div>' +
       '<div style="display:flex;gap:6px;align-items:center">' +
         '<span style="font-size:12px;color:#475569">marcos ' + ms.done + '/' + ms.total + '</span>' +
-        '<span class="badge ' + _v360Badge(p.status) + '">' + escapeHtml(p.status || '') + '</span>' +
-        '<button class="btn btn-ghost btn-sm v360-proj" data-id="' + escapeHtml(p.id) + '">Abrir</button>' +
+        '<span class="sga-badge ' + _v360Badge(p.status) + '">' + escapeHtml(p.status || '') + '</span>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm v360-proj" data-id="' + escapeHtml(p.id) + '">Abrir</button>' +
       '</div></div>';
   }
   return html + '</div></div>';
@@ -289,14 +289,14 @@ function _v360ProjectsHtml(d) {
 
 function _v360PosHtml(d) {
   if (!d.pos.length) return '';
-  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">📦 Ordens de Compra</div></div><div class="card-body" style="padding-top:6px">';
+  var html = '<div class="sga-card" style="margin-bottom:14px"><div class="sga-card__header"><div class="sga-card__title">📦 Ordens de Compra</div></div><div class="sga-card__body" style="padding-top:6px">';
   for (var i = 0; i < d.pos.length; i++) {
     var po = d.pos[i];
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px">' +
       '<div><b>' + escapeHtml(po.po_number || po.id) + '</b> <span style="color:#94a3b8;font-size:11px">· ' + escapeHtml(po.proposal_id || po.project_id || '') + '</span></div>' +
       '<div style="display:flex;gap:6px;align-items:center">' +
         '<span style="font-size:12px">' + escapeHtml(po.currency || 'USD') + ' ' + Number(po.total_amount || 0).toFixed(2) + '</span>' +
-        '<span class="badge ' + _v360Badge(po.status) + '">' + escapeHtml(po.status || '') + '</span>' +
+        '<span class="sga-badge ' + _v360Badge(po.status) + '">' + escapeHtml(po.status || '') + '</span>' +
       '</div></div>';
   }
   return html + '</div></div>';
@@ -304,7 +304,7 @@ function _v360PosHtml(d) {
 
 function _v360BaseTicketsHtml(d) {
   if (!d.base.length && !d.tickets.length) return '';
-  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">⚙️ Base instalada & 🛠️ Chamados</div></div><div class="card-body" style="padding-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+  var html = '<div class="sga-card" style="margin-bottom:14px"><div class="sga-card__header"><div class="sga-card__title">⚙️ Base instalada & 🛠️ Chamados</div></div><div class="sga-card__body" style="padding-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:14px">';
   html += '<div>';
   if (!d.base.length) html += '<p style="color:#94a3b8;font-size:12px">Nenhum equipamento.</p>';
   for (var i = 0; i < d.base.length && i < 8; i++) {
@@ -319,14 +319,14 @@ function _v360BaseTicketsHtml(d) {
     var tk = d.tickets[t];
     html += '<div class="v360-tkt" data-id="' + escapeHtml(tk.id) + '" style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9;cursor:pointer">' +
       '<span>🛠️ <b>' + escapeHtml(tk.id) + '</b> ' + escapeHtml(tk.title || tk.tipo || '') + '</span>' +
-      '<span class="badge ' + _v360Badge(tk.status) + '">' + escapeHtml(tk.status || '') + '</span></div>';
+      '<span class="sga-badge ' + _v360Badge(tk.status) + '">' + escapeHtml(tk.status || '') + '</span></div>';
   }
   return html + '</div></div></div>';
 }
 
 function _v360ExpensesHtml(d) {
   if (!d.expenses.length) return '';
-  var html = '<div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">💸 Despesas vinculadas — ' + formatBRL(d.kpis.total_despesas) + '</div></div><div class="card-body" style="padding-top:6px">';
+  var html = '<div class="sga-card" style="margin-bottom:14px"><div class="sga-card__header"><div class="sga-card__title">💸 Despesas vinculadas — ' + formatBRL(d.kpis.total_despesas) + '</div></div><div class="sga-card__body" style="padding-top:6px">';
   for (var i = 0; i < d.expenses.length && i < 10; i++) {
     var e = d.expenses[i];
     html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #f1f5f9">' +
@@ -338,7 +338,7 @@ function _v360ExpensesHtml(d) {
 
 function _v360TimelineHtml(d) {
   var icons = { OPPORTUNITY: '🎯', PROPOSAL: '📄', PROJECT: '🏗️', PURCHASE_ORDERS: '📦', TICKET: '🛠️', COMPANY: '🏢', EXPENSE: '💸' };
-  var html = '<div class="card"><div class="card-header"><div class="card-title">🕒 Linha do tempo</div></div><div class="card-body" style="padding-top:6px;max-height:70vh;overflow:auto">';
+  var html = '<div class="sga-card"><div class="sga-card__header"><div class="sga-card__title">🕒 Linha do tempo</div></div><div class="sga-card__body" style="padding-top:6px;max-height:70vh;overflow:auto">';
   if (!d.timeline.length) html += '<p style="color:#94a3b8;font-size:12px">Sem eventos ainda — eles aparecem aqui conforme o uso.</p>';
   for (var i = 0; i < d.timeline.length; i++) {
     var ev = d.timeline[i];
@@ -398,8 +398,8 @@ function _v360InlineModal(titleHtml, bodyHtml, onSave, saveLabel) {
       '<div style="font-weight:700;margin-bottom:8px">' + titleHtml + '</div>' +
       bodyHtml +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
-        '<button class="btn btn-primary btn-sm" id="v360-im-save">' + (saveLabel || 'Salvar') + '</button>' +
-        '<button class="btn btn-ghost btn-sm" id="v360-im-cancel">Cancelar</button>' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="v360-im-save">' + (saveLabel || 'Salvar') + '</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="v360-im-cancel">Cancelar</button>' +
       '</div>' +
     '</div>';
   document.getElementById('v360-im-cancel').addEventListener('click', function () { box.innerHTML = ''; });
@@ -432,10 +432,10 @@ function _v360ModalOpp() {
   var c = _v360Data.company;
   _v360InlineModal('🎯 Nova oportunidade — ' + escapeHtml(c.name),
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-      '<input class="form-input" id="v360-opp-rep" placeholder="representante / contato" style="flex:1;min-width:180px">' +
-      '<input class="form-input" id="v360-opp-prod" placeholder="produto / solução (ex.: Hydro-Mix XT)" style="flex:1;min-width:180px">' +
+      '<input class="sga-form-input" id="v360-opp-rep" placeholder="representante / contato" style="flex:1;min-width:180px">' +
+      '<input class="sga-form-input" id="v360-opp-prod" placeholder="produto / solução (ex.: Hydro-Mix XT)" style="flex:1;min-width:180px">' +
     '</div>' +
-    '<textarea class="form-input" id="v360-opp-notes" rows="2" placeholder="notas iniciais" style="margin-top:8px"></textarea>',
+    '<textarea class="sga-form-input" id="v360-opp-notes" rows="2" placeholder="notas iniciais" style="margin-top:8px"></textarea>',
     function () {
       google.script.run.withSuccessHandler(function (res) {
         if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
@@ -465,7 +465,7 @@ function _v360ChooseOppForMotor() {
     options += '<option value="' + escapeHtml(opps[i].id) + '">' + escapeHtml(opps[i].id + ' — ' + (opps[i].product || '')) + '</option>';
   }
   _v360InlineModal('💰 Gerar proposta — de qual oportunidade?',
-    '<select class="form-input" id="v360-motor-opp">' + options + '</select>',
+    '<select class="sga-form-input" id="v360-motor-opp">' + options + '</select>',
     function () { _opmOpen(document.getElementById('v360-motor-opp').value); },
     'Abrir motor');
 }
@@ -474,10 +474,10 @@ function _v360ChooseOppForMotor() {
 function _v360ModalCard() {
   var c = _v360Data.company;
   var body =
-    '<input class="form-input" id="v360-card-title" placeholder="título da tarefa *">' +
-    '<textarea class="form-input" id="v360-card-msg" rows="2" placeholder="detalhes" style="margin-top:8px">Cliente: ' + escapeHtml(c.name) + ' (' + escapeHtml(c.id) + ')</textarea>' +
+    '<input class="sga-form-input" id="v360-card-title" placeholder="título da tarefa *">' +
+    '<textarea class="sga-form-input" id="v360-card-msg" rows="2" placeholder="detalhes" style="margin-top:8px">Cliente: ' + escapeHtml(c.name) + ' (' + escapeHtml(c.id) + ')</textarea>' +
     '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">' +
-      '<select class="form-input" id="v360-card-user" style="flex:1"><option value="">— responsável —</option></select>' +
+      '<select class="sga-form-input" id="v360-card-user" style="flex:1"><option value="">— responsável —</option></select>' +
       '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="v360-card-urgent"> Urgente</label>' +
     '</div>';
   _v360InlineModal('📌 Novo action card — ' + escapeHtml(c.name), body, function () {
@@ -511,12 +511,12 @@ function _v360ModalCard() {
 function _v360ModalTicket() {
   var c = _v360Data.company;
   _v360InlineModal('🛠️ Novo chamado — ' + escapeHtml(c.name),
-    '<input class="form-input" id="v360-tkt-title" placeholder="título do chamado *">' +
+    '<input class="sga-form-input" id="v360-tkt-title" placeholder="título do chamado *">' +
     '<div style="display:flex;gap:8px;margin-top:8px">' +
-      '<select class="form-input" id="v360-tkt-prio" style="width:140px">' +
+      '<select class="sga-form-input" id="v360-tkt-prio" style="width:140px">' +
         '<option value="BAIXA">Baixa</option><option value="MEDIA" selected>Média</option>' +
         '<option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select>' +
-      '<input class="form-input" id="v360-tkt-desc" placeholder="descrição" style="flex:1">' +
+      '<input class="sga-form-input" id="v360-tkt-desc" placeholder="descrição" style="flex:1">' +
     '</div>',
     function () {
       var title = document.getElementById('v360-tkt-title').value;
@@ -545,8 +545,8 @@ function _v360ModalPo(preProposalId) {
   }
   _v360InlineModal('📦 Gerar PO — itens Hydronix com preço de COMPRA',
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-      '<select class="form-input" id="v360-po-prop" style="flex:1;min-width:200px">' + propOpts + '</select>' +
-      '<select class="form-input" id="v360-po-sup" style="flex:1;min-width:200px"><option value="">Carregando fornecedores...</option></select>' +
+      '<select class="sga-form-input" id="v360-po-prop" style="flex:1;min-width:200px">' + propOpts + '</select>' +
+      '<select class="sga-form-input" id="v360-po-sup" style="flex:1;min-width:200px"><option value="">Carregando fornecedores...</option></select>' +
     '</div>',
     function () {
       var sup = document.getElementById('v360-po-sup').value;
