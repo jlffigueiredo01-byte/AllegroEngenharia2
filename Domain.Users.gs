@@ -116,6 +116,19 @@ function Api_usersUpdate(id, updates) {
   }
 }
 
+/** Define/atualiza o PIN de 4 dígitos de um usuário (DIRETOR_TECNICO).
+ *  Validações: PIN único, 4 dígitos, normalização (só dígitos, pad-zero). */
+function Api_usersSetPin(id, pin) {
+  try {
+    requireRole(['DIRETOR_TECNICO']);
+    if (!id) throw new Error('id é obrigatório.');
+    var result = setUserPin(id, pin); // helper em Core.Auth.gs (já valida unicidade)
+    return { ok: true, data: result };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 /** Ativa/desativa um usuário (desativar preserva o histórico — não exclui).
  *  Trava de segurança: não permite o admin desativar a si mesmo (evita
  *  o sistema ficar sem nenhum DIRETOR_TECNICO ativo). */

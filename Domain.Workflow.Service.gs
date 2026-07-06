@@ -205,10 +205,14 @@ function _wfFecharCardsAnteriores(proposalId, fechadoPor) {
  * @return {string}              - 'SIMPLIFICADA' ou 'COMPLETA'
  */
 function _wfGetAlcada(totalProposta) {
-  // Usa getConfigValue() de Core.Config — sem acesso direto à sheet
-  var limiar = safeNumber(getConfigValue('ALCADA_SIMPLIFICADA'), 0);
-  if (limiar === 0) return 'COMPLETA'; // default conservador
-  return (safeNumber(totalProposta) < limiar) ? 'SIMPLIFICADA' : 'COMPLETA';
+  // FONTE ÚNICA: delega para _calcAlcadaNivel (Domain.Proposals.Service), que lê a
+  // chave canônica SETUP_CALC_ALCADA_SIMPLIFICADA. Antes este helper lia a chave
+  // 'ALCADA_SIMPLIFICADA' (inexistente) → limiar 0 → TODA proposta virava COMPLETA
+  // e o card de revisão financeira era sempre bloqueante. Agora as duas regras batem.
+  try {
+    if (typeof _calcAlcadaNivel === 'function') return _calcAlcadaNivel(totalProposta);
+  } catch (e) {}
+  return 'COMPLETA'; // default conservador se o helper não estiver disponível
 }
 
 /**

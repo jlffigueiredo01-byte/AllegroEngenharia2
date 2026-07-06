@@ -323,18 +323,11 @@ function tktSvcCheckSlas() {
     }
   });
 
+  // FB-00036: cards "SLA Estourado: N ticket(s)" no board de Action Cards são
+  // ruído (geravam 1 card novo por execução, sem dedup). SLA violado já é
+  // visível no Dashboard + aba Chamados + tktSvcGetEmRiscoSla. Mantemos
+  // somente audit log para rastreabilidade.
   if (slaEstourados.length > 0) {
-    try {
-      var ids = slaEstourados.map(function(t) { return t.id; }).join(', ');
-      acSvcCreateCard({
-        title:   'SLA Estourado: ' + slaEstourados.length + ' ticket(s)',
-        message: 'Tickets com SLA de resolução ultrapassado: ' + ids,
-        urgent:  true
-      }, { id: 'SYSTEM', name: 'Sistema' });
-    } catch (e) {
-      Logger.log('[tktSvcCheckSlas] Aviso: não foi possível criar Action Card: ' + e.message);
-    }
-
     appendAuditLog(
       'TICKET_SLA_CHECK',
       TICKETS_SHEET,
@@ -421,7 +414,11 @@ function tktSvcComentar(ticketId, texto) {
   if (!t) throw new Error('Chamado não encontrado: ' + ticketId);
   var rec = _tktAddUpdate(ticketId, 'COMENTARIO', String(texto).trim());
   if (!t.first_response_at) {
-    try { tktSvcRegistrarRespondido(ticketId); } catch (e) { /* SLA é best-effort */ }
+    try {
+      // Atribui quem respondeu (antes ia sem userId → responsável não registrado)
+      var _resp = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
+      tktSvcRegistrarRespondido(ticketId, _resp && _resp.id ? _resp.id : undefined);
+    } catch (e) { /* SLA é best-effort */ }
   }
   return rec;
 }

@@ -139,9 +139,9 @@ function Api_poGetByProposal(proposalId) {
 
 
 /**
- * Gera PO em rascunho a partir de uma proposta FECHADA.
+ * Gera PO(s) em rascunho a partir de uma proposta FECHADA.
  * @param {string} proposalId
- * @param {string} supplierId
+ * @param {string} [supplierId] - opcional; se vazio, o fornecedor é derivado do supplier_id de cada produto.
  */
 function Api_poCreateFromProposal(proposalId, supplierId) {
   try {

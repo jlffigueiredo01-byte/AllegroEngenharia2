@@ -105,8 +105,21 @@ function fbSvcCriar(data) {
     compilado_em: '', camada: '', resolucao_nota: '', atualizado_em: now
   };
   var sh = getOrCreateSheet(FEEDBACK_SHEET, FEEDBACK_HEADERS);
+  // Garante que toda coluna de FEEDBACK_HEADERS exista na aba (adiciona faltantes
+  // no fim — ex.: `criado_por` que estava ausente e causava o desalinhamento).
+  // Não reordena nem mexe nas colunas existentes. Combinado com a gravação
+  // header-aware abaixo, resolve sem precisar editar a planilha à mão.
+  try { ensureColumns(sh, FEEDBACK_HEADERS); } catch (eC) { Logger.log('fbSvcCriar ensureColumns: ' + eC.message); }
+  // Gravação HEADER-AWARE: mapeia cada valor pela COLUNA REAL da planilha (pelo
+  // nome do cabeçalho), NÃO posicionalmente. Corrige o desalinhamento (bug
+  // "Quando: Joao" / criado_por e contexto_json deslocados) quando a ordem das
+  // colunas da aba diverge de FEEDBACK_HEADERS.
+  var _hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   var row = [];
-  for (var i = 0; i < FEEDBACK_HEADERS.length; i++) row.push(rec[FEEDBACK_HEADERS[i]]);
+  for (var i = 0; i < _hdr.length; i++) {
+    var _k = String(_hdr[i]).trim();
+    row.push(rec.hasOwnProperty(_k) ? rec[_k] : '');
+  }
   sh.appendRow(row);
 
   // urgente: e-mail imediato para o diretor técnico (não espera o lote)
@@ -149,16 +162,29 @@ function fbSvcCriar(data) {
 function fbSvcMeus() {
   var user = requireAuth();
   var _norm = function (v) { return String(v == null ? '' : v).trim().toLowerCase(); };
-  var uid = _norm(user.id);
-  var umail = _norm(user.email);
-  var uname = _norm(user.name);
+  // Conjunto de chaves de identidade do usuário (id, email, nome) + o id derivado
+  // do nome na convenção "USR-NOME" (ex.: "Joao" → "usr-joao"). Cobre o drift e a
+  // convenção de geração de id usada nos relatos antigos.
+  var keys = {};
+  var cand = [user.id, user.email, user.name];
+  for (var c = 0; c < cand.length; c++) { if (cand[c]) keys[_norm(cand[c])] = true; }
+  if (user.name) {
+    var _n = _norm(user.name);
+    keys['usr-' + _n] = true;
+    keys['usr-' + _n.split(' ')[0]] = true;
+  }
   var rows = sheetToObjects(FEEDBACK_SHEET).filter(function (r) {
-    var by = _norm(r.criado_por);
-    var byName = _norm(r.criado_por_nome);
-    return (by && (by === uid || (umail && by === umail))) ||
-           (byName && uname && byName === uname);
+    // Dados antigos podem estar desalinhados — confere os 3 campos onde a
+    // identidade do autor pode ter caído (criado_por, criado_por_nome, criado_em).
+    return !!(keys[_norm(r.criado_por)] || keys[_norm(r.criado_por_nome)] || keys[_norm(r.criado_em)]);
   });
-  rows.sort(function (a, b) { return String(b.criado_em).localeCompare(String(a.criado_em)); });
+  // FB-032: ordena do mais recente p/ o mais antigo pelo NÚMERO do FB (robusto
+  // mesmo se criado_em vier inconsistente/desalinhado na planilha).
+  rows.sort(function (a, b) {
+    var na = parseInt(String(a.id).replace(/\D/g, ''), 10) || 0;
+    var nb = parseInt(String(b.id).replace(/\D/g, ''), 10) || 0;
+    return nb - na;
+  });
   return rows.slice(0, 50);
 }
 
@@ -258,16 +284,44 @@ function _fbMontarMarkdownRelato(r) {
   out += '- **Por:** ' + (r.criado_por_nome || r.criado_por) + '\n';
   out += '- **Quando:** ' + r.criado_em + '\n';
   if (r.urgente === 'TRUE') out += '- 🚨 **URGENTE — está impedindo o trabalho**\n';
-  out += '- **Status:** ' + r.status + '\n\n';
-  out += '## Descrição\n\n> ' + String(r.descricao || '').replace(/\n/g, '\n> ') + '\n';
+  out += '- **Status:** ' + r.status + '\n';
+  var ctx = {};
+  try { ctx = JSON.parse(r.contexto_json || '{}'); } catch (e) {}
+  if (ctx.build) out += '- **Versão do deploy:** ' + ctx.build + '\n';
+  if (ctx.entity && ctx.entity.id) out += '- **Registro aberto:** ' + (ctx.entity.secao || '?') + ' / ' + ctx.entity.id + '\n';
+  out += '\n## Descrição\n\n> ' + String(r.descricao || '').replace(/\n/g, '\n> ') + '\n';
   var _anexos = []; try { _anexos = JSON.parse(r.anexos_json || '[]'); } catch (e) {}
   if (!_anexos.length && r.anexo_url) _anexos = [{ url: r.anexo_url, name: r.anexo_name || 'anexo' }];
   for (var _ai = 0; _ai < _anexos.length; _ai++) out += '\n📎 [' + (_anexos[_ai].name || 'anexo') + '](' + _anexos[_ai].url + ')\n';
-  var ctx = {};
-  try { ctx = JSON.parse(r.contexto_json || '{}'); } catch (e) {}
+  // FB-033 — diagnóstico enriquecido. As chamadas ao servidor que falharam vêm
+  // primeiro (maior valor pra entender de onde veio o erro).
+  if (ctx.serverErrors && ctx.serverErrors.length) {
+    out += '\n<details><summary>⚠️ chamadas ao servidor que FALHARAM (' + ctx.serverErrors.length + ')</summary>\n\n```\n';
+    for (var _se = 0; _se < ctx.serverErrors.length; _se++) {
+      var se = ctx.serverErrors[_se];
+      out += '[' + (se.t || '') + '] ' + (se.fn || '?') + ' (' + (se.dur || '?') + 'ms)\n  args: ' + (se.args || '') + '\n  erro: ' + (se.err || '') + '\n';
+    }
+    out += '```\n</details>\n';
+  }
   if (ctx.jsErrors && ctx.jsErrors.length) {
     out += '\n<details><summary>erros JS capturados na sessão</summary>\n\n```\n' +
       ctx.jsErrors.join('\n').slice(0, 1000) + '\n```\n</details>\n';
+  }
+  if (ctx.consoleErrors && ctx.consoleErrors.length) {
+    out += '\n<details><summary>console.error / warn (' + ctx.consoleErrors.length + ')</summary>\n\n```\n';
+    for (var _ce = 0; _ce < ctx.consoleErrors.length; _ce++) {
+      var ce = ctx.consoleErrors[_ce];
+      out += '[' + (ce.t || '') + '] ' + (ce.level || '') + ': ' + (ce.msg || '') + '\n';
+    }
+    out += '```\n</details>\n';
+  }
+  if (ctx.trail && ctx.trail.length) {
+    out += '\n<details><summary>trilha de interações (' + ctx.trail.length + ' passos)</summary>\n\n```\n';
+    for (var _tr = 0; _tr < ctx.trail.length; _tr++) {
+      var tr = ctx.trail[_tr];
+      out += '[' + (tr.t || '') + '] ' + (tr.k || '') + ': ' + (tr.d || '') + '\n';
+    }
+    out += '```\n</details>\n';
   }
   if (ctx.userAgent) out += '\n<sub>sessão: ' + (ctx.papel || '') + ' · ' + (ctx.viewport || '') + ' · ' + ctx.userAgent + '</sub>\n';
   return out;

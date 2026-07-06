@@ -1,4 +1,6 @@
-const USERS_HEADERS         = ['id', 'name', 'email', 'role', 'active', 'created_at'];
+// 'pin' = PIN de 4 dígitos definido manualmente pelo admin direto na aba USERS.
+// 'email' permanece para audit/notificações, mas não autentica mais (FB-pin).
+const USERS_HEADERS         = ['id', 'name', 'email', 'pin', 'role', 'active', 'created_at'];
 const TIMELINE_HEADERS      = ['id', 'timestamp', 'entity', 'entity_id', 'event_type', 'description', 'user_id', 'user_name'];
 const CONFIG_HEADERS        = ['key', 'value', 'description'];
 
@@ -107,6 +109,7 @@ function initCoreSheets() {
   initDriveRegistrySheet();   // Core.Drive.gs — registro de pastas do Drive
   getOrCreateSheet('CONFIG',   CONFIG_HEADERS);
   getOrCreateSheet('USERS',    USERS_HEADERS);
+  _authEnsurePinColumn();  // migração: garante coluna 'pin' em USERS pré-existente
   getOrCreateSheet('AUDIT_LOG', AUDIT_HEADERS);
   getOrCreateSheet('TIMELINE', TIMELINE_HEADERS);
   initImportSheets();

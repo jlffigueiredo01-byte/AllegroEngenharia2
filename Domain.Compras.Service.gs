@@ -184,16 +184,23 @@ function poSvcThreeWayMatch(poId, nfId) {
 
 
 /**
- * Cria uma PO em RASCUNHO a partir dos itens Hydronix de uma proposta FECHADA.
+ * Cria PO(s) em RASCUNHO a partir dos itens de uma proposta FECHADA.
+ *
+ * O fornecedor é DERIVADO do supplier_id de cada produto (coluna em PRODUCTS):
+ * os itens físicos são agrupados por fornecedor e gera-se UMA PO por fornecedor,
+ * cada uma na moeda cadastrada do fornecedor (SUPPLIERS.currency). Hoje o catálogo
+ * é 100% Hydronix → 1 PO em USD. Passar supplierIdOpt força todos no mesmo fornecedor.
+ *
  * Preço unitário = table_price_usd x (1 - DESCONTO_COMPRA_PCT) — preço de COMPRA.
- * Itens sem correspondência na PRODUCTS são ignorados (linhas de serviço etc).
+ * FB-031: serviços/mão-de-obra (categoria SERVICO) e itens sem preço de tabela são ignorados.
+ *
  * @param {string} proposalId
- * @param {string} supplierId
- * @return {Object} a PO criada
+ * @param {string} [supplierIdOpt] - override manual; se vazio, deriva do produto.
+ * @return {Object} { id, po_number, ... da 1ª PO, pos:[...], count, ignorados, sem_fornecedor }
  */
-function poSvcCreateFromProposal(proposalId, supplierId) {
+function poSvcCreateFromProposal(proposalId, supplierIdOpt) {
   if (!proposalId) throw new Error('proposalId é obrigatório.');
-  if (!supplierId) throw new Error('supplierId é obrigatório.');
+  supplierIdOpt = supplierIdOpt ? String(supplierIdOpt).trim() : '';
 
   var prop = propRepoGetById(proposalId);
   if (!prop) throw new Error('Proposta não encontrada: ' + proposalId);
@@ -212,37 +219,67 @@ function poSvcCreateFromProposal(proposalId, supplierId) {
   var params = prcRepoGetSetupCalcParams();
   var desconto = params.DESCONTO_COMPRA_PCT || 0;
 
-  var poItems = [];
-  var total = 0;
+  // Agrupa os itens físicos por FORNECEDOR, derivado do supplier_id do produto.
+  var groups = {};            // supplierId -> { items: [], total: 0 }
   var ignorados = [];
+  var semFornecedor = [];
   for (var j = 0; j < propItems.length; j++) {
     var it = propItems[j];
     var prod = byCode[it.code];
     if (!prod) { ignorados.push(it.code || it.description || '?'); continue; }
+    // FB-031: PO é SÓ produto físico — exclui serviços/mão-de-obra e itens sem preço de tabela.
+    if (String(prod.category || '').toUpperCase() === 'SERVICO' || Number(prod.table_price_usd || 0) <= 0) {
+      ignorados.push((it.code || it.description || '?') + ' (serviço/infra)');
+      continue;
+    }
+    var sid = supplierIdOpt || String(prod.supplier_id || prod['Supplier ID'] || '').trim();
+    if (!sid) { semFornecedor.push(it.code || prod.description || '?'); continue; }
+
     var unit = Number(prod.table_price_usd || 0) * (1 - desconto);
     var qty  = Number(it.qty || 1);
     var line = { code: it.code, description: prod.description || it.description || '',
                  qty: qty, unit_price: Math.round(unit * 100) / 100,
                  total: Math.round(unit * qty * 100) / 100 };
-    total += line.total;
-    poItems.push(line);
-  }
-  if (!poItems.length) {
-    throw new Error('Nenhum item da proposta corresponde a produtos do catálogo (só serviços?).');
+    if (!groups[sid]) groups[sid] = { items: [], total: 0 };
+    groups[sid].items.push(line);
+    groups[sid].total += line.total;
   }
 
-  var po = poSvcCreate({
-    supplier_id:  supplierId,
-    proposal_id:  proposalId,
-    currency:     'USD',
-    items_json:   poItems,
-    total_amount: Math.round(total * 100) / 100
-  });
+  var supIds = Object.keys(groups);
+  if (!supIds.length) {
+    throw new Error(semFornecedor.length
+      ? 'Itens sem fornecedor cadastrado em PRODUCTS (coluna supplier_id): ' + semFornecedor.join(', ')
+      : 'Nenhum item da proposta corresponde a produtos físicos do catálogo (só serviços?).');
+  }
 
-  appendTimelineEvent('PROPOSAL', proposalId, 'PO_GERADA',
-    'PO ' + (po.po_number || po.id) + ' gerada da proposta (' + poItems.length + ' itens' +
-    (ignorados.length ? '; ignorados: ' + ignorados.join(', ') : '') + ')');
-  return po;
+  var pos = [];
+  for (var s = 0; s < supIds.length; s++) {
+    var sidK = supIds[s];
+    var g    = groups[sidK];
+    var sup  = supplierRepoGetById(sidK);
+    var cur  = (sup && sup.currency) ? String(sup.currency).toUpperCase() : 'USD';
+    var po = poSvcCreate({
+      supplier_id:  sidK,
+      proposal_id:  proposalId,
+      currency:     cur,
+      items_json:   g.items,
+      total_amount: Math.round(g.total * 100) / 100
+    });
+    pos.push(po);
+    appendTimelineEvent('PROPOSAL', proposalId, 'PO_GERADA',
+      'PO ' + (po.po_number || po.id) + ' gerada da proposta para ' +
+      ((sup && sup.name) ? sup.name : sidK) + ' (' + g.items.length + ' itens' +
+      (ignorados.length ? '; ignorados: ' + ignorados.join(', ') : '') +
+      (semFornecedor.length ? '; sem fornecedor: ' + semFornecedor.join(', ') : '') + ')');
+  }
+
+  // Compat: 1ª PO no topo (UI lê po_number/id) + lista completa p/ multi-fornecedor.
+  var first = pos[0];
+  return {
+    id: first.id, po_number: first.po_number, supplier_id: first.supplier_id,
+    currency: first.currency, total_amount: first.total_amount,
+    pos: pos, count: pos.length, ignorados: ignorados, sem_fornecedor: semFornecedor
+  };
 }
 
 /* ═══════════════════════ FB-029: aprovar · documento SC · email ═══════════════════════ */

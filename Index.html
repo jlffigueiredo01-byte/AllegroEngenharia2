@@ -5,8 +5,47 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SGA — Sistema de Gestão Allegro</title>
+  <!-- Versão do deploy + timestamp carimbados no cliente (Index é o único template que avalia scriptlets). -->
+  <script>
+    window.SGA_BUILD = "<?= getBuildVersion() ?>";
+    window.SGA_DEPLOYED_AT = "<?= getDeployedAt() ?>";
+  </script>
+  <!-- html2canvas: print automático do feedback (FB-033). Guardado com typeof no uso. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <?!= include('Styles'); ?>
   <?!= include('_DesignSystem'); ?>
+  <style>
+    /* Tela de PIN */
+    .pin-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #e2e8f0; border: 1.5px solid #cbd5e1;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .pin-dot.filled {
+      background: #1a56db; border-color: #1a56db;
+      transform: scale(1.05);
+    }
+    .pin-dot.error {
+      background: #c0392b; border-color: #c0392b;
+      animation: pinShake 0.4s;
+    }
+    @keyframes pinShake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+    .pin-key {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      height: 56px; font-size: 22px; font-weight: 500; color: #1e293b;
+      cursor: pointer; transition: background 0.1s, transform 0.05s;
+      font-family: inherit; user-select: none;
+      touch-action: manipulation;
+    }
+    .pin-key:hover { background: #f1f5f9; }
+    .pin-key:active { background: #e2e8f0; transform: scale(0.96); }
+    .pin-key:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pin-key-aux { font-size: 18px; color: #64748b; }
+  </style>
 </head>
 <body>
 
@@ -38,7 +77,7 @@
         <p class="login-subtitle" id="login-subtitle">Sistema de Gestão Allegro · Allegro Engenharia</p>
       </div>
 
-      <!-- Estado: verificando sessão -->
+      <!-- Estado: verificando sessão (rapidamente, no boot) -->
       <div id="auth-checking" class="login-body">
         <div style="text-align:center;padding:24px 0">
           <div class="spinner-ring" style="margin:0 auto 16px"></div>
@@ -46,28 +85,51 @@
         </div>
       </div>
 
-      <!-- Estado: acesso não autorizado -->
-      <div id="auth-unauthorized" class="login-body hidden">
-        <div style="text-align:center;padding:8px 0 24px">
-          <div style="
-            width:64px;height:64px;border-radius:50%;
-            background:#fee2e2;display:flex;align-items:center;
-            justify-content:center;margin:0 auto 16px;font-size:28px">
-            🔒
+      <!-- Estado: PIN (login principal) -->
+      <div id="auth-pin" class="login-body hidden">
+        <div style="text-align:center;padding:8px 0 12px">
+          <p style="font-size:14px;color:#475569;margin:0 0 18px">Digite seu PIN de 4 dígitos</p>
+          <div id="pin-dots" style="display:flex;justify-content:center;gap:12px;margin:0 auto 18px">
+            <span class="pin-dot" data-i="0"></span>
+            <span class="pin-dot" data-i="1"></span>
+            <span class="pin-dot" data-i="2"></span>
+            <span class="pin-dot" data-i="3"></span>
           </div>
-          <h2 style="font-size:17px;font-weight:700;color:#991b1b;margin:0 0 8px">
-            Acesso não autorizado
-          </h2>
-          <p id="auth-unauth-msg" style="
-            font-size:13px;color:#64748b;margin:0;
-            line-height:1.6;padding:0 8px">
+          <input type="tel" id="pin-input" maxlength="4" inputmode="numeric"
+            autocomplete="off" pattern="[0-9]*"
+            style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"
+            aria-label="PIN" />
+          <div id="pin-error" style="color:#c0392b;font-size:13px;min-height:18px;margin:0 0 12px"></div>
+          <div id="pin-keypad" style="
+            display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+            max-width:240px;margin:0 auto">
+            <button type="button" class="pin-key" data-d="1">1</button>
+            <button type="button" class="pin-key" data-d="2">2</button>
+            <button type="button" class="pin-key" data-d="3">3</button>
+            <button type="button" class="pin-key" data-d="4">4</button>
+            <button type="button" class="pin-key" data-d="5">5</button>
+            <button type="button" class="pin-key" data-d="6">6</button>
+            <button type="button" class="pin-key" data-d="7">7</button>
+            <button type="button" class="pin-key" data-d="8">8</button>
+            <button type="button" class="pin-key" data-d="9">9</button>
+            <button type="button" class="pin-key pin-key-aux" id="pin-clear">↺</button>
+            <button type="button" class="pin-key" data-d="0">0</button>
+            <button type="button" class="pin-key pin-key-aux" id="pin-back">⌫</button>
+          </div>
+          <p style="font-size:11px;color:#94a3b8;margin:18px 0 0">
+            Não tem PIN? Peça ao administrador para cadastrar na aba USERS.
           </p>
         </div>
       </div>
 
-      <!-- Estado: erro genérico -->
+      <!-- Estado: erro genérico (raro — falha de rede etc.) -->
       <div id="auth-error" class="login-body hidden">
         <div id="login-error" class="login-error"></div>
+        <button type="button" onclick="initAuth()" style="
+          margin-top:12px;background:#1a56db;color:#fff;border:none;
+          border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px">
+          Tentar novamente
+        </button>
       </div>
 
       <div class="login-footer">
@@ -97,6 +159,8 @@
         <div class="sidebar-brand-text">
           <span class="sidebar-brand-name" id="sidebar-brand-name">SGA</span>
           <span class="sidebar-brand-tagline" id="sidebar-brand-tagline">Sistema de Gestão Allegro</span>
+          <!-- FB-00039: versão + data/hora da última implantação -->
+          <span id="sidebar-brand-build" style="display:block;font-size:10px;color:#94a3b8;line-height:1.3;margin-top:3px"></span>
         </div>
       </div>
 
@@ -235,6 +299,7 @@
 
   <?!= include('ActionCardsUI'); ?>
   <?!= include('Scripts'); ?>
+  <?!= include('FeedbackDiag'); ?>
   <?!= include('CompaniesUI'); ?>
   <?!= include('ContactsUI'); ?>
   <?!= include('PricingEngineUI'); ?>

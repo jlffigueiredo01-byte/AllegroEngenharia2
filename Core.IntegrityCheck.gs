@@ -22,8 +22,10 @@ function runIntegrityCheck() {
     var total = issues.length;
     Logger.log('[IntegrityCheck] Total de problemas encontrados: ' + total);
 
+    // FB-00036: cards "[SISTEMA] Integridade: N problema(s)" poluíam o board.
+    // Mantemos audit log + email opcional para DIRETOR_TECNICO via ALERT_EMAIL.
     if (total > 0) {
-      _createIntegrityCard(issues);
+      _emailIntegrityReport(issues);
     }
 
     appendAuditLog(
@@ -150,31 +152,30 @@ function _checkProposalsWithoutPricing(issues) {
 // ------------------------------------------------------------
 
 /**
- * Cria um Action Card do tipo SISTEMA para FINANCEIRO_ADMIN
- * listando todos os problemas encontrados.
+ * Envia o relatório de integridade por email (se ALERT_EMAIL configurado).
+ * Substitui a criação de Action Card (FB-00036) — board não deve ser usado
+ * para alertas automáticos do sistema.
  *
  * @param {string[]} issues - Lista de problemas a reportar.
  */
-function _createIntegrityCard(issues) {
-  var title   = '[SISTEMA] Integridade: ' + issues.length + ' problema(s) encontrado(s)';
-  var message = 'Verificação automática de integridade (' +
-    Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy HH:mm') +
-    '):\n\n' +
-    issues.map(function(iss, i) { return (i + 1) + '. ' + iss; }).join('\n');
-
+function _emailIntegrityReport(issues) {
   try {
-    acCreate({
-      title:       title,
-      message:     message,
-      quote_id:    '',
-      urgent:      false,
-      assigned_to: 'FINANCEIRO_ADMIN',
-      created_by:  'SYSTEM'
-    });
-    Logger.log('[IntegrityCheck] Action Card de sistema criado.');
+    var recipient = getConfigValue('ALERT_EMAIL') ||
+                    PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL');
+    if (!recipient) {
+      Logger.log('[IntegrityCheck] ALERT_EMAIL não configurado — relatório só em log.');
+      return;
+    }
+    var dataHora = Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy HH:mm');
+    var subject  = '[SGA] Integridade: ' + issues.length + ' problema(s) encontrado(s)';
+    var body =
+      'Verificação automática de integridade (' + dataHora + '):\n\n' +
+      issues.map(function(iss, i) { return (i + 1) + '. ' + iss; }).join('\n') +
+      '\n\n--\nSGA — Allegro Business System';
+    GmailApp.sendEmail(recipient, subject, body);
+    Logger.log('[IntegrityCheck] Email enviado para ' + recipient);
   } catch (e) {
-    // Se o módulo de Action Cards não estiver disponível, loga apenas
-    Logger.log('[IntegrityCheck] Não foi possível criar Action Card: ' + e.message);
+    Logger.log('[IntegrityCheck] Falha ao enviar email: ' + e.message);
   }
 }
 

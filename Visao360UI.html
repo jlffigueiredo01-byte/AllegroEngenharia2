@@ -546,15 +546,17 @@ function _v360ModalPo(preProposalId) {
   _v360InlineModal('📦 Gerar PO — itens Hydronix com preço de COMPRA',
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<select class="sga-form-input" id="v360-po-prop" style="flex:1;min-width:200px">' + propOpts + '</select>' +
-      '<select class="sga-form-input" id="v360-po-sup" style="flex:1;min-width:200px"><option value="">Carregando fornecedores...</option></select>' +
+      '<select class="sga-form-input" id="v360-po-sup" style="flex:1;min-width:200px"><option value="">⚙️ Automático (pelo produto)</option></select>' +
     '</div>',
     function () {
       var sup = document.getElementById('v360-po-sup').value;
-      if (!sup) { showAlert('Selecione o fornecedor.', 'warning'); return; }
       google.script.run.withSuccessHandler(function (res) {
         if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
         var po = res.data || {};
-        _v360AfterCreate('PO ' + (po.po_number || po.id) + ' criada em rascunho — revise em Compras.');
+        var msg = (po.count > 1)
+          ? (po.count + ' POs criadas em rascunho (1 por fornecedor) — revise em Compras.')
+          : ('PO ' + (po.po_number || po.id) + ' criada em rascunho — revise em Compras.');
+        _v360AfterCreate(msg);
       }).Api_poCreateFromProposal(document.getElementById('v360-po-prop').value, sup);
     }, 'Gerar PO (rascunho)');
 
@@ -562,9 +564,9 @@ function _v360ModalPo(preProposalId) {
     var sel = document.getElementById('v360-po-sup');
     if (!sel) return;
     var sups = (r && r.ok && r.data) ? r.data : [];
-    var html = '<option value="">— fornecedor —</option>';
+    var html = '<option value="">⚙️ Automático (pelo produto)</option>';
     for (var i = 0; i < sups.length; i++) {
-      html += '<option value="' + escapeHtml(sups[i].id) + '">' + escapeHtml(sups[i].name || sups[i].id) + '</option>';
+      html += '<option value="' + escapeHtml(sups[i].id) + '">Forçar: ' + escapeHtml(sups[i].name || sups[i].id) + '</option>';
     }
     sel.innerHTML = html;
   }).Api_supplierGetAll();

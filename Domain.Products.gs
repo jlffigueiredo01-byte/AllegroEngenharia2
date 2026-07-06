@@ -5,6 +5,7 @@
 
 var PRODUCTS_SHEET = 'PRODUCTS';
 var PRODUCTS_HEADERS = [
+  'supplier_id', // FK -> SUPPLIERS.id — define fornecedor/po_email/moeda do PO gerado da proposta
   'code', 'description', 'ncm', 'category',
   'table_price_usd', 'purchase_price_usd', 'purchase_price_brl',
   'selling_price_usd', 'selling_price_brl', 'active',
@@ -22,6 +23,7 @@ function initProductsSheet() {
   _prodEnsureColumns();
   seedProductDescriptions();
   seedProductMedia();
+  seedProductSuppliers();
   var existing = sheetToObjects(PRODUCTS_SHEET);
   if (existing.length > 0) return; // already seeded
 
@@ -243,7 +245,7 @@ function Api_setDollarRate(rate) {
 function _prodEnsureColumns() {
   try {
     var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
-    var need = ['long_description', 'datasheet_url', 'image_url'];
+    var need = ['supplier_id', 'long_description', 'datasheet_url', 'image_url'];
     var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     for (var i = 0; i < need.length; i++) {
       if (headers.indexOf(need[i]) === -1) {
@@ -333,5 +335,29 @@ function seedProductMedia() {
     }
   } catch (e) {
     Logger.log('seedProductMedia: ' + e.message);
+  }
+}
+
+/**
+ * Preenche supplier_id = 'FOR-001' (Hydronix) onde estiver VAZIO. Todo o catálogo
+ * atual é Hydronix; não sobrescreve fornecedor já definido pelo time. Idempotente —
+ * roda dentro de initProductsSheet e protege installs novos / linhas sem fornecedor.
+ */
+function seedProductSuppliers() {
+  try {
+    var sh = getOrCreateSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS);
+    var values = sh.getDataRange().getValues();
+    if (values.length < 2) return;
+    var supCol = values[0].indexOf('supplier_id');
+    if (supCol === -1) return; // coluna ainda não existe
+    var filled = 0;
+    for (var r = 1; r < values.length; r++) {
+      if (String(values[r][supCol] || '').trim()) continue;
+      sh.getRange(r + 1, supCol + 1).setValue('FOR-001');
+      filled++;
+    }
+    if (filled) Logger.log('[Products] ' + filled + ' supplier_id preenchidos (FOR-001).');
+  } catch (e) {
+    Logger.log('seedProductSuppliers: ' + e.message);
   }
 }

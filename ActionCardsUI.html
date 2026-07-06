@@ -71,7 +71,7 @@ function _renderWorkload() {
   // Botao "Todos" pra limpar o filtro
   var totN = 0;
   for (var t = 0; t < _acCards.length; t++) {
-    if (_acCards[t].status === 'ABERTO' || _acCards[t].status === 'EM_ANDAMENTO') totN++;
+    if ((_acCards[t].status === 'ABERTO' || _acCards[t].status === 'EM_ANDAMENTO') && !_acEhFollowup(_acCards[t])) totN++;
   }
   var todosActive = !_acFilterUserId;
   html += '<button type="button" onclick="_acSetFilter(\'\')" ' +
@@ -83,7 +83,7 @@ function _renderWorkload() {
     var n = 0;
     for (var j = 0; j < _acCards.length; j++) {
       var c = _acCards[j];
-      if (c.assigned_to === u.id && (c.status === 'ABERTO' || c.status === 'EM_ANDAMENTO')) n++;
+      if (c.assigned_to === u.id && (c.status === 'ABERTO' || c.status === 'EM_ANDAMENTO') && !_acEhFollowup(c)) n++;
     }
     var bg    = n <= 2 ? 'var(--sga-color-success-bg)' : n <= 4 ? 'var(--sga-color-warning-bg)' : 'var(--sga-color-danger-bg)';
     var color = n <= 2 ? 'var(--sga-color-success)' : n <= 4 ? 'var(--sga-color-warning)' : 'var(--sga-color-danger)';
@@ -124,11 +124,15 @@ function _acFiltrarPorUsuario(cards) {
 }
 
 /* ── Board Kanban ── */
+// FB-34: cards de follow-up poluíam o kanban — agora ficam só no aviso do Dashboard
+// ("Sem follow-up há Xd"). Esconde tipos FOLLOWUP/FOLLOWUP_ENVIADA/FOLLOWUP_RECUSADA.
+function _acEhFollowup(c) { return !!(c && /^FOLLOWUP/i.test(String(c.tipo || ''))); }
+
 function _renderKanban() {
   var el = document.getElementById('ac-kanban');
   if (!el) return;
-  // FB-15: aplica filtro de usuario antes de distribuir nas colunas
-  var visiveis = _acFiltrarPorUsuario(_acCards);
+  // FB-15: filtro por usuário · FB-34: esconde follow-ups (vão pro Dashboard)
+  var visiveis = _acFiltrarPorUsuario(_acCards).filter(function (c) { return !_acEhFollowup(c); });
   var open = [], inp = [], fin = [], can = [];
   for (var i = 0; i < visiveis.length; i++) {
     var c = visiveis[i];

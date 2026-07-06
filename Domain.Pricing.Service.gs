@@ -42,7 +42,8 @@ function prcCalcMateriais(items) {
 
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
-    var qty  = item.qty || 1;
+    // Preserva qty 0 (antes 0 virava 1 e inflava o subtotal)
+    var qty  = (item.qty == null || item.qty === '' || isNaN(item.qty)) ? 1 : Number(item.qty);
 
     var tablePrice = (item.table_price_usd != null && !isNaN(item.table_price_usd))
       ? Number(item.table_price_usd)

@@ -17,100 +17,148 @@ window.onload = function () {
 };
 
 /* ══════════════════════════════════════════════════════════════
-   AUTENTICAÇÃO AUTOMÁTICA POR E-MAIL
+   AUTENTICAÇÃO POR PIN (4 dígitos)
+   - Sessão server-side em UserProperties (12h padrão)
+   - Flag client-side em localStorage para skip da tela de PIN
+   - 5 tentativas erradas → lockout de 5 min
 ══════════════════════════════════════════════════════════════ */
 
-/**
- * Inicia o fluxo de autenticação automática.
- * Chama o backend para obter o usuário logado via Session.getActiveUser().
- */
+var _AUTH_PIN_FLAG = 'sga_logged_in';
+var _AUTH_PIN_BUFFER = '';
+
+/** Inicia o fluxo: se já houver flag, tenta revalidar a sessão server-side. */
 function initAuth() {
+  showAuthState('auth-checking');
+
+  var hasFlag = false;
+  try { hasFlag = !!localStorage.getItem(_AUTH_PIN_FLAG); } catch (e) {}
+
+  if (!hasFlag) {
+    showPinScreen();
+    return;
+  }
+
   google.script.run
-    .withSuccessHandler(onAuthSuccess)
-    .withFailureHandler(onAuthError)
+    .withSuccessHandler(function (result) {
+      if (result && result.ok && result.data) {
+        ALLEGRO.currentUser = result.data;
+        enterApp(result.data);
+      } else {
+        try { localStorage.removeItem(_AUTH_PIN_FLAG); } catch (e) {}
+        showPinScreen();
+      }
+    })
+    .withFailureHandler(function (err) {
+      showAuthGenericError((err && err.message) || 'Falha de comunicação.');
+    })
     .Api_getCurrentUserInfo();
 }
 
-/**
- * Callback de sucesso da autenticação.
- * @param {Object} result  Objeto retornado pelo backend.
- *                         Esperado: { ok: true, data: userObject }
- *                         ou { ok: false, error: 'NOT_AUTHORIZED', email: '...' }
- */
-function onAuthSuccess(result) {
-  if (!result) {
-    onAuthError({ message: 'Resposta inválida do servidor.' });
-    return;
-  }
-
-  if (result.ok && result.data) {
-    ALLEGRO.currentUser = result.data;
-    enterApp(result.data);
-    return;
-  }
-
-  /* Usuário autenticado no Google mas não cadastrado no sistema */
-  var email = result.email || '';
-  showAuthUnauthorized(email);
+/** Mostra um dos estados da tela de login e esconde os demais. */
+function showAuthState(stateId) {
+  var ids = ['auth-checking', 'auth-pin', 'auth-error'];
+  ids.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (id === stateId) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
 }
 
-/**
- * Callback de falha da autenticação (erro de rede ou exceção no backend).
- */
-function onAuthError(err) {
-  var msg = (err && err.message) ? err.message : 'Erro ao verificar acesso. Recarregue a página.';
-
-  /* Trata erros de "não autorizado" lançados como exceção pelo backend */
-  var lowerMsg = msg.toLowerCase();
-  if (lowerMsg.indexOf('não autorizado') !== -1 ||
-      lowerMsg.indexOf('nao autorizado') !== -1 ||
-      lowerMsg.indexOf('not authorized') !== -1 ||
-      lowerMsg.indexOf('não cadastrado') !== -1) {
-    showAuthUnauthorized('');
-    return;
-  }
-
-  showAuthGenericError(msg);
+/** Inicializa e exibe a tela de PIN. */
+function showPinScreen() {
+  showAuthState('auth-pin');
+  document.getElementById('login-screen').classList.remove('hidden');
+  _pinReset();
+  _pinBindKeypad();
+  setTimeout(function () {
+    var inp = document.getElementById('pin-input');
+    if (inp) inp.focus();
+  }, 80);
 }
 
-/**
- * Exibe a tela de acesso não autorizado.
- * @param {string} email  E-mail do usuário sem cadastro (pode ser vazio).
- */
-function showAuthUnauthorized(email) {
-  document.getElementById('auth-checking').classList.add('hidden');
-  document.getElementById('auth-error').classList.add('hidden');
-
-  var msgEl = document.getElementById('auth-unauth-msg');
-  if (msgEl) {
-    if (email) {
-      msgEl.innerHTML =
-        'O e-mail <strong>' + escapeHtml(email) + '</strong> ' +
-        'n&atilde;o est&aacute; cadastrado no SGA &mdash; Sistema de Gest&atilde;o Allegro.<br>' +
-        'Contate o administrador.';
-    } else {
-      msgEl.innerHTML =
-        'Seu usu&aacute;rio n&atilde;o est&aacute; cadastrado no SGA &mdash; Sistema de Gest&atilde;o Allegro.<br>' +
-        'Contate o administrador.';
-    }
-  }
-
-  document.getElementById('auth-unauthorized').classList.remove('hidden');
+function _pinReset() {
+  _AUTH_PIN_BUFFER = '';
+  _pinRenderDots('normal');
+  var err = document.getElementById('pin-error'); if (err) err.textContent = '';
+  var inp = document.getElementById('pin-input'); if (inp) inp.value = '';
 }
 
-/**
- * Exibe mensagem de erro genérico na tela de login.
- */
+function _pinRenderDots(state) {
+  var dots = document.querySelectorAll('.pin-dot');
+  for (var i = 0; i < dots.length; i++) {
+    dots[i].classList.remove('filled', 'error');
+    if (state === 'error') dots[i].classList.add('error');
+    else if (i < _AUTH_PIN_BUFFER.length) dots[i].classList.add('filled');
+  }
+}
+
+function _pinAddDigit(d) {
+  if (_AUTH_PIN_BUFFER.length >= 4) return;
+  _AUTH_PIN_BUFFER += String(d);
+  _pinRenderDots('normal');
+  if (_AUTH_PIN_BUFFER.length === 4) _pinSubmit();
+}
+
+function _pinDelDigit() {
+  if (_AUTH_PIN_BUFFER.length === 0) return;
+  _AUTH_PIN_BUFFER = _AUTH_PIN_BUFFER.slice(0, -1);
+  _pinRenderDots('normal');
+}
+
+function _pinBindKeypad() {
+  if (_pinBindKeypad._done) return; _pinBindKeypad._done = true;
+  document.querySelectorAll('.pin-key[data-d]').forEach(function (btn) {
+    btn.addEventListener('click', function () { _pinAddDigit(btn.getAttribute('data-d')); });
+  });
+  var back = document.getElementById('pin-back'); if (back) back.addEventListener('click', _pinDelDigit);
+  var clr  = document.getElementById('pin-clear'); if (clr) clr.addEventListener('click', _pinReset);
+  document.addEventListener('keydown', function (e) {
+    var pinPane = document.getElementById('auth-pin');
+    if (!pinPane || pinPane.classList.contains('hidden')) return;
+    if (e.key >= '0' && e.key <= '9') { _pinAddDigit(e.key); e.preventDefault(); }
+    else if (e.key === 'Backspace')  { _pinDelDigit(); e.preventDefault(); }
+    else if (e.key === 'Escape')     { _pinReset(); }
+  });
+}
+
+function _pinSubmit() {
+  var pin = _AUTH_PIN_BUFFER;
+  document.querySelectorAll('.pin-key').forEach(function (b) { b.disabled = true; });
+
+  google.script.run
+    .withSuccessHandler(function (result) {
+      document.querySelectorAll('.pin-key').forEach(function (b) { b.disabled = false; });
+      if (result && result.ok && result.data) {
+        try { localStorage.setItem(_AUTH_PIN_FLAG, '1'); } catch (e) {}
+        ALLEGRO.currentUser = result.data;
+        enterApp(result.data);
+        return;
+      }
+      _pinShowError((result && result.error) || 'PIN inválido.');
+    })
+    .withFailureHandler(function (err) {
+      document.querySelectorAll('.pin-key').forEach(function (b) { b.disabled = false; });
+      _pinShowError((err && err.message) || 'Falha de comunicação.');
+    })
+    .Api_loginByPin(pin);
+}
+
+function _pinShowError(msg) {
+  var err = document.getElementById('pin-error');
+  if (err) err.textContent = msg;
+  _pinRenderDots('error');
+  setTimeout(_pinReset, 600);
+}
+
+/** Exibe mensagem de erro genérico na tela de login (falha de rede). */
 function showAuthGenericError(msg) {
-  document.getElementById('auth-checking').classList.add('hidden');
-  document.getElementById('auth-unauthorized').classList.add('hidden');
-
+  showAuthState('auth-error');
   var errEl = document.getElementById('login-error');
   if (errEl) {
     errEl.textContent = msg;
     errEl.classList.remove('hidden');
   }
-  document.getElementById('auth-error').classList.remove('hidden');
 }
 
 /**
@@ -149,6 +197,16 @@ function enterApp(user) {
   // Mostra o app shell
   document.getElementById('app-shell').classList.remove('hidden');
 
+  // FB-00039: versão + data/hora da implantação no sidebar (canto superior esquerdo)
+  try {
+    var buildEl = document.getElementById('sidebar-brand-build');
+    if (buildEl && window.SGA_BUILD) {
+      var line = 'v' + window.SGA_BUILD;
+      if (window.SGA_DEPLOYED_AT) line += ' · ' + window.SGA_DEPLOYED_AT;
+      buildEl.textContent = line;
+    }
+  } catch (e) { /* silencioso */ }
+
   // Carrega metadados do sistema (nome, sigla, env) via API
   google.script.run
     .withSuccessHandler(function(meta) {
@@ -185,10 +243,11 @@ function enterApp(user) {
 }
 
 /**
- * Realiza logout e retorna para a tela de autenticação.
+ * Realiza logout e volta para a tela de PIN.
  */
 function doLogout() {
   setLoading(true);
+  try { localStorage.removeItem(_AUTH_PIN_FLAG); } catch (e) {}
 
   google.script.run
     .withSuccessHandler(function () {
@@ -196,26 +255,22 @@ function doLogout() {
       ALLEGRO.currentUser = null;
       ALLEGRO.activeSection = null;
 
-      // Limpa área de conteúdo
       document.getElementById('section-content').innerHTML = '';
-
-      // Esconde app, exibe tela de login no estado "verificando"
       document.getElementById('app-shell').classList.add('hidden');
-      document.getElementById('auth-checking').classList.remove('hidden');
-      document.getElementById('auth-unauthorized').classList.add('hidden');
-      document.getElementById('auth-error').classList.add('hidden');
       document.getElementById('login-screen').classList.remove('hidden');
 
-      showAlert('Sessão encerrada com sucesso.', 'info');
-
-      // Re-autentica automaticamente
-      initAuth();
+      showAlert('Sessão encerrada.', 'info');
+      showPinScreen();
     })
     .withFailureHandler(function (err) {
       setLoading(false);
-      showAlert('Erro ao sair: ' + (err.message || 'Tente novamente.'), 'error');
+      ALLEGRO.currentUser = null;
+      document.getElementById('app-shell').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      showPinScreen();
+      showAlert('Sessão encerrada (local).', 'warning');
     })
-    .Api_logoutUser();
+    .Api_logout();
 }
 
 
@@ -259,6 +314,7 @@ function toggleNavGroup(head) {
 function showSection(section) {
   if (ALLEGRO.activeSection === section) return;
   ALLEGRO.activeSection = section;
+  if (window._fbTrailPush) { try { window._fbTrailPush('nav', section); } catch (e) {} } // FB-033: trilha
 
   // Atualiza estado ativo nos navs
   var navItems = document.querySelectorAll('.nav-item, .topbar-nav-btn');

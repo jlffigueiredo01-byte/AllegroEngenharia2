@@ -548,7 +548,7 @@ function _triagemCallSonnet(prompt, maxTokens) {
   var txt = '';
   if (parsed.content) {
     for (var i = 0; i < parsed.content.length; i++) {
-      if (parsed.content[i].type === 'text' && parsed.content[i].text) txt = parsed.content[i].text;
+      if (parsed.content[i].type === 'text' && parsed.content[i].text) txt += parsed.content[i].text; // concatena (não sobrescreve) blocos múltiplos
     }
   }
   if (!txt) throw new Error('Anthropic sem bloco de texto.');

@@ -21,7 +21,11 @@ function _fbInjectButton() {
     '<button id="fb-fab" title="Relatar erro, sugestão ou melhoria" ' +
       'style="position:fixed;right:24px;bottom:90px;z-index:9998;width:48px;height:48px;border-radius:50%;' +
       'border:none;cursor:pointer;background:#7c3aed;color:#fff;font-size:20px;box-shadow:0 4px 14px rgba(16,24,40,.28)">💡</button>');
-  document.getElementById('fb-fab').addEventListener('click', _fbOpen);
+  document.getElementById('fb-fab').addEventListener('click', function () {
+    // FB-033: captura o print ANTES do modal abrir — é a tela que motivou o report.
+    if (window._fbCapturarPrint) { try { window._fbCapturarPrint(); } catch (e) {} }
+    _fbOpen();
+  });
 }
 
 var _fbAnexos = [];
@@ -98,27 +102,43 @@ function _fbOpen() {
     var desc = document.getElementById('fb-desc').value;
     if (!desc.trim()) { showAlert('Descreva o que aconteceu.', 'warning'); return; }
     var btn = this; btn.disabled = true; btn.textContent = 'Enviando...';
-    google.script.run.withSuccessHandler(function (r) {
-      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Enviar'; return; }
-      showAlert('Obrigado! Relato ' + r.data.id + ' registrado. Você acompanha o status em "Meus reportes".', 'success');
-      fechar();
-    }).withFailureHandler(function (e) {
-      showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Enviar';
-    }).Api_fbCriar({
-      tipo: tipoSel,
-      titulo: document.getElementById('fb-titulo').value,
-      descricao: desc,
-      tela: (typeof ALLEGRO !== 'undefined' ? ALLEGRO.activeSection : '') || '',
-      urgente: document.getElementById('fb-urgente').checked,
-      anexos: _fbAnexos,
-      contexto: {
-        userAgent: navigator.userAgent,
-        papel: (typeof ALLEGRO !== 'undefined' && ALLEGRO.currentUser) ? ALLEGRO.currentUser.role : '',
-        viewport: window.innerWidth + 'x' + window.innerHeight,
-        jsErrors: (window._fbJsErrors || []).slice(),
-        quando: new Date().toISOString()
-      }
-    });
+    var _enviar = function () {
+      google.script.run.withSuccessHandler(function (r) {
+        if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Enviar'; return; }
+        showAlert('Obrigado! Relato ' + r.data.id + ' registrado. Você acompanha o status em "Meus reportes".', 'success');
+        fechar();
+      }).withFailureHandler(function (e) {
+        showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Enviar';
+      }).Api_fbCriar({
+        tipo: tipoSel,
+        titulo: document.getElementById('fb-titulo').value,
+        descricao: desc,
+        tela: (typeof ALLEGRO !== 'undefined' ? ALLEGRO.activeSection : '') || '',
+        urgente: document.getElementById('fb-urgente').checked,
+        anexos: _fbAnexos,
+        contexto: {
+          userAgent: navigator.userAgent,
+          papel: (typeof ALLEGRO !== 'undefined' && ALLEGRO.currentUser) ? ALLEGRO.currentUser.role : '',
+          viewport: window.innerWidth + 'x' + window.innerHeight,
+          jsErrors: (window._fbJsErrors || []).slice(),
+          quando: new Date().toISOString(),
+          // FB-033 — diagnóstico enriquecido (tudo cabe no contexto_json existente):
+          build:         window.SGA_BUILD || '',
+          entity:        window._fbEntity || null,
+          trail:         (window._fbTrail || []).slice(),
+          serverErrors:  (window._fbServerErrors || []).slice(),
+          consoleErrors: (window._fbConsoleErrors || []).slice()
+        }
+      });
+    };
+    // FB-033: anexa o print automático (se capturado) e então envia. Best-effort.
+    var _p = window._fbShotPromise;
+    if (_p && typeof _p.then === 'function') {
+      _p.then(function (dataUrl) {
+        if (dataUrl) { try { _fbAnexos.push({ base64: String(dataUrl).split(',')[1], mime: 'image/jpeg', name: 'tela-do-report.jpg' }); } catch (e) {} }
+        _enviar();
+      }, function () { _enviar(); });
+    } else { _enviar(); }
   });
 }
 

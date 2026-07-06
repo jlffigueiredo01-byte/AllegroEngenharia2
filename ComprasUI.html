@@ -188,20 +188,23 @@ function _poFromProposalForm() {
     '<div class="card"><div class="card-header"><div class="card-title">Gerar PO de proposta FECHADA</div></div>' +
     '<div class="card-body"><div style="display:flex;gap:10px;flex-wrap:wrap">' +
       '<select class="sga-form-select" id="pofp-prop" style="flex:1;min-width:220px"><option value="">Carregando propostas...</option></select>' +
-      '<select class="sga-form-select" id="pofp-sup" style="flex:1;min-width:220px"><option value="">Carregando fornecedores...</option></select>' +
+      '<select class="sga-form-select" id="pofp-sup" style="flex:1;min-width:220px"><option value="">⚙️ Automático (pelo produto)</option></select>' +
       '<button class="sga-btn sga-btn--primary" id="pofp-go">Gerar</button>' +
       '<button class="sga-btn sga-btn--ghost" id="pofp-cancel">Cancelar</button>' +
-    '</div><p style="font-size:12px;color:var(--sga-text-soft);margin:8px 0 0">Os itens Hydronix da proposta entram com preço de COMPRA (tabela − desconto). Linhas de serviço são ignoradas.</p></div></div>';
+    '</div><p style="font-size:12px;color:var(--sga-text-soft);margin:8px 0 0">O fornecedor é definido pelo <b>supplier_id</b> de cada produto — gera 1 PO por fornecedor, na moeda dele. Os itens entram com preço de COMPRA (tabela − desconto); serviços são ignorados.</p></div></div>';
 
   document.getElementById('pofp-cancel').addEventListener('click', function () { w.classList.add('hidden'); w.innerHTML = ''; });
   document.getElementById('pofp-go').addEventListener('click', function () {
     var prop = document.getElementById('pofp-prop').value;
     var sup  = document.getElementById('pofp-sup').value;
-    if (!prop || !sup) { showAlert('Escolha a proposta e o fornecedor.', 'warning'); return; }
+    if (!prop) { showAlert('Escolha a proposta.', 'warning'); return; }
     google.script.run.withSuccessHandler(function (res) {
       if (!res || !res.ok) { showAlert('Erro: ' + (res ? res.error : '?'), 'error'); return; }
       var po = res.data || {};
-      showAlert('PO ' + (po.po_number || po.id) + ' criada em rascunho!', 'success');
+      var msg = (po.count > 1)
+        ? (po.count + ' POs criadas em rascunho (1 por fornecedor)!')
+        : ('PO ' + (po.po_number || po.id) + ' criada em rascunho!');
+      showAlert(msg, 'success');
       w.classList.add('hidden'); w.innerHTML = '';
       _poLoad();
     }).Api_poCreateFromProposal(prop, sup);
@@ -223,9 +226,9 @@ function _poFromProposalForm() {
     var sel = document.getElementById('pofp-sup');
     if (!sel) return;
     var sups = (r && r.ok && r.data) ? r.data : [];
-    var html = '<option value="">— fornecedor —</option>';
+    var html = '<option value="">⚙️ Automático (pelo produto)</option>';
     for (var i = 0; i < sups.length; i++) {
-      html += '<option value="' + escapeHtml(sups[i].id) + '">' + escapeHtml(sups[i].name || sups[i].id) + '</option>';
+      html += '<option value="' + escapeHtml(sups[i].id) + '">Forçar: ' + escapeHtml(sups[i].name || sups[i].id) + '</option>';
     }
     sel.innerHTML = html;
   }).Api_supplierGetAll();

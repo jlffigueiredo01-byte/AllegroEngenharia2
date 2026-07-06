@@ -9,10 +9,12 @@
 'use strict';
 
 // COMPANIES_SHEET already defined as const in Domain.Import.gs
+// FB-00040: campos de enrichment IA agora editáveis no cadastro.
 var COMPANIES_HEADERS = [
   'id', 'name', 'state', 'city', 'client_type',
   'active', 'normalized_name', 'legacy_name', 'import_source', 'created_at',
-  'address', 'lat', 'lng', 'distancia_base_km', 'tempo_viagem_min'
+  'address', 'lat', 'lng', 'distancia_base_km', 'tempo_viagem_min',
+  'razao_social', 'cnpj', 'telefone', 'email', 'setor', 'descricao'
 ];
 
 /**
@@ -248,7 +250,14 @@ function Api_createCompany(data) {
       lat:             '',
       lng:             '',
       distancia_base_km: '',
-      tempo_viagem_min:  ''
+      tempo_viagem_min:  '',
+      // FB-00040: campos editáveis de enrichment IA
+      razao_social:    String(data.razao_social || '').trim(),
+      cnpj:            String(data.cnpj         || '').trim(),
+      telefone:        String(data.telefone     || '').trim(),
+      email:           String(data.email        || '').trim(),
+      setor:           String(data.setor        || '').trim(),
+      descricao:       String(data.descricao    || '').trim()
     };
 
     appendRowToSheet(COMPANIES_SHEET, row, COMPANIES_HEADERS);
@@ -290,6 +299,13 @@ function Api_updateCompany(id, data) {
     if (data.city        !== undefined) updates.city        = String(data.city).trim();
     if (data.client_type !== undefined) updates.client_type = String(data.client_type).trim();
     if (data.address     !== undefined) updates.address     = String(data.address).trim();
+    // FB-00040: campos editáveis de enrichment IA
+    if (data.razao_social !== undefined) updates.razao_social = String(data.razao_social).trim();
+    if (data.cnpj         !== undefined) updates.cnpj         = String(data.cnpj).trim();
+    if (data.telefone     !== undefined) updates.telefone     = String(data.telefone).trim();
+    if (data.email        !== undefined) updates.email        = String(data.email).trim();
+    if (data.setor        !== undefined) updates.setor        = String(data.setor).trim();
+    if (data.descricao    !== undefined) updates.descricao    = String(data.descricao).trim();
 
     if (Object.keys(updates).length === 0) throw new Error('Nenhum campo para atualizar');
 

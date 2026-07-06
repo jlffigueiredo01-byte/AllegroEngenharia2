@@ -342,7 +342,8 @@ function propSvcUpdateStatus(id, novoStatus, userId, userRole, opcoes) {
   if (novoStatus === 'FECHADA' || novoStatus === 'RECUSADA') {
     updates.closed_at = now;
   }
-  if (novoStatus === 'RECUSADA') {
+  if (novoStatus === 'RECUSADA' && opcoes.motivo_perda) {
+    // Motivo é opcional — só grava se veio (antes undefined apagava a célula)
     updates.motivo_perda = opcoes.motivo_perda;
   }
 

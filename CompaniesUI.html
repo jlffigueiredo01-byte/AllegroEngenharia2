@@ -208,6 +208,13 @@ function _detailViewHtml(c) {
       '<div><strong>Estado</strong><br>' + escapeHtml(c.state || '—') + '</div>' +
       '<div><strong>Tipo</strong><br>'   + escapeHtml(c.client_type || '—') + '</div>' +
       '<div><strong>Criado em</strong><br>' + formatDate(c.created_at || '') + '</div>' +
+      // FB-00040: campos de enrichment
+      (c.razao_social ? '<div style="grid-column:1/-1"><strong>Razão Social</strong><br>' + escapeHtml(c.razao_social) + '</div>' : '') +
+      (c.cnpj         ? '<div><strong>CNPJ</strong><br>' + escapeHtml(c.cnpj) + '</div>' : '') +
+      (c.telefone     ? '<div><strong>Telefone</strong><br>' + escapeHtml(c.telefone) + '</div>' : '') +
+      (c.email        ? '<div><strong>E-mail</strong><br>' + escapeHtml(c.email) + '</div>' : '') +
+      (c.setor        ? '<div><strong>Setor</strong><br>' + escapeHtml(c.setor) + '</div>' : '') +
+      (c.descricao    ? '<div style="grid-column:1/-1"><strong>Descrição</strong><br>' + escapeHtml(c.descricao) + '</div>' : '') +
     '</div>' +
     '<div style="margin-top:20px;display:flex;gap:8px">' +
       '<button class="sga-btn sga-btn--secondary sga-btn--sm" onclick="_c360Open(\'' + escapeHtml(c.id) + '\')">🔎 Visão 360</button>' +
@@ -248,6 +255,35 @@ function _editFormHtml(c) {
         _clientTypeOptions(c.client_type) +
       '</select>' +
     '</div>' +
+    // FB-00040: campos editáveis de enrichment IA
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Razão Social</label>' +
+      '<input id="edit-razao-social" class="sga-form-input" type="text" value="' + escapeHtml(c.razao_social || '') + '">' +
+    '</div>' +
+    '<div class="sga-form-row">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">CNPJ</label>' +
+        '<input id="edit-cnpj" class="sga-form-input" type="text" value="' + escapeHtml(c.cnpj || '') + '">' +
+      '</div>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Telefone</label>' +
+        '<input id="edit-telefone" class="sga-form-input" type="text" value="' + escapeHtml(c.telefone || '') + '">' +
+      '</div>' +
+    '</div>' +
+    '<div class="sga-form-row">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">E-mail</label>' +
+        '<input id="edit-email" class="sga-form-input" type="text" value="' + escapeHtml(c.email || '') + '">' +
+      '</div>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Setor</label>' +
+        '<input id="edit-setor" class="sga-form-input" type="text" value="' + escapeHtml(c.setor || '') + '">' +
+      '</div>' +
+    '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Descrição</label>' +
+      '<textarea id="edit-descricao" class="sga-form-input" rows="2">' + escapeHtml(c.descricao || '') + '</textarea>' +
+    '</div>' +
     '<div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">' +
       '<button class="sga-btn sga-btn--ghost sga-btn--sm" onclick="_openCompanyDetail(\'' + escapeHtml(c.id) + '\')">Cancelar</button>' +
       '<button class="sga-btn sga-btn--primary sga-btn--sm" onclick="_submitEditCompany(\'' + escapeHtml(c.id) + '\')">Salvar</button>' +
@@ -276,7 +312,16 @@ function _submitEditCompany(id) {
       setLoading(false);
       showAlert('Falha de comunicação: ' + err.message, 'error');
     })
-    .Api_updateCompany(id, { name: name, city: city, state: state, client_type: clientType });
+    .Api_updateCompany(id, {
+      name: name, city: city, state: state, client_type: clientType,
+      // FB-00040: campos editáveis de enrichment IA
+      razao_social: (document.getElementById('edit-razao-social') || {}).value || '',
+      cnpj:         (document.getElementById('edit-cnpj')         || {}).value || '',
+      telefone:     (document.getElementById('edit-telefone')     || {}).value || '',
+      email:        (document.getElementById('edit-email')        || {}).value || '',
+      setor:        (document.getElementById('edit-setor')        || {}).value || '',
+      descricao:    (document.getElementById('edit-descricao')    || {}).value || ''
+    });
 }
 
 function _confirmDeactivate(id) {
@@ -342,6 +387,35 @@ function _newCompanyFormHtml() {
         _clientTypeOptions('') +
       '</select>' +
     '</div>' +
+    // FB-00040: campos editáveis preenchidos pela IA (CNPJ varia por unidade)
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Razão Social <span id="new-razao-aibadge"></span></label>' +
+      '<input id="new-razao-social" class="sga-form-input" type="text" placeholder="Razão social completa">' +
+    '</div>' +
+    '<div class="sga-form-row">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">CNPJ <span id="new-cnpj-aibadge"></span></label>' +
+        '<input id="new-cnpj" class="sga-form-input" type="text" placeholder="00.000.000/0000-00">' +
+      '</div>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Telefone <span id="new-telefone-aibadge"></span></label>' +
+        '<input id="new-telefone" class="sga-form-input" type="text" placeholder="(11) 0000-0000">' +
+      '</div>' +
+    '</div>' +
+    '<div class="sga-form-row">' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">E-mail <span id="new-email-aibadge"></span></label>' +
+        '<input id="new-email" class="sga-form-input" type="text" placeholder="contato@empresa.com">' +
+      '</div>' +
+      '<div class="sga-form-group">' +
+        '<label class="sga-form-label">Setor <span id="new-setor-aibadge"></span></label>' +
+        '<input id="new-setor" class="sga-form-input" type="text" placeholder="Indústria, Mineração, etc.">' +
+      '</div>' +
+    '</div>' +
+    '<div class="sga-form-group">' +
+      '<label class="sga-form-label">Descrição <span id="new-descricao-aibadge"></span></label>' +
+      '<textarea id="new-descricao" class="sga-form-input" rows="2" placeholder="Atividade da empresa"></textarea>' +
+    '</div>' +
     '<div id="new-enrich-preview" style="display:none;margin-top:8px;padding:10px 12px;background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-sm);font-size:12px;color:var(--sga-text-default)"></div>'
   );
 }
@@ -370,8 +444,10 @@ function _compEnrichReset() {
   if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
   var btn = document.getElementById('new-enrich-btn');
   if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Enriquecimento de Dados'; }
-  // Limpa badges 🤖 IA que possam ter ficado de tentativa anterior
-  var badgeIds = ['new-name-aibadge'];
+  // Limpa badges 🤖 IA que possam ter ficado de tentativa anterior (FB-00040)
+  var badgeIds = ['new-name-aibadge', 'new-razao-aibadge', 'new-cnpj-aibadge',
+                  'new-telefone-aibadge', 'new-email-aibadge', 'new-setor-aibadge',
+                  'new-descricao-aibadge'];
   for (var i = 0; i < badgeIds.length; i++) {
     var el = document.getElementById(badgeIds[i]);
     if (el) el.innerHTML = '';
@@ -457,15 +533,27 @@ function _compEnrichApply(data) {
     }
   }
 
-  // Campos retornados que NAO tem input no modal — apenas mostra no preview
+  // FB-00040: campos de enrichment agora vão para INPUTS EDITÁVEIS (não preview).
+  // João pode ajustar cada campo (CNPJ varia por unidade, endereço, telefone etc.).
+  var fillIn = function(inputId, badgeId, value, label) {
+    var inp = document.getElementById(inputId);
+    if (!inp || !value) return;
+    if (!inp.value.trim()) {
+      inp.value = value;
+      _compEnrichBadge(badgeId);
+      filled.push(label);
+    }
+  };
+  fillIn('new-razao-social', 'new-razao-aibadge',     String(data.razao_social || '').trim(),     'Razão Social');
+  fillIn('new-cnpj',         'new-cnpj-aibadge',      String(data.cnpj || '').trim(),             'CNPJ');
+  fillIn('new-telefone',     'new-telefone-aibadge',  String(data.telefone || '').trim(),         'Telefone');
+  fillIn('new-email',        'new-email-aibadge',     String(data.email || '').trim(),            'E-mail');
+  fillIn('new-setor',        'new-setor-aibadge',     String(data.setor || '').trim(),            'Setor');
+  fillIn('new-descricao',    'new-descricao-aibadge', String(data.descricao_empresa || '').trim(),'Descrição');
+
+  // Endereço e fontes consultadas continuam no preview (não têm input)
   var extras = [
-    { k: 'razao_social',      lbl: 'Razao Social' },
-    { k: 'cnpj',              lbl: 'CNPJ' },
-    { k: 'descricao_empresa', lbl: 'Descricao' },
-    { k: 'endereco',          lbl: 'Endereco' },
-    { k: 'telefone',          lbl: 'Telefone' },
-    { k: 'email',             lbl: 'E-mail' },
-    { k: 'setor',             lbl: 'Setor' },
+    { k: 'endereco',          lbl: 'Endereço' },
     { k: 'fontes_consultadas',lbl: 'Fontes' }
   ];
   for (var i = 0; i < extras.length; i++) {
@@ -560,7 +648,16 @@ function _submitNewCompany() {
       setLoading(false);
       showAlert('Falha de comunicação: ' + err.message, 'error');
     })
-    .Api_createCompany({ name: name, city: city, state: state, client_type: clientType });
+    .Api_createCompany({
+      name: name, city: city, state: state, client_type: clientType,
+      // FB-00040: enrichment editável
+      razao_social: (document.getElementById('new-razao-social') || {}).value || '',
+      cnpj:         (document.getElementById('new-cnpj')         || {}).value || '',
+      telefone:     (document.getElementById('new-telefone')     || {}).value || '',
+      email:        (document.getElementById('new-email')        || {}).value || '',
+      setor:        (document.getElementById('new-setor')        || {}).value || '',
+      descricao:    (document.getElementById('new-descricao')    || {}).value || ''
+    });
 }
 
 function _closeNewModalDirect() {
@@ -572,8 +669,9 @@ function _closeNewModalDirect() {
 // ---------------------------------------------------------------------------
 
 function _clientTypeOptions(selected) {
-  var types = ['', 'Empresa', 'Órgão', 'Produtor', 'Cooperativa'];
-  var labels = ['— Selecione —', 'Empresa', 'Órgão', 'Produtor', 'Cooperativa'];
+  // FB-00041: tipos de cliente atualizados (Allegro 2026-06-30)
+  var types  = ['', 'Organico', 'Inorganico', 'Automacao/Fabricante'];
+  var labels = ['— Selecione —', 'Orgânico', 'Inorgânico', 'Automação / Fabricante'];
   var html = '';
   for (var i = 0; i < types.length; i++) {
     var sel = (String(selected) === String(types[i])) ? ' selected' : '';

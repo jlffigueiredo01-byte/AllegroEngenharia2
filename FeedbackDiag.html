@@ -1,0 +1,238 @@
+<script>
+// =============================================================================
+// FeedbackDiag.html — SGA · captura de diagnóstico para o feedback (FB-033). ES5.
+// Incluído no Index.html APÓS Scripts (ALLEGRO já existe) e ANTES de FeedbackUI.
+// Instala na fase de parse — captura desde a 1ª interação.
+//
+// TUDO é best-effort: nenhuma falha de captura pode impedir o uso do SGA nem o
+// envio de um report. Cada bloco vive em try/catch e degrada para o nativo.
+// =============================================================================
+(function () {
+  // buffers globais (anéis)
+  window._fbTrail         = window._fbTrail || [];          // trilha de interações
+  window._fbServerErrors  = window._fbServerErrors || [];   // chamadas gsr que falharam
+  window._fbConsoleErrors = window._fbConsoleErrors || [];  // console.error/warn
+  window._fbEntity        = window._fbEntity || null;       // {secao,id} do último registro tocado
+  window._fbShotPromise   = null;                           // promessa do print
+
+  var TRAIL_MAX = 40, ERR_MAX = 20;
+  var _t0  = (Date.now ? Date.now() : +new Date());
+  var _now = function () { return (Date.now ? Date.now() : +new Date()); };
+  var _rel = function () { return ((_now() - _t0) / 1000).toFixed(1) + 's'; };
+  var _trunc = function (s, n) { s = String(s == null ? '' : s); n = n || 80; return s.length > n ? s.slice(0, n) + '…' : s; };
+  function _push(arr, item, max) { try { arr.push(item); while (arr.length > max) arr.shift(); } catch (e) {} }
+
+  window._fbTrailPush = function (kind, detail) {
+    _push(window._fbTrail, { t: _rel(), k: kind, d: _trunc(detail, 120) }, TRAIL_MAX);
+  };
+
+  function _sel(el) {
+    try {
+      if (!el || el.nodeType !== 1) return '?';
+      if (el.id) return '#' + el.id;
+      var path = [], cur = el, depth = 0;
+      while (cur && cur.nodeType === 1 && depth < 5) {
+        var part = cur.tagName ? cur.tagName.toLowerCase() : '';
+        if (cur.id) { path.unshift('#' + cur.id); break; }
+        if (cur.className && typeof cur.className === 'string') {
+          part += '.' + cur.className.trim().split(/\s+/).slice(0, 2).join('.');
+        }
+        path.unshift(part);
+        cur = cur.parentNode; depth++;
+      }
+      return path.join('>');
+    } catch (e) { return '?'; }
+  }
+  function _label(el) {
+    try {
+      var t = (el.textContent || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || '');
+      return _trunc(String(t).replace(/\s+/g, ' ').trim(), 40);
+    } catch (e) { return ''; }
+  }
+
+  // ── cliques (delegado em captura) + entidade ativa ──
+  try {
+    document.addEventListener('click', function (ev) {
+      try {
+        var el = ev.target;
+        var lb = _label(el);
+        window._fbTrailPush('click', _sel(el) + (lb ? ' "' + lb + '"' : ''));
+        var cur = el, depth = 0;
+        while (cur && cur.nodeType === 1 && depth < 8) {
+          if (cur.getAttribute && cur.getAttribute('data-id')) {
+            window._fbEntity = { secao: (window.ALLEGRO && ALLEGRO.activeSection) || '', id: cur.getAttribute('data-id') };
+            break;
+          }
+          cur = cur.parentNode; depth++;
+        }
+      } catch (e) {}
+    }, true);
+  } catch (e) {}
+
+  // ── digitação (delegado em captura) — sistema interno, sem máscara ──
+  try {
+    document.addEventListener('input', function (ev) {
+      try {
+        var el = ev.target;
+        if (!el || el.type === 'password') return;
+        var campo = el.name || el.id || (el.tagName ? el.tagName.toLowerCase() : 'campo');
+        window._fbTrailPush('input', campo + ' = ' + _trunc(el.value, 40));
+      } catch (e) {}
+    }, true);
+  } catch (e) {}
+
+  // ── console.error / console.warn ──
+  function _hookConsole(level) {
+    try {
+      if (!window.console || typeof console[level] !== 'function') return;
+      var orig = console[level];
+      console[level] = function () {
+        try {
+          var msg = Array.prototype.slice.call(arguments).map(function (a) {
+            try { return (a && typeof a === 'object') ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
+          }).join(' ');
+          _push(window._fbConsoleErrors, { t: _rel(), level: level, msg: _trunc(msg, 200) }, ERR_MAX);
+          window._fbTrailPush('console.' + level, _trunc(msg, 80));
+        } catch (e) {}
+        try { return orig.apply(console, arguments); } catch (e) {}
+      };
+    } catch (e) {}
+  }
+  _hookConsole('error'); _hookConsole('warn');
+
+  // ── log de chamada gsr (usado pelo wrapper) ──
+  window._fbLogCall = function (fn, args, ok, errMsg, durMs) {
+    try {
+      window._fbTrailPush('server', fn + (ok ? ' ✓' : ' ✗') + ' (' + durMs + 'ms)');
+      if (!ok) {
+        var argsStr = '';
+        try { argsStr = _trunc(JSON.stringify(args), 120); } catch (e) { argsStr = '(args não serializáveis)'; }
+        _push(window._fbServerErrors, { t: _rel(), fn: fn, args: argsStr, err: _trunc(errMsg, 160), dur: durMs }, ERR_MAX);
+      }
+    } catch (e) {}
+  };
+
+  // ── controlador do overlay de loading (feedback em todo clique de AÇÃO) ──
+  // Padrão: chamadas de ação mostram o overlay (blur+spinner) e bloqueiam o 2º
+  // clique; LEITURAS (get/list/dash/...) ficam silenciosas (já têm skeleton).
+  var _sgaLoadN = 0, _sgaLoadTimer = null;
+  // APIs que NÃO devem disparar o overlay global: o chat (tem o "digitando…") e
+  // ações que já têm o próprio loading inline (ex.: "Revisar com IA"). Se achar
+  // outro botão que pisca o blur por cima do próprio loader, é só adicionar aqui.
+  var _SGA_SILENT_APIS = {
+    Api_chatMessage: 1,         // chat tem o "digitando…"
+    Api_reviewProposalScope: 1, // "Revisar com IA" tem loading inline
+    Api_fbCriar: 1,             // enviar feedback já faz btn "Enviando..." + disabled
+    Api_fbMeus: 1               // "Meus Reportes" já tem skeleton
+  };
+  function _sgaIsRead(fn) {
+    if (_SGA_SILENT_APIS[fn]) return true;
+    return /(^|_)(get|list|load|fetch|read|search|buscar|listar|consultar|dash|status|check|history|timeline|count)/i.test(fn) ||
+           /(list|getall)$/i.test(fn);
+  }
+  function _sgaLoadShow() {
+    _sgaLoadN++;
+    try { if (typeof setLoading === 'function') setLoading(true); } catch (e) {}
+    try {
+      if (_sgaLoadTimer) clearTimeout(_sgaLoadTimer);
+      _sgaLoadTimer = setTimeout(function () { // cinto de segurança: nunca trava atrás do overlay
+        _sgaLoadN = 0;
+        try { if (typeof setLoading === 'function') setLoading(false); } catch (e) {}
+      }, 20000);
+    } catch (e) {}
+  }
+  function _sgaLoadHide() {
+    if (_sgaLoadN > 0) _sgaLoadN--;
+    if (_sgaLoadN <= 0) {
+      _sgaLoadN = 0;
+      try { if (_sgaLoadTimer) { clearTimeout(_sgaLoadTimer); _sgaLoadTimer = null; } } catch (e) {}
+      try { if (typeof setLoading === 'function') setLoading(false); } catch (e) {}
+    }
+  }
+
+  // ── wrapper de google.script.run — loga chamadas (foco nas que falham) ──
+  // Ultra-defensivo: sem Proxy → não mexe; erro ao compor → chama o nativo direto.
+  function _fbWrapRunner(real) {
+    try {
+      if (!real || typeof Proxy === 'undefined') return real;
+      var userSuccess = null, userFailure = null;
+      var proxy = new Proxy(real, {
+        get: function (target, prop) {
+          if (prop === 'withSuccessHandler') return function (cb) { userSuccess = cb; return proxy; };
+          if (prop === 'withFailureHandler') return function (cb) { userFailure = cb; return proxy; };
+          if (prop === 'withUserObject')     return function (o) { try { target.withUserObject(o); } catch (e) {} return proxy; };
+          var val = target[prop];
+          if (typeof val !== 'function') return val;
+          // método terminal (Api_*): compõe log + handlers do dev
+          return function () {
+            var args = Array.prototype.slice.call(arguments);
+            var fn = String(prop);
+            var t0 = _now();
+            // overlay: ações mostram (e bloqueiam o 2º clique); leituras não.
+            var _showed = false;
+            try { if (!_sgaIsRead(fn)) { _sgaLoadShow(); _showed = true; } } catch (e) {}
+            var _hide = function () { if (_showed) { _showed = false; try { _sgaLoadHide(); } catch (e) {} } };
+            try {
+              var r = target
+                .withSuccessHandler(function (res) {
+                  _hide();
+                  try {
+                    var logicFail = res && res.ok === false;
+                    window._fbLogCall(fn, args, !logicFail, logicFail ? ('erro lógico: ' + (res.error || '?')) : '', _now() - t0);
+                  } catch (e) {}
+                  if (userSuccess) { try { userSuccess(res); } catch (e) {} }
+                })
+                .withFailureHandler(function (err) {
+                  _hide();
+                  try { window._fbLogCall(fn, args, false, (err && err.message) || String(err), _now() - t0); } catch (e) {}
+                  if (userFailure) { try { userFailure(err); } catch (e) {} }
+                });
+              return r[fn].apply(r, args);
+            } catch (e) {
+              // composição falhou → NUNCA perde a chamada: nativo direto (ainda solta o overlay)
+              try {
+                var rr = target
+                  .withSuccessHandler(function (res) { _hide(); if (userSuccess) { try { userSuccess(res); } catch (e3) {} } })
+                  .withFailureHandler(function (err) { _hide(); if (userFailure) { try { userFailure(err); } catch (e3) {} } });
+                return rr[fn].apply(rr, args);
+              } catch (e2) { _hide(); }
+            }
+          };
+        }
+      });
+      return proxy;
+    } catch (e) { return real; }
+  }
+
+  try {
+    if (typeof Proxy !== 'undefined' && window.google && google.script && !google.script.__fbRunWrapped) {
+      var desc = Object.getOwnPropertyDescriptor(google.script, 'run');
+      if (desc) {
+        var getReal = desc.get ? function () { return desc.get.call(google.script); } : function () { return desc.value; };
+        Object.defineProperty(google.script, 'run', {
+          configurable: true,
+          get: function () { try { return _fbWrapRunner(getReal()); } catch (e) { return getReal(); } }
+        });
+        google.script.__fbRunWrapped = true;
+      }
+    }
+  } catch (e) { /* mantém nativo */ }
+
+  // ── print helper (html2canvas) — captura a tela do problema ──
+  window._fbCapturarPrint = function () {
+    window._fbShotPromise = null;
+    try {
+      if (typeof html2canvas === 'undefined') return;
+      window._fbShotPromise = html2canvas(document.body, {
+        scale: 0.6,
+        logging: false,
+        useCORS: true,
+        ignoreElements: function (el) { return el && (el.id === 'fb-fab' || el.id === 'fb-modal'); }
+      }).then(
+        function (canvas) { try { return canvas.toDataURL('image/jpeg', 0.7); } catch (e) { return null; } },
+        function () { return null; }
+      );
+    } catch (e) { window._fbShotPromise = null; }
+  };
+})();
+</script>
