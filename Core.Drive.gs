@@ -31,7 +31,9 @@ var DRIVE_TAXONOMY = {
   POSVENDA_TICKETS:   { parent: 'POSVENDA',   name: 'Tickets' },
   EMPRESA:            { parent: '',           name: '07-Empresa' },
   EMPRESA_CONTRATOS:  { parent: 'EMPRESA',    name: 'Contratos' },
-  EMPRESA_HSE:        { parent: 'EMPRESA',    name: 'HSE' }
+  EMPRESA_HSE:        { parent: 'EMPRESA',    name: 'HSE' },
+  // FB-00038: anexos de Action Cards (subpasta por card, como tickets)
+  EMPRESA_ACTIONCARDS:{ parent: 'EMPRESA',    name: 'ActionCards' }
 };
 
 function initDriveRegistrySheet() {

@@ -153,9 +153,14 @@ function calcSvcInfra(input) {
   var m  = Number(input.tamanho_infra || 0);
   var km = Number(input.dist_curitiba || 0);
   var k = function(key) { return Number(getSetupCalcValue(key)) || 0; };
-  var kit       = k('KIT_INFRA_COEF_M')    * m + k('KIT_INFRA_COEF_KM')    * km + k('KIT_INFRA_CONST');
-  var moInfra   = k('MO_INFRA_COEF_M')     * m + k('MO_INFRA_COEF_KM')     * km + k('MO_INFRA_CONST');
-  var moStartup = k('MO_STARTUP_COEF_M')   * m + k('MO_STARTUP_COEF_KM')   * km + k('MO_STARTUP_CONST');
+  // FB-00042: proposta SEM infra (0 metros) não cobra Kit Infra nem MO Infra.
+  // Antes, o termo COEF_KM×km + CONSTANTE gerava valor mesmo com m=0 —
+  // bastava preencher a distância (necessária pro startup) para a proposta
+  // ganhar infra indevida. MO Startup continua: startup existe sem infra.
+  var semInfra  = m <= 0;
+  var kit       = semInfra ? 0 : k('KIT_INFRA_COEF_M')  * m + k('KIT_INFRA_COEF_KM')  * km + k('KIT_INFRA_CONST');
+  var moInfra   = semInfra ? 0 : k('MO_INFRA_COEF_M')   * m + k('MO_INFRA_COEF_KM')   * km + k('MO_INFRA_CONST');
+  var moStartup = k('MO_STARTUP_COEF_M') * m + k('MO_STARTUP_COEF_KM') * km + k('MO_STARTUP_CONST');
   return {
     kit_infra:  Math.max(0, Math.round(kit       * 100) / 100),
     mo_infra:   Math.max(0, Math.round(moInfra   * 100) / 100),

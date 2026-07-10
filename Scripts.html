@@ -23,17 +23,19 @@ window.onload = function () {
    - 5 tentativas erradas → lockout de 5 min
 ══════════════════════════════════════════════════════════════ */
 
-var _AUTH_PIN_FLAG = 'sga_logged_in';
+// Token de sessão (auth PIN anônima): guardado no localStorage e injetado em
+// toda chamada Api_* pelo wrapper do FeedbackDiag (Api_dispatch).
+var _AUTH_TOKEN_KEY = 'sga_token';
 var _AUTH_PIN_BUFFER = '';
 
-/** Inicia o fluxo: se já houver flag, tenta revalidar a sessão server-side. */
+/** Inicia o fluxo: se já houver token, tenta revalidar a sessão server-side. */
 function initAuth() {
   showAuthState('auth-checking');
 
-  var hasFlag = false;
-  try { hasFlag = !!localStorage.getItem(_AUTH_PIN_FLAG); } catch (e) {}
+  var hasToken = false;
+  try { hasToken = !!localStorage.getItem(_AUTH_TOKEN_KEY); } catch (e) {}
 
-  if (!hasFlag) {
+  if (!hasToken) {
     showPinScreen();
     return;
   }
@@ -44,7 +46,7 @@ function initAuth() {
         ALLEGRO.currentUser = result.data;
         enterApp(result.data);
       } else {
-        try { localStorage.removeItem(_AUTH_PIN_FLAG); } catch (e) {}
+        try { localStorage.removeItem(_AUTH_TOKEN_KEY); } catch (e) {}
         showPinScreen();
       }
     })
@@ -130,7 +132,7 @@ function _pinSubmit() {
     .withSuccessHandler(function (result) {
       document.querySelectorAll('.pin-key').forEach(function (b) { b.disabled = false; });
       if (result && result.ok && result.data) {
-        try { localStorage.setItem(_AUTH_PIN_FLAG, '1'); } catch (e) {}
+        try { localStorage.setItem(_AUTH_TOKEN_KEY, result.data.token || ''); } catch (e) {}
         ALLEGRO.currentUser = result.data;
         enterApp(result.data);
         return;
@@ -247,27 +249,27 @@ function enterApp(user) {
  */
 function doLogout() {
   setLoading(true);
-  try { localStorage.removeItem(_AUTH_PIN_FLAG); } catch (e) {}
+
+  // O token só sai do localStorage DEPOIS da chamada — o Api_logout precisa
+  // dele (via dispatcher) para apagar a sessão no servidor.
+  var _logoutLocal = function () {
+    try { localStorage.removeItem(_AUTH_TOKEN_KEY); } catch (e) {}
+    setLoading(false);
+    ALLEGRO.currentUser = null;
+    ALLEGRO.activeSection = null;
+    document.getElementById('section-content').innerHTML = '';
+    document.getElementById('app-shell').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    showPinScreen();
+  };
 
   google.script.run
     .withSuccessHandler(function () {
-      setLoading(false);
-      ALLEGRO.currentUser = null;
-      ALLEGRO.activeSection = null;
-
-      document.getElementById('section-content').innerHTML = '';
-      document.getElementById('app-shell').classList.add('hidden');
-      document.getElementById('login-screen').classList.remove('hidden');
-
+      _logoutLocal();
       showAlert('Sessão encerrada.', 'info');
-      showPinScreen();
     })
     .withFailureHandler(function (err) {
-      setLoading(false);
-      ALLEGRO.currentUser = null;
-      document.getElementById('app-shell').classList.add('hidden');
-      document.getElementById('login-screen').classList.remove('hidden');
-      showPinScreen();
+      _logoutLocal();
       showAlert('Sessão encerrada (local).', 'warning');
     })
     .Api_logout();

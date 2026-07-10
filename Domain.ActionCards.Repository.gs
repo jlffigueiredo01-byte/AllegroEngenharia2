@@ -147,6 +147,39 @@ function acUpdateCard(cardId, updates, member, note) {
   }
 }
 
+/**
+ * Update sem entrada no histórico (FB-00038: comentários/anexos já registram
+ * a própria entrada; evita duplicar).
+ */
+function acUpdateCardSilent(cardId, updates) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    updateRowById(AC_SHEET, cardId, updates);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Entrada avulsa no histórico (comentário/anexo — FB-00038). */
+function acAppendHistory(cardId, fromStatus, toStatus, member, note) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    appendRowToSheet(ACH_SHEET, {
+      id:          _nextHistoryId(),
+      card_id:     cardId,
+      timestamp:   nowISO(),
+      from_status: fromStatus || '',
+      to_status:   toStatus || '',
+      member:      member,
+      note:        note
+    }, ACH_HEADERS);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function acGetAll() {
   return sheetToObjects(AC_SHEET);
 }

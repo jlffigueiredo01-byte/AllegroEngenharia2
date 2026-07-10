@@ -17,6 +17,34 @@
 // =============================================================================
 //  CHANGELOG (mais recente no topo)
 // -----------------------------------------------------------------------------
+//  2026.07.08-2 — Sprint noturna (FBs + revisão geral):
+//                 FB-00042: proposta SEM infra não cobra mais Kit/MO Infra —
+//                 calculadora linear zera kit/mo com 0 metros; motor não soma
+//                 mobilização sem pontos nem força 1 dia de campo sem MO.
+//                 FB-00037: Chamados ganham ✏️ Editar (título/descrição/
+//                 prioridade com SLA recalculado), 🗑 Cancelar (fecha com nota,
+//                 histórico preservado) e 🗂 Abrir Action Card vinculado.
+//                 FB-00038: Action Card ganha 💬 comentários (no histórico),
+//                 📎 anexos (Drive 07-Empresa/ActionCards/<card>) e 👥
+//                 participantes (auto-inclui quem comenta/anexa).
+//                 FB-00035: topbar mobile — "safe center" + compacto (o menu
+//                 rolava pro lado e cortava o início).
+//                 Revisão geral T1 (TAREFA-FB com \n real), T2 (reanálise
+//                 reprocessa EM_TRIAGEM + nota do João no prompt), T3
+//                 (APROVADO→IMPLEMENTADO/FALHOU validado antes da escrita),
+//                 T4 (webhook roteia para services — PIN quebrou as Api_*),
+//                 T6 (anexos de feedback sem link público), T7b (PIN com
+//                 hash SHA-256 + migração transparente), T15 (ensureColumns
+//                 getLastColumn), T17 (anti prompt-injection na triagem).
+//  2026.07.08-1 — Acesso 100% ANÔNIMO por PIN (decisão João: sem conta Google).
+//                 Sessões por TOKEN em ScriptProperties (UserProperties não
+//                 identifica usuário anônimo); toda Api_* roteada por
+//                 Api_dispatch(token, fn, args) — injeção automática no wrapper
+//                 do FeedbackDiag (overlay/telemetria continuam vendo o nome
+//                 real). Lockout global (8 falhas / 5 min, ScriptProperties).
+//                 PIN fora da trilha de telemetria (input #pin-input + cliques
+//                 no login-screen ignorados). Requer redeploy com acesso
+//                 "Qualquer pessoa" (anônimo) + "Executar como: Eu".
 //  2026.06.30-1 — Login por PIN de 4 dígitos (substitui auth por email Google).
 //                 FB-00036: stop polluting Action Cards board (SLA Estourado +
 //                 [SISTEMA] Integridade não criam mais cards, audit log e email
@@ -77,10 +105,10 @@
 // =============================================================================
 
 /** Versão do build em produção. Bumpar a cada deploy. */
-var SGA_BUILD = '2026.06.30-1';
+var SGA_BUILD = '2026.07.08-2';
 
 /** Data e hora desta implantação (BRT). Bumpar junto com SGA_BUILD a cada deploy. */
-var SGA_DEPLOYED_AT = '2026-06-30 20:45 BRT';
+var SGA_DEPLOYED_AT = '2026-07-08 23:20 BRT';
 
 /**
  * Retorna a versão do build em execução.

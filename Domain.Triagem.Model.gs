@@ -102,8 +102,10 @@ var TRIAGEM_TRANSICOES_VALIDAS = {
   'EM_TRIAGEM':          ['TRIADO', 'FALHOU'],
   // João decide
   'TRIADO':              ['APROVADO', 'RECUSADO', 'EM_TRIAGEM', 'FECHADO_SEM_CODIGO'],
-  // Aprovado pode ir para implementação (verde/amarelo) ou ficar como proposta (vermelho)
-  'APROVADO':            ['EM_IMPLEMENTACAO', 'FECHADO_SEM_CODIGO'],
+  // Aprovado pode ir para implementação (verde/amarelo) ou ficar como proposta (vermelho).
+  // T3 (revisão geral): também direto a IMPLEMENTADO/FALHOU — implementação
+  // manual ou por agente sem passar por EM_IMPLEMENTACAO.
+  'APROVADO':            ['EM_IMPLEMENTACAO', 'IMPLEMENTADO', 'FALHOU', 'FECHADO_SEM_CODIGO'],
   // Recusado pode ser reaberto (reanalise) — caso João mude de ideia
   'RECUSADO':            ['EM_TRIAGEM', 'FECHADO'],
   // Opus implementando

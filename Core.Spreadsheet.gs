@@ -34,7 +34,9 @@ function ensureColumns(sheet, cols) {
     : [];
   const missing = cols.filter(c => !existing.includes(c));
   if (!missing.length) return;
-  const startCol = existing.filter(c => c !== '').length + 1;
+  // T15 (revisão geral): usar getLastColumn()+1 — contar só headers não
+  // vazios sobrescrevia colunas quando havia célula vazia no cabeçalho.
+  const startCol = sheet.getLastColumn() + 1;
   missing.forEach((col, i) => sheet.getRange(1, startCol + i).setValue(col));
 }
 

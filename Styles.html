@@ -616,10 +616,15 @@ html, body {
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* FB-00035: com overflow + center, o início do menu fica cortado e
+     inacessível quando não cabe. "safe center" centraliza só quando cabe;
+     fallback flex-start para browsers sem suporte. */
+  justify-content: flex-start;
+  justify-content: safe center;
   gap: 2px;
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 .topbar-nav::-webkit-scrollbar { display: none; }
 .topbar-nav-btn {
@@ -1184,6 +1189,13 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   /* Esconde sidebar lateral, mostra topbar */
   .sidebar { display: none; }
   .topbar  { display: flex; }
+
+  /* FB-00035: telas estreitas — compacta o topbar pra caber mais botões
+     e deixa o excedente rolável (scroll horizontal por toque). */
+  .topbar        { gap: 4px; padding: 0 8px; }
+  .topbar-title  { display: none; }         /* logo ⬡ já identifica; libera ~45px */
+  .topbar-nav-btn{ padding: 8px 7px; font-size: 17px; }
+  .topbar-logout { padding: 8px 6px; }
 
   /* App shell vira coluna */
   .app-shell {

@@ -72,6 +72,34 @@ function Api_acGetDashboardCards() {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
+/* ───────────────────────── FB-00038 — atividade no card ───────────────── */
+
+function Api_acComment(cardId, texto) {
+  try {
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    acSvcComment(cardId, texto, user);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/** payload: { base64, mime, name } */
+function Api_acAttach(cardId, payload) {
+  try {
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    payload = payload || {};
+    var r = acSvcAttach(cardId, payload.base64, payload.mime, payload.name, user);
+    return { ok: true, data: sanitizeForClient(r) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+function Api_acSetParticipants(cardId, userIds) {
+  try {
+    var user = requireRole(['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']);
+    var list = acSvcSetParticipants(cardId, userIds, user);
+    return { ok: true, data: list };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
 /* ───────────────────────── FB-00036 cleanup ─────────────────────────
    Limpa cards automáticos de SISTEMA (SLA Estourado, [SISTEMA] Integridade)
    que poluíam o board. Chamável também manualmente pelo DIRETOR_TECNICO

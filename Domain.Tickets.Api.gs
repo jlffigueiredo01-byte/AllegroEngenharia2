@@ -108,6 +108,38 @@ function Api_tktUpdateStatus(id, novoStatus, notes) {
 }
 
 /**
+ * FB-00037: edita campos do chamado (título, descrição, prioridade, responsável).
+ * Papéis permitidos: DIRETOR_TECNICO, TECNICO.
+ */
+function Api_tktEditar(id, updates) {
+  try {
+    requireRole([ROLES.DIRETOR_TECNICO, ROLES.TECNICO]);
+    if (!id) throw new Error('ID do ticket é obrigatório.');
+    var result = tktSvcEditar(id, updates || {});
+    return { ok: true, data: result };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * FB-00037: cancela um chamado aberto por engano/improcedente.
+ * Fecha com nota "CANCELADO — motivo" (histórico preservado, nada é apagado).
+ * Papéis permitidos: DIRETOR_TECNICO, TECNICO.
+ */
+function Api_tktCancelar(id, motivo) {
+  try {
+    requireRole([ROLES.DIRETOR_TECNICO, ROLES.TECNICO]);
+    if (!id) throw new Error('ID do ticket é obrigatório.');
+    if (!motivo || !String(motivo).trim()) throw new Error('Informe o motivo do cancelamento.');
+    var result = tktSvcCancelar(id, String(motivo).trim());
+    return { ok: true, data: result };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
  * Fecha um ticket (confirmação do cliente ou diretoria técnica).
  * O ticket deve estar com status RESOLVIDO antes de ser fechado.
  * Papéis permitidos: DIRETOR_TECNICO, DIRETOR_COMERCIAL.

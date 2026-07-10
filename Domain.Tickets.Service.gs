@@ -303,6 +303,56 @@ function tktSvcUpdateStatus(id, novoStatus, notes) {
 }
 
 /**
+ * FB-00037: edição de campos do chamado (título, descrição, prioridade,
+ * responsável). Whitelist explícita + auditoria.
+ */
+function tktSvcEditar(id, updates) {
+  var tkt = tktRepoGetById(id);
+  if (!tkt) throw new Error('Ticket não encontrado: ' + id);
+  if (tkt.status === TICKET_STATUS.FECHADO) throw new Error('Chamado fechado não pode ser editado.');
+
+  var patch = {};
+  if (updates.title && String(updates.title).trim()) patch.title = String(updates.title).trim();
+  if (updates.description !== undefined) patch.description = String(updates.description || '');
+  if (updates.priority && TICKET_PRIORITY[updates.priority]) {
+    patch.priority = updates.priority;
+    // Prioridade nova → SLAs recalculados (mantém opened_at)
+    var sla = _tktGetSla(updates.priority);
+    patch.sla_response_h   = sla.responseH;
+    patch.sla_resolution_h = sla.resolutionH;
+  }
+  if (updates.assigned_to !== undefined) patch.assigned_to = String(updates.assigned_to || '');
+  if (!Object.keys(patch).length) throw new Error('Nada para atualizar.');
+
+  patch.updated_at = nowISO();
+  tktRepoUpdate(id, patch);
+  appendAuditLog('TICKET_EDIT', TICKETS_SHEET, id, JSON.stringify(patch));
+  return tktRepoGetById(id);
+}
+
+/**
+ * FB-00037: cancelamento de chamado improcedente. Fecha com nota — o
+ * histórico fica preservado (nunca apaga linha).
+ */
+function tktSvcCancelar(id, motivo) {
+  var tkt = tktRepoGetById(id);
+  if (!tkt) throw new Error('Ticket não encontrado: ' + id);
+  if (tkt.status === TICKET_STATUS.FECHADO) throw new Error('Chamado já está fechado.');
+
+  var agora = nowISO();
+  tktRepoUpdate(id, {
+    status:           TICKET_STATUS.FECHADO,
+    closed_at:        agora,
+    resolution_notes: 'CANCELADO — ' + motivo,
+    root_cause:       tkt.root_cause || 'NAO_APLICAVEL',
+    updated_at:       agora
+  });
+  try { _tktAddUpdate(id, 'SISTEMA', '🗑 Chamado cancelado: ' + motivo, '', ''); } catch (e) {}
+  appendAuditLog('TICKET_CANCELADO', TICKETS_SHEET, id, motivo);
+  return tktRepoGetById(id);
+}
+
+/**
  * Verifica SLAs de todos os tickets abertos (chamado pelo Scheduler, diário 8h).
  * Cria Action Card de tipo 'SLA_ESTOURADO' para DIRETOR_TECNICO quando houver violações.
  *

@@ -1,26 +1,29 @@
 // =============================================================================
-// Core.Auth.gs — autenticação por PIN (4 dígitos)
+// Core.Auth.gs — autenticação por PIN (4 dígitos) com ACESSO ANÔNIMO
+//
+// DECISÃO (João, 2026-07-08): NÃO exigir conta Google. O Web App roda como o
+// dono ("Executar como: Eu") com acesso "Qualquer pessoa" (anônimo). Sistema
+// interno, link não divulgado. A única credencial é o PIN.
+//
+// POR QUE SESSÕES POR TOKEN (e não UserProperties):
+//   Com acesso anônimo executando como o dono, TODO acesso compartilha o
+//   mesmo UserProperties (o do dono) — sessões colidiriam entre usuários.
+//   Solução: token aleatório por login, guardado no localStorage do
+//   navegador de cada usuário e enviado em TODA chamada via Api_dispatch
+//   (injeção automática no wrapper de google.script.run do FeedbackDiag).
 //
 // FLUXO:
-//   - Admin (João) define um PIN único por usuário direto na coluna `pin` da
-//     aba USERS. Email permanece para audit/notificações, NÃO autentica.
-//   - Usuário abre o SGA → tela de PIN → digita 4 dígitos.
-//   - Servidor valida (Api_loginByPin), cria sessão em UserProperties (12h
-//     padrão, configurável via SETUP_CALC.SESSION_TTL_HORAS), retorna user.
-//   - Cliente persiste flag no localStorage (sempre logado até expiração).
-//   - Lockout: 5 tentativas erradas no mesmo PIN → bloqueio de 5 minutos
-//     (cached em ScriptProperties por hash do PIN errado).
+//   login:   client → Api_loginByPin(pin) → valida → cria SESS_<token> em
+//            ScriptProperties (TTL 12h) → devolve token → localStorage.
+//   chamada: client → Api_dispatch(token, 'Api_xxx', [args]) → resolve a
+//            sessão, seta __SGA_SESSION e invoca a Api real.
+//   logout:  Api_logout apaga a sessão; client apaga o token.
 //
-// MULTI-DISPOSITIVO:
-//   Sessão fica em UserProperties (escopada por conta Google + script).
-//   4 dispositivos com contas Google distintas (laptop pessoal, celular,
-//   etc.) = 4 sessões independentes. Mesma conta Google em duas máquinas
-//   compartilharia a sessão UserProperties (último login ganha) — não é o
-//   caso aqui (cada um tem sua máquina, requisito de João 2026-06-30).
+// Lockout GLOBAL (janela de 5 min, 8 falhas) em ScriptProperties — sem
+// identidade Google não há como fazer lockout por usuário.
 // =============================================================================
 
 const USERS_SHEET = 'USERS';
-const SESSION_KEY = 'allegro_session';
 
 var ROLES = {
   DIRETOR_TECNICO:    'DIRETOR_TECNICO',
@@ -48,6 +51,9 @@ var RBAC_MATRIX = {
   'all':                ['DIRETOR_TECNICO', 'DIRETOR_COMERCIAL', 'FINANCEIRO_ADMIN', 'TECNICO']
 };
 
+// Sessão da EXECUÇÃO corrente (setada pelo Api_dispatch a cada request).
+var __SGA_SESSION = null;
+
 // ---------------------------------------------------------------------------
 // Helpers privados
 // ---------------------------------------------------------------------------
@@ -64,17 +70,15 @@ function _authGetSetupCalcTTL() {
 
 /**
  * Migração idempotente: garante que a aba USERS tem coluna 'pin'.
- * Chamada por initCoreSheets e pelo loginByPin (caso planilha esteja antiga).
  */
 function _authEnsurePinColumn() {
   try {
     var sheet = ss().getSheetByName(USERS_SHEET);
     if (!sheet) return;
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    if (headers.indexOf('pin') !== -1) return; // já existe
-    // Insere coluna 'pin' antes de 'role' (ou no fim, se 'role' não estiver presente)
+    if (headers.indexOf('pin') !== -1) return;
     var roleIdx = headers.indexOf('role');
-    var insertAt = roleIdx >= 0 ? roleIdx + 1 : headers.length + 1; // 1-based
+    var insertAt = roleIdx >= 0 ? roleIdx + 1 : headers.length + 1;
     sheet.insertColumnBefore(insertAt);
     sheet.getRange(1, insertAt).setValue('pin');
     Logger.log('[Auth] Coluna "pin" adicionada à aba USERS em ' + insertAt);
@@ -92,65 +96,109 @@ function _authNormalizePin(raw) {
   return digits;
 }
 
-/** Verifica se está em lockout (5 tentativas erradas em 5min). */
+/**
+ * T7b (revisão geral): hash SHA-256 do PIN com salt (Script Property
+ * PIN_SALT, fallback fixo). Migração transparente: a célula pode ter o PIN
+ * em claro (João digita 4 dígitos na planilha) — no 1º login o hash é
+ * gravado por cima. _authPinMatches aceita os dois formatos.
+ */
+function _authHashPin(pin) {
+  var salt = PropertiesService.getScriptProperties().getProperty('PIN_SALT') || 'allegro-sga';
+  var dig = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + '|' + pin);
+  return dig.map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+}
+
+/** Compara o valor armazenado (claro OU hash) com o PIN informado. */
+function _authPinMatches(stored, pin) {
+  var s = String(stored == null ? '' : stored).trim();
+  if (!s || !pin) return false;
+  if (/^[0-9a-f]{64}$/i.test(s)) return s.toLowerCase() === _authHashPin(pin);
+  return _authNormalizePin(s) === pin;
+}
+
+// ── Lockout GLOBAL (ScriptProperties, janela de 5 min, 8 falhas) ──
+
+function _authLockKey() { return 'PIN_FAIL_' + Math.floor(Date.now() / 300000); }
+
 function _authCheckLockout() {
-  var props = PropertiesService.getUserProperties();
-  var raw = props.getProperty('pin_lockout');
-  if (!raw) return null;
   try {
-    var lock = JSON.parse(raw);
-    if (lock.until && Date.now() < lock.until) {
-      var rest = Math.ceil((lock.until - Date.now()) / 1000);
-      return rest;
-    }
-    props.deleteProperty('pin_lockout');
-  } catch (e) { props.deleteProperty('pin_lockout'); }
+    var n = Number(PropertiesService.getScriptProperties().getProperty(_authLockKey()) || 0);
+    if (n >= 8) return 300; // segundos aproximados até a janela virar
+  } catch (e) {}
   return null;
 }
 
 function _authRegisterFailedAttempt() {
-  var props = PropertiesService.getUserProperties();
-  var raw = props.getProperty('pin_attempts');
-  var state = { count: 0, first: Date.now() };
-  if (raw) { try { state = JSON.parse(raw); } catch (e) {} }
-  // Reset se passou mais de 5min desde a primeira tentativa
-  if (Date.now() - state.first > 5 * 60 * 1000) {
-    state = { count: 0, first: Date.now() };
-  }
-  state.count++;
-  props.setProperty('pin_attempts', JSON.stringify(state));
-  if (state.count >= 5) {
-    var until = Date.now() + 5 * 60 * 1000;
-    props.setProperty('pin_lockout', JSON.stringify({ until: until }));
-    props.deleteProperty('pin_attempts');
-  }
+  try {
+    var sp = PropertiesService.getScriptProperties();
+    var k = _authLockKey();
+    sp.setProperty(k, String(Number(sp.getProperty(k) || 0) + 1));
+  } catch (e) {}
 }
 
-function _authClearAttempts() {
-  var props = PropertiesService.getUserProperties();
-  props.deleteProperty('pin_attempts');
-  props.deleteProperty('pin_lockout');
+// ── Sessões por token (ScriptProperties) ──
+
+function _authSessKey(token) { return 'SESS_' + token; }
+
+function _authSessionCreate(user) {
+  var token = Utilities.getUuid();
+  var ttlH = _authGetSetupCalcTTL();
+  var sess = {
+    id:        user.id,
+    name:      user.name,
+    email:     user.email,
+    role:      user.role,
+    via:       'pin',
+    loginAt:   nowISO(),
+    expiresAt: Date.now() + ttlH * 60 * 60 * 1000
+  };
+  PropertiesService.getScriptProperties().setProperty(_authSessKey(token), JSON.stringify(sess));
+  return token;
+}
+
+function _authSessionGet(token) {
+  if (!token) return null;
+  var sp = PropertiesService.getScriptProperties();
+  var raw = sp.getProperty(_authSessKey(String(token)));
+  if (!raw) return null;
+  var sess = null;
+  try { sess = JSON.parse(raw); } catch (e) { return null; }
+  if (!sess || (sess.expiresAt && Date.now() > sess.expiresAt)) {
+    try { sp.deleteProperty(_authSessKey(String(token))); } catch (e) {}
+    return null;
+  }
+  sess._token = String(token);
+  return sess;
+}
+
+/** Expurgo best-effort de sessões vencidas (roda a cada login). */
+function _authSessionsCleanup() {
+  try {
+    var sp = PropertiesService.getScriptProperties();
+    var all = sp.getProperties();
+    Object.keys(all).forEach(function (k) {
+      if (k.indexOf('SESS_') !== 0) return;
+      try {
+        var s = JSON.parse(all[k]);
+        if (!s || (s.expiresAt && Date.now() > s.expiresAt)) sp.deleteProperty(k);
+      } catch (e) { sp.deleteProperty(k); }
+    });
+  } catch (e) {}
 }
 
 // ---------------------------------------------------------------------------
-// Login por PIN
+// Login por PIN (PÚBLICA — única chamada sem token)
 // ---------------------------------------------------------------------------
 
 /**
- * Tenta login com o PIN informado.
- * @param {string|number} pinRaw - PIN de 4 dígitos (string ou número).
- * @returns {{ok:true, data:object}|{ok:false, error:string, lockoutSeconds?:number}}
+ * @param {string|number} pinRaw - PIN de 4 dígitos.
+ * @returns {{ok:true, data:{id,name,email,role,token}}|{ok:false, error:string}}
  */
 function Api_loginByPin(pinRaw) {
   try {
-    // Lockout em curso?
     var lockSec = _authCheckLockout();
     if (lockSec) {
-      return {
-        ok: false,
-        error: 'Muitas tentativas erradas. Tente de novo em ' + Math.ceil(lockSec / 60) + ' min.',
-        lockoutSeconds: lockSec
-      };
+      return { ok: false, error: 'Muitas tentativas erradas. Tente de novo em alguns minutos.' };
     }
 
     var pin = _authNormalizePin(pinRaw);
@@ -158,17 +206,12 @@ function Api_loginByPin(pinRaw) {
       return { ok: false, error: 'PIN inválido. Digite 4 dígitos.' };
     }
 
-    // Garante a coluna 'pin' (migração silenciosa caso planilha esteja antiga)
     _authEnsurePinColumn();
 
     var rows = sheetToObjects(USERS_SHEET);
     var user = null;
     for (var i = 0; i < rows.length; i++) {
-      var rowPin = _authNormalizePin(rows[i].pin);
-      if (rowPin && rowPin === pin) {
-        user = rows[i];
-        break;
-      }
+      if (_authPinMatches(rows[i].pin, pin)) { user = rows[i]; break; }
     }
 
     if (!user) {
@@ -181,119 +224,67 @@ function Api_loginByPin(pinRaw) {
       return { ok: false, error: 'Usuário inativo. Contate o administrador.' };
     }
 
-    // Cria sessão em UserProperties (escopada por conta Google do dispositivo).
-    // 'via:pin' marca a sessão como legítima — sessões legadas (criadas pelo
-    // auto-login por email antes desta versão) NÃO têm essa flag e são rejeitadas
-    // por Api_getCurrentUserInfo, forçando re-login por PIN.
-    var session = {
-      id:      user.id,
-      name:    user.name,
-      email:   user.email,
-      role:    user.role,
-      via:     'pin',
-      loginAt: nowISO()
-    };
-    PropertiesService.getUserProperties().setProperty(SESSION_KEY, JSON.stringify(session));
-    _authClearAttempts();
+    // T7b: migração transparente — PIN em claro na planilha vira hash no 1º login
+    if (!/^[0-9a-f]{64}$/i.test(String(user.pin || '').trim())) {
+      try { updateRowByIdSafe(USERS_SHEET, user.id, { pin: _authHashPin(pin) }); } catch (eMig) {}
+    }
+
+    _authSessionsCleanup();
+    var token = _authSessionCreate(user);
     appendAuditLog('LOGIN', 'USERS', user.id, 'PIN OK: ' + user.name);
 
-    return { ok: true, data: { id: user.id, name: user.name, email: user.email, role: user.role } };
+    return { ok: true, data: { id: user.id, name: user.name, email: user.email, role: user.role, token: token } };
 
   } catch (e) {
     return { ok: false, error: e.message || 'Erro ao validar PIN.' };
   }
 }
 
-/**
- * Retorna informações da sessão ativa (se houver) — chamada no boot do app.
- * @returns {{ok:true, data:object}|{ok:false, error:'PIN_REQUIRED'|string}}
- */
-function Api_getCurrentUserInfo() {
+// ---------------------------------------------------------------------------
+// Api_dispatch — ponto único de entrada autenticado
+// Toda chamada Api_* do cliente passa por aqui (injeção no wrapper do
+// FeedbackDiag). Resolve a sessão pelo token, seta __SGA_SESSION e invoca.
+// ---------------------------------------------------------------------------
+
+// Funções que podem rodar SEM sessão (nenhum dado sensível).
+var _SGA_PUBLIC_FNS = { Api_getSystemMeta: 1 };
+
+function Api_dispatch(token, fnName, args) {
   try {
-    var session = getCurrentUser();
-    if (!session) return { ok: false, error: 'PIN_REQUIRED' };
-
-    // Rejeita sessões legadas (criadas pelo auto-login por email antes desta versão).
-    // Só aceita sessões marcadas com via:'pin'.
-    if (session.via !== 'pin') {
-      logoutUser();
-      return { ok: false, error: 'PIN_REQUIRED' };
+    fnName = String(fnName || '');
+    if (fnName.indexOf('Api_') !== 0 || fnName === 'Api_dispatch' || fnName === 'Api_loginByPin') {
+      return { ok: false, error: 'Função não permitida: ' + fnName };
     }
-
-    // Re-valida que o usuário ainda existe e está ativo
-    var rows = sheetToObjects(USERS_SHEET);
-    var u = null;
-    for (var i = 0; i < rows.length; i++) {
-      if (String(rows[i].id) === String(session.id)) { u = rows[i]; break; }
+    var g = (typeof globalThis !== 'undefined') ? globalThis : this;
+    var fn = g[fnName];
+    if (typeof fn !== 'function') {
+      return { ok: false, error: 'Função inexistente: ' + fnName };
     }
-    if (!u) {
-      logoutUser();
-      return { ok: false, error: 'PIN_REQUIRED' };
+    if (!_SGA_PUBLIC_FNS[fnName]) {
+      var sess = _authSessionGet(token);
+      if (!sess) return { ok: false, error: 'PIN_REQUIRED' };
+      __SGA_SESSION = sess;
     }
-    var isActive = u.active === true || String(u.active).toUpperCase() === 'TRUE';
-    if (!isActive) {
-      logoutUser();
-      return { ok: false, error: 'Usuário foi desativado. Contate o administrador.' };
-    }
-
-    return { ok: true, data: { id: u.id, name: u.name, email: u.email, role: u.role } };
-
+    return fn.apply(null, args || []);
   } catch (e) {
-    return { ok: false, error: e.message };
+    return { ok: false, error: e.message || 'Erro interno no dispatcher.' };
+  } finally {
+    __SGA_SESSION = null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// getAuthorizedUser — compat: agora retorna o usuário logado por PIN
-// (mantém assinatura por causa de chamadas antigas, mas NÃO autentica por email)
-// ---------------------------------------------------------------------------
-
-function getAuthorizedUser() {
-  var session = getCurrentUser();
-  if (!session) throw new Error('PIN_REQUIRED');
-  return session;
-}
-
-// ---------------------------------------------------------------------------
-// getCurrentUser — lê sessão em cache com verificação de expiração
+// Sessão corrente — todos os Api_/Services usam estes helpers
 // ---------------------------------------------------------------------------
 
 function getCurrentUser() {
-  const props = PropertiesService.getUserProperties();
-  const stored = props.getProperty(SESSION_KEY);
-  if (!stored) return null;
-
-  let session;
-  try { session = JSON.parse(stored); } catch (e) { return null; }
-
-  if (session && session.loginAt) {
-    const ttlHoras = _authGetSetupCalcTTL();
-    const loginTime = new Date(session.loginAt).getTime();
-    const expiresAt = loginTime + ttlHoras * 60 * 60 * 1000;
-    if (Date.now() > expiresAt) {
-      props.deleteProperty(SESSION_KEY);
-      return null;
-    }
-  }
-
-  return session || null;
+  return __SGA_SESSION || null;
 }
-
-// ---------------------------------------------------------------------------
-// requireAuth — exige sessão válida (sem auto-login por email)
-// ---------------------------------------------------------------------------
 
 function requireAuth() {
-  let session = getCurrentUser();
-  if (session && session.via === 'pin') return session;
-  // Sessão legada (sem via:'pin') ou inexistente: força re-login por PIN
-  if (session) logoutUser();
+  if (__SGA_SESSION && __SGA_SESSION.via === 'pin') return __SGA_SESSION;
   throw new Error('PIN_REQUIRED');
 }
-
-// ---------------------------------------------------------------------------
-// requireRole — verifica se a sessão possui um dos papéis permitidos
-// ---------------------------------------------------------------------------
 
 function requireRole(allowedRoles) {
   const user = requireAuth();
@@ -303,23 +294,55 @@ function requireRole(allowedRoles) {
   return user;
 }
 
+// Compat: código antigo que chamava getAuthorizedUser (identidade Google).
+function getAuthorizedUser() {
+  return requireAuth();
+}
+
+/**
+ * Info da sessão ativa — chamada no boot do app (via dispatcher).
+ * Revalida que o usuário ainda existe e está ativo na aba USERS.
+ */
+function Api_getCurrentUserInfo() {
+  try {
+    var session = requireAuth();
+
+    var rows = sheetToObjects(USERS_SHEET);
+    var u = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i].id) === String(session.id)) { u = rows[i]; break; }
+    }
+    if (!u) return { ok: false, error: 'PIN_REQUIRED' };
+    var isActive = u.active === true || String(u.active).toUpperCase() === 'TRUE';
+    if (!isActive) return { ok: false, error: 'Usuário foi desativado. Contate o administrador.' };
+
+    return { ok: true, data: { id: u.id, name: u.name, email: u.email, role: u.role } };
+  } catch (e) {
+    return { ok: false, error: e.message === 'PIN_REQUIRED' ? 'PIN_REQUIRED' : e.message };
+  }
+}
+
 // ---------------------------------------------------------------------------
-// logoutUser — encerra a sessão e registra no audit log
+// Logout
 // ---------------------------------------------------------------------------
 
 function logoutUser() {
-  const user = getCurrentUser();
-  if (user) appendAuditLog('LOGOUT', 'USERS', user.id, 'Logout: ' + user.name);
-  PropertiesService.getUserProperties().deleteProperty(SESSION_KEY);
+  if (__SGA_SESSION) {
+    try { appendAuditLog('LOGOUT', 'USERS', __SGA_SESSION.id, 'Logout: ' + __SGA_SESSION.name); } catch (e) {}
+    if (__SGA_SESSION._token) {
+      try { PropertiesService.getScriptProperties().deleteProperty(_authSessKey(__SGA_SESSION._token)); } catch (e) {}
+    }
+  }
 }
 
-// API pública compatível com chamada do cliente
 function Api_logout() {
   try {
     logoutUser();
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
+
+// (Api_logoutUser vive em Domain.Users.gs e delega para logoutUser().)
 
 // ---------------------------------------------------------------------------
 // getUsersByRole — retorna todos os usuários ativos com o papel informado
@@ -350,19 +373,16 @@ function canAccessFinancial() {
 }
 
 // ---------------------------------------------------------------------------
-// loginUser — @deprecated. Mantido apenas para retrocompatibilidade.
+// loginUser — @deprecated
 // ---------------------------------------------------------------------------
 
 function loginUser(userId) {
-  // @deprecated — use Api_loginByPin pelo cliente. Aqui apenas retorna a sessão atual.
   return requireAuth();
 }
 
 // ---------------------------------------------------------------------------
 // HELPER DE EMERGÊNCIA — rode no editor do Apps Script se ninguém conseguir
-// logar (PINs não foram cadastrados na planilha). Ex.:
-//   setUserPin('jlffigueiredo01@gmail.com', '1234')
-//   setUserPin('USR-00001', '0427')
+// logar. Ex.: setUserPin('jlffigueiredo01@gmail.com', '1234')
 // ---------------------------------------------------------------------------
 function setUserPin(emailOrId, pin) {
   var normPin = _authNormalizePin(pin);
@@ -378,15 +398,15 @@ function setUserPin(emailOrId, pin) {
   }
   if (!target) throw new Error('Usuário não encontrado: ' + emailOrId);
 
-  // Conflito: PIN já em uso por outro
   for (var j = 0; j < rows.length; j++) {
     if (String(rows[j].id) === String(target.id)) continue;
-    if (_authNormalizePin(rows[j].pin) === normPin) {
+    if (_authPinMatches(rows[j].pin, normPin)) {
       throw new Error('PIN ' + normPin + ' já está em uso por ' + rows[j].name + '. Escolha outro.');
     }
   }
 
-  updateRowByIdSafe(USERS_SHEET, target.id, { pin: normPin });
+  // T7b: grava já o hash (não o PIN em claro)
+  updateRowByIdSafe(USERS_SHEET, target.id, { pin: _authHashPin(normPin) });
   appendAuditLog('SET_PIN', 'USERS', target.id, 'PIN definido para ' + target.name);
   Logger.log('PIN ' + normPin + ' atribuído a ' + target.name + ' (' + target.id + ')');
   return { id: target.id, name: target.name, pin: normPin };

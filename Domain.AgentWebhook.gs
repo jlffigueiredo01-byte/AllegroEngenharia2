@@ -38,35 +38,43 @@ function doPost(e) {
       return _agentResponse({ ok: false, error: 'unauthorized' });
     }
 
+    // T4 (revisão geral): rotear para os SERVICES, não para as Api_*.
+    // As Api_* exigem sessão de PIN (requireAuth) — o webhook autentica
+    // pelo secret, então chama os services direto e audita como
+    // 'agent-webhook'. NÃO afrouxar o requireAuth global.
     var action = String(payload.action || '').trim();
     var result;
-    switch (action) {
-      // Sonnet (juiz):
-      case 'triagemAnalysisUpsert':
-        result = Api_triagemAnalysisUpsert(payload.fb_id, payload.payload);
-        break;
-      case 'triagemList':
-        result = Api_triagemList(payload.filtros || {});
-        break;
-      case 'triagemGet':
-        result = Api_triagemGet(payload.fb_id);
-        break;
-      case 'triagemKpis':
-        result = Api_triagemKpis();
-        break;
-      // Opus (executor, fase 2):
-      case 'triagemMarcarImplementado':
-        result = Api_triagemMarcarImplementado(payload.fb_id, payload.payload);
-        break;
-      case 'triagemMarcarFalha':
-        result = Api_triagemMarcarFalha(payload.fb_id, payload.erro_msg);
-        break;
-      // Diagnostico:
-      case 'ping':
-        result = { ok: true, data: { pong: true, ts: nowISO() } };
-        break;
-      default:
-        result = { ok: false, error: 'unknown action: ' + action };
+    try {
+      switch (action) {
+        // Sonnet (juiz):
+        case 'triagemAnalysisUpsert':
+          result = { ok: true, data: triagemSvcUpsertAnalysis(payload.fb_id, payload.payload), actor: 'agent-webhook' };
+          break;
+        case 'triagemList':
+          result = { ok: true, data: triagemSvcList(payload.filtros || {}), actor: 'agent-webhook' };
+          break;
+        case 'triagemGet':
+          result = { ok: true, data: triagemSvcGetByFbId(payload.fb_id), actor: 'agent-webhook' };
+          break;
+        case 'triagemKpis':
+          result = { ok: true, data: triagemSvcKpis(), actor: 'agent-webhook' };
+          break;
+        // Opus (executor, fase 2):
+        case 'triagemMarcarImplementado':
+          result = { ok: true, data: triagemSvcMarcarImplementado(payload.fb_id, payload.payload), actor: 'agent-webhook' };
+          break;
+        case 'triagemMarcarFalha':
+          result = { ok: true, data: triagemSvcMarcarFalha(payload.fb_id, payload.erro_msg), actor: 'agent-webhook' };
+          break;
+        // Diagnostico:
+        case 'ping':
+          result = { ok: true, data: { pong: true, ts: nowISO() } };
+          break;
+        default:
+          result = { ok: false, error: 'unknown action: ' + action };
+      }
+    } catch (errSvc) {
+      result = { ok: false, error: errSvc.message || String(errSvc) };
     }
     return _agentResponse(result);
   } catch (err) {

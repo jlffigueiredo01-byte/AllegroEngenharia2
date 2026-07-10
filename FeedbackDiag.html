@@ -55,6 +55,8 @@
     document.addEventListener('click', function (ev) {
       try {
         var el = ev.target;
+        // Segurança: cliques na tela de login/teclado de PIN ficam fora da trilha
+        if (el && el.closest && (el.closest('.pin-key') || el.closest('#login-screen'))) return;
         var lb = _label(el);
         window._fbTrailPush('click', _sel(el) + (lb ? ' "' + lb + '"' : ''));
         var cur = el, depth = 0;
@@ -74,7 +76,8 @@
     document.addEventListener('input', function (ev) {
       try {
         var el = ev.target;
-        if (!el || el.type === 'password') return;
+        if (!el || el.type === 'password' || el.id === 'pin-input' ||
+            (el.hasAttribute && el.hasAttribute('data-fb-mask'))) return;
         var campo = el.name || el.id || (el.tagName ? el.tagName.toLowerCase() : 'campo');
         window._fbTrailPush('input', campo + ' = ' + _trunc(el.value, 40));
       } catch (e) {}
@@ -150,6 +153,20 @@
     }
   }
 
+  // ── dispatch por token (auth PIN anônima) ──
+  // Toda Api_* (exceto públicas) vira Api_dispatch(token, fn, args): sem conta
+  // Google, o token do localStorage é a ÚNICA forma do servidor saber quem é.
+  // O nome ORIGINAL (fn) continua sendo usado pelo overlay e pela telemetria.
+  var _SGA_NO_DISPATCH = { Api_loginByPin: 1, Api_dispatch: 1 };
+  function _sgaDispatchCall(fn, args) {
+    if (String(fn).indexOf('Api_') !== 0 || _SGA_NO_DISPATCH[fn]) {
+      return { fn: fn, args: args };
+    }
+    var tok = null;
+    try { tok = localStorage.getItem('sga_token'); } catch (e) {}
+    return { fn: 'Api_dispatch', args: [tok, fn, args] };
+  }
+
   // ── wrapper de google.script.run — loga chamadas (foco nas que falham) ──
   // Ultra-defensivo: sem Proxy → não mexe; erro ao compor → chama o nativo direto.
   function _fbWrapRunner(real) {
@@ -187,14 +204,16 @@
                   try { window._fbLogCall(fn, args, false, (err && err.message) || String(err), _now() - t0); } catch (e) {}
                   if (userFailure) { try { userFailure(err); } catch (e) {} }
                 });
-              return r[fn].apply(r, args);
+              var call = _sgaDispatchCall(fn, args);
+              return r[call.fn].apply(r, call.args);
             } catch (e) {
               // composição falhou → NUNCA perde a chamada: nativo direto (ainda solta o overlay)
               try {
                 var rr = target
                   .withSuccessHandler(function (res) { _hide(); if (userSuccess) { try { userSuccess(res); } catch (e3) {} } })
                   .withFailureHandler(function (err) { _hide(); if (userFailure) { try { userFailure(err); } catch (e3) {} } });
-                return rr[fn].apply(rr, args);
+                var call2 = _sgaDispatchCall(fn, args);
+                return rr[call2.fn].apply(rr, call2.args);
               } catch (e2) { _hide(); }
             }
           };

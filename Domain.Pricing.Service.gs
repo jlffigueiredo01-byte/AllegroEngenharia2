@@ -180,14 +180,18 @@ function prcCalcInfraComParams(points, rates, params) {
     });
   }
 
-  var totalBruto = totalMo + totalMat + totalEng + mobilizacao;
+  // FB-00042: proposta SEM pontos de infra não cobra NADA de infra — nem a
+  // mobilização mínima (ela só existe quando há trabalho de infraestrutura).
+  var temInfra   = points.length > 0;
+  var mobEfetiva = temInfra ? mobilizacao : 0;
+  var totalBruto = totalMo + totalMat + totalEng + mobEfetiva;
 
   return {
     pontos:          calcPontos,
     total_mo_brl:    _round2(totalMo),
     total_mat_brl:   _round2(totalMat),
     total_eng_brl:   _round2(totalEng),
-    mobilizacao_brl: _round2(mobilizacao),
+    mobilizacao_brl: _round2(mobEfetiva),
     total_bruto_brl: _round2(totalBruto)
   };
 }
@@ -376,7 +380,10 @@ function prcCalcProposta(input) {
     var totalHorasMo = infra.total_mo_brl > 0 && (params.HH_TECNICO || 0) > 0
       ? infra.total_mo_brl / (params.HH_TECNICO || 1)
       : 0;
-    diasCampo = Math.ceil(totalHorasMo / 8 / nTecnicos) || 1;
+    // FB-00042: sem horas de MO (proposta sem infra) e sem dias informados,
+    // NÃO força 1 dia de campo — deslocamento só entra se o usuário informar
+    // dias_campo explicitamente (ex.: startup presencial).
+    diasCampo = totalHorasMo > 0 ? (Math.ceil(totalHorasMo / 8 / nTecnicos) || 1) : 0;
   }
 
   var deslocamento = prcCalcDeslocamento(distanciaKm, diasCampo, nPessoas, nViagens);

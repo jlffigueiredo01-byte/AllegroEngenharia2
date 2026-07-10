@@ -269,6 +269,12 @@ function _tktRenderFlowButtons(t) {
   if (t.status === 'EM_ATENDIMENTO' || t.status === 'AGUARDANDO_CLIENTE' || t.status === 'RESOLVIDO') {
     btns.push({ label: '💸 Lançar custo', cls: 'sga-btn--ghost', fn: _tktLancarCusto });
   }
+  // FB-00037: editar, cancelar e abrir Action Card direto do chamado
+  if (t.status !== 'FECHADO') {
+    btns.push({ label: '✏️ Editar', cls: 'sga-btn--ghost', fn: function () { _tktEditarForm(t); } });
+    btns.push({ label: '🗑 Cancelar chamado', cls: 'sga-btn--ghost', fn: function () { _tktCancelarForm(t); } });
+  }
+  btns.push({ label: '🗂 Abrir Action Card', cls: 'sga-btn--ghost', fn: function () { _tktNovoActionCard(t); } });
   var html = '';
   for (var i = 0; i < btns.length; i++) {
     html += '<button class="sga-btn ' + btns[i].cls + ' sga-btn--sm" data-fi="' + i + '">' + btns[i].label + '</button>';
@@ -331,6 +337,111 @@ function _tktResolver() {
       _tktRefresh();
     }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; })
     .Api_tktResolver(_tktDetailId, sol.trim(), causa.trim());
+  });
+}
+
+/* ── FB-00037: editar chamado, cancelar e abrir Action Card ── */
+
+function _tktEditarForm(t) {
+  _tktBusy(false);
+  var box = document.getElementById('tkt-inline-form');
+  var prioOpt = function (v, label) {
+    return '<option value="' + v + '"' + (t.priority === v ? ' selected' : '') + '>' + label + '</option>';
+  };
+  box.innerHTML =
+    '<div style="background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-md);padding:12px 14px">' +
+      '<div style="font-weight:700;margin-bottom:8px">✏️ Editar chamado</div>' +
+      '<label style="font-size:12px;display:block">Título *<br><input class="sga-form-input" id="tktf-ed-title" value="' + escapeHtml(t.title || '') + '"></label>' +
+      '<label style="font-size:12px;display:block;margin-top:6px">Descrição<br><textarea class="sga-form-textarea" id="tktf-ed-desc" rows="3">' + escapeHtml(t.description || '') + '</textarea></label>' +
+      '<label style="font-size:12px;display:block;margin-top:6px">Prioridade (recalcula os SLAs)<br>' +
+        '<select class="sga-form-select" id="tktf-ed-prio">' +
+          prioOpt('CRITICA', '🔴 Crítica') + prioOpt('ALTA', '🟠 Alta') +
+          prioOpt('NORMAL', '🟡 Normal') + prioOpt('BAIXA', '🟢 Baixa') +
+        '</select></label>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="tktf-ed-ok">Salvar alterações</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tktf-ed-cancel">Cancelar</button>' +
+      '</div>' +
+    '</div>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('tktf-ed-cancel').addEventListener('click', function () { box.innerHTML = ''; });
+  document.getElementById('tktf-ed-ok').addEventListener('click', function () {
+    var titulo = document.getElementById('tktf-ed-title').value.trim();
+    if (!titulo) { showAlert('Título é obrigatório.', 'warning'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Salvar alterações'; return; }
+      showAlert('Chamado atualizado ✏️', 'success');
+      _tktRefresh();
+    }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; })
+    .Api_tktEditar(_tktDetailId, {
+      title: titulo,
+      description: document.getElementById('tktf-ed-desc').value,
+      priority: document.getElementById('tktf-ed-prio').value
+    });
+  });
+}
+
+function _tktCancelarForm(t) {
+  _tktBusy(false);
+  var box = document.getElementById('tkt-inline-form');
+  box.innerHTML =
+    '<div style="background:var(--sga-color-danger-bg);border:1px solid var(--sga-color-danger-border);border-radius:var(--sga-radius-md);padding:12px 14px">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--sga-color-danger)">🗑 Cancelar chamado</div>' +
+      '<div style="font-size:12px;color:var(--sga-text-muted);margin-bottom:6px">O chamado será FECHADO com a nota de cancelamento — o histórico fica preservado (nada é apagado).</div>' +
+      '<label style="font-size:12px;display:block">Motivo *<br><input class="sga-form-input" id="tktf-canc-motivo" placeholder="ex.: aberto por engano, duplicado do TKT-000..."></label>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="sga-btn sga-btn--danger sga-btn--sm" id="tktf-canc-ok">Confirmar cancelamento</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tktf-canc-cancel">Voltar</button>' +
+      '</div>' +
+    '</div>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('tktf-canc-cancel').addEventListener('click', function () { box.innerHTML = ''; });
+  document.getElementById('tktf-canc-ok').addEventListener('click', function () {
+    var motivo = document.getElementById('tktf-canc-motivo').value.trim();
+    if (!motivo) { showAlert('Informe o motivo.', 'warning'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Cancelando...';
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Confirmar cancelamento'; return; }
+      showAlert('Chamado cancelado 🗑', 'success');
+      _tktRefresh();
+    }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; })
+    .Api_tktCancelar(_tktDetailId, motivo);
+  });
+}
+
+function _tktNovoActionCard(t) {
+  _tktBusy(false);
+  var box = document.getElementById('tkt-inline-form');
+  box.innerHTML =
+    '<div style="background:var(--sga-bg-surface-alt);border:1px solid var(--sga-border-default);border-radius:var(--sga-radius-md);padding:12px 14px">' +
+      '<div style="font-weight:700;margin-bottom:8px">🗂 Novo Action Card vinculado a ' + escapeHtml(t.id) + '</div>' +
+      '<label style="font-size:12px;display:block">Título *<br><input class="sga-form-input" id="tktf-ac-title" value="' + escapeHtml('[' + t.id + '] ') + '"></label>' +
+      '<label style="font-size:12px;display:block;margin-top:6px">Mensagem<br><textarea class="sga-form-textarea" id="tktf-ac-msg" rows="2" placeholder="o que precisa ser feito"></textarea></label>' +
+      '<label class="sga-form-check" style="margin-top:6px;font-size:12px"><input type="checkbox" id="tktf-ac-urg"> <span>🔴 Urgente</span></label>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" id="tktf-ac-ok">Criar card</button>' +
+        '<button class="sga-btn sga-btn--ghost sga-btn--sm" id="tktf-ac-cancel">Cancelar</button>' +
+      '</div>' +
+    '</div>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('tktf-ac-cancel').addEventListener('click', function () { box.innerHTML = ''; });
+  document.getElementById('tktf-ac-ok').addEventListener('click', function () {
+    var titulo = document.getElementById('tktf-ac-title').value.trim();
+    if (!titulo) { showAlert('Título é obrigatório.', 'warning'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Criando...';
+    google.script.run.withSuccessHandler(function (r) {
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); btn.disabled = false; btn.textContent = 'Criar card'; return; }
+      showAlert('Card ' + r.id + ' criado e vinculado! 🗂', 'success');
+      box.innerHTML = '';
+      _tktRefresh();
+    }).withFailureHandler(function (e) { showAlert('Falha: ' + (e.message || e), 'error'); btn.disabled = false; })
+    .Api_acCreate({
+      title: titulo,
+      message: document.getElementById('tktf-ac-msg').value,
+      pos_venda_id: t.id,
+      urgent: !!document.getElementById('tktf-ac-urg').checked
+    });
   });
 }
 

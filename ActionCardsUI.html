@@ -455,10 +455,34 @@ function _ac_openDetailModal(cardId) {
       (assignee ? '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin-bottom:4px;">👤 <b>Atribuído a:</b> ' + escapeHtml(assignee) + '</div>' : '') +
       '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-muted);margin-bottom:4px;">✍️ <b>Criado por:</b> ' + escapeHtml(creator) + '</div>' +
       (card.created_at ? '<div style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);margin-bottom:16px;">📅 ' + formatDate(card.created_at) + '</div>' : '') +
+      /* FB-00038: participantes */
       '<hr class="sga-divider">' +
-      '<h4 style="margin:0 0 10px;font-size:var(--sga-font-size-sm);font-weight:700;">Histórico</h4>' +
+      '<h4 style="margin:0 0 8px;font-size:var(--sga-font-size-sm);font-weight:700;">👥 Participantes</h4>' +
+      '<div id="ac-part-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:14px;">' +
+        '<select id="ac-part-add" class="sga-form-select" style="flex:1;">' + _acUserOptions('') + '</select>' +
+        '<button class="sga-btn sga-btn--secondary sga-btn--sm" onclick="_acAddParticipant(\'' + escapeHtml(cardId) + '\')">＋</button>' +
+      '</div>' +
+      /* FB-00038: anexos */
+      '<h4 style="margin:0 0 8px;font-size:var(--sga-font-size-sm);font-weight:700;">📎 Anexos</h4>' +
+      '<div id="ac-anexos-list" style="margin-bottom:8px;font-size:var(--sga-font-size-sm);"></div>' +
+      '<div style="margin-bottom:14px;">' +
+        '<label class="sga-btn sga-btn--ghost sga-btn--sm" style="cursor:pointer;">📎 Anexar arquivo' +
+          '<input type="file" id="ac-file-input" style="display:none" onchange="_acUploadAttachment(\'' + escapeHtml(cardId) + '\', this)">' +
+        '</label>' +
+        '<span id="ac-file-status" style="font-size:var(--sga-font-size-xs);color:var(--sga-text-muted);margin-left:8px;"></span>' +
+      '</div>' +
+      /* Histórico + comentário */
+      '<hr class="sga-divider">' +
+      '<h4 style="margin:0 0 10px;font-size:var(--sga-font-size-sm);font-weight:700;">Histórico & Comentários</h4>' +
+      '<div style="display:flex;gap:6px;margin-bottom:12px;">' +
+        '<textarea id="ac-comment-text" rows="2" class="sga-form-textarea" style="flex:1;" placeholder="Escreva um comentário…"></textarea>' +
+        '<button class="sga-btn sga-btn--primary sga-btn--sm" style="align-self:flex-end;" onclick="_acSubmitComment(\'' + escapeHtml(cardId) + '\')">💬 Comentar</button>' +
+      '</div>' +
       '<div id="ac-hist-' + escapeHtml(cardId) + '"><div class="sga-skeleton-list"><div class="sga-skeleton sga-skeleton--row"></div><div class="sga-skeleton sga-skeleton--row"></div></div></div>'
   });
+  _acRenderParticipants(card);
+  _acRenderAnexos(card);
   google.script.run
     .withSuccessHandler(function(r) {
       var el = document.getElementById('ac-hist-' + cardId);
@@ -488,5 +512,176 @@ function _ac_openDetailModal(cardId) {
       if (el) el.innerHTML = '<p style="font-size:var(--sga-font-size-sm);color:var(--sga-color-danger);">Erro ao carregar histórico.</p>';
     })
     .Api_acGetHistory(cardId);
+}
+
+/* ── FB-00038: participantes, anexos e comentários no card ── */
+
+function _acFindCard(cardId) {
+  for (var i = 0; i < _acCards.length; i++) {
+    if (_acCards[i].id === cardId) return _acCards[i];
+  }
+  return null;
+}
+
+function _acParseJsonCli(raw, fb) {
+  try { var v = JSON.parse(raw || ''); return v != null ? v : fb; } catch (e) { return fb; }
+}
+
+function _acRenderParticipants(card) {
+  var box = document.getElementById('ac-part-chips');
+  if (!box) return;
+  var ids = _acParseJsonCli(card.participants_json, []);
+  if (!ids.length) {
+    box.innerHTML = '<span style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);">Nenhum participante ainda.</span>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < ids.length; i++) {
+    var nome = ids[i];
+    for (var j = 0; j < _acUsers.length; j++) {
+      if (_acUsers[j].id === ids[i]) { nome = _acUsers[j].name; break; }
+    }
+    h += '<span class="sga-badge sga-badge--info" style="display:inline-flex;align-items:center;gap:4px;">' +
+      escapeHtml(nome) +
+      '<a href="#" onclick="event.preventDefault();_acRemoveParticipant(\'' + escapeHtml(card.id) + '\',\'' + escapeHtml(ids[i]) + '\')" ' +
+      'style="text-decoration:none;color:inherit;font-weight:700;" title="Remover">×</a></span>';
+  }
+  box.innerHTML = h;
+}
+
+function _acRenderAnexos(card) {
+  var box = document.getElementById('ac-anexos-list');
+  if (!box) return;
+  var anexos = _acParseJsonCli(card.anexos_json, []);
+  if (!anexos.length) {
+    box.innerHTML = '<span style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);">Nenhum anexo.</span>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < anexos.length; i++) {
+    var a = anexos[i];
+    h += '<div style="margin-bottom:4px;">📄 <a href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener" ' +
+      'style="color:var(--sga-color-primary);">' + escapeHtml(a.name || 'arquivo') + '</a>' +
+      (a.por ? ' <span style="font-size:var(--sga-font-size-xs);color:var(--sga-text-soft);">· ' + escapeHtml(a.por) + '</span>' : '') +
+      '</div>';
+  }
+  box.innerHTML = h;
+}
+
+function _acPersistParticipants(cardId, ids) {
+  setLoading(true);
+  google.script.run
+    .withSuccessHandler(function (r) {
+      setLoading(false);
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); return; }
+      var card = _acFindCard(cardId);
+      if (card) { card.participants_json = JSON.stringify(r.data); _acRenderParticipants(card); }
+    })
+    .withFailureHandler(function (err) {
+      setLoading(false);
+      showAlert('Falha: ' + ((err && err.message) || '?'), 'error');
+    })
+    .Api_acSetParticipants(cardId, ids);
+}
+
+function _acAddParticipant(cardId) {
+  var sel = document.getElementById('ac-part-add');
+  var userId = sel ? sel.value : '';
+  if (!userId) { showAlert('Selecione um usuário.', 'warning'); return; }
+  var card = _acFindCard(cardId);
+  if (!card) return;
+  var ids = _acParseJsonCli(card.participants_json, []);
+  if (ids.indexOf(userId) !== -1) { showAlert('Já é participante.', 'info'); return; }
+  ids.push(userId);
+  _acPersistParticipants(cardId, ids);
+}
+
+function _acRemoveParticipant(cardId, userId) {
+  var card = _acFindCard(cardId);
+  if (!card) return;
+  var ids = _acParseJsonCli(card.participants_json, []).filter(function (id) { return id !== userId; });
+  _acPersistParticipants(cardId, ids);
+}
+
+function _acSubmitComment(cardId) {
+  var ta = document.getElementById('ac-comment-text');
+  var texto = ta ? ta.value.trim() : '';
+  if (!texto) { showAlert('Escreva o comentário.', 'warning'); return; }
+  setLoading(true);
+  google.script.run
+    .withSuccessHandler(function (r) {
+      setLoading(false);
+      if (!r || !r.ok) { showAlert('Erro: ' + (r ? r.error : '?'), 'error'); return; }
+      if (ta) ta.value = '';
+      showAlert('Comentário registrado!', 'success');
+      // Recarrega só o histórico do modal aberto
+      _acReloadHistory(cardId);
+    })
+    .withFailureHandler(function (err) {
+      setLoading(false);
+      showAlert('Falha: ' + ((err && err.message) || '?'), 'error');
+    })
+    .Api_acComment(cardId, texto);
+}
+
+function _acReloadHistory(cardId) {
+  google.script.run
+    .withSuccessHandler(function (r) {
+      var el = document.getElementById('ac-hist-' + cardId);
+      if (!el || !r || !r.ok || !r.data) return;
+      var h = '';
+      for (var k = 0; k < r.data.length; k++) {
+        var e = r.data[k];
+        var from = _AC_STATUS_LABELS[e.from_status] || '';
+        var to   = _AC_STATUS_LABELS[e.to_status]   || '';
+        h += '<div style="display:flex;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--sga-border-default);">' +
+          '<div style="width:8px;height:8px;background:var(--sga-color-primary);border-radius:50%;margin-top:5px;flex-shrink:0;"></div>' +
+          '<div>' +
+          '<div style="font-size:var(--sga-font-size-xs);color:var(--sga-text-muted);">' + formatDate(e.timestamp) +
+            (e.member ? ' · <b>' + escapeHtml(e.member) + '</b>' : '') + '</div>' +
+          (from && to ? '<div style="font-size:var(--sga-font-size-xs);margin:2px 0;">' + escapeHtml(from) + ' → <b>' + escapeHtml(to) + '</b></div>' : '') +
+          (e.note ? '<div style="font-size:var(--sga-font-size-sm);color:var(--sga-text-default);margin-top:3px;">' + escapeHtml(e.note) + '</div>' : '') +
+          '</div></div>';
+      }
+      el.innerHTML = h || '<p style="font-size:var(--sga-font-size-sm);color:var(--sga-text-soft);">Sem histórico registrado.</p>';
+    })
+    .withFailureHandler(function () {})
+    .Api_acGetHistory(cardId);
+}
+
+function _acUploadAttachment(cardId, inputEl) {
+  var file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) {
+    showAlert('Arquivo muito grande (máx. 8 MB).', 'error');
+    inputEl.value = '';
+    return;
+  }
+  var status = document.getElementById('ac-file-status');
+  if (status) status.textContent = '⏳ Enviando ' + file.name + '…';
+  var reader = new FileReader();
+  reader.onload = function () {
+    var base64 = String(reader.result).split(',')[1] || '';
+    google.script.run
+      .withSuccessHandler(function (r) {
+        inputEl.value = '';
+        if (!r || !r.ok) {
+          if (status) status.textContent = '';
+          showAlert('Erro ao anexar: ' + (r ? r.error : '?'), 'error');
+          return;
+        }
+        if (status) status.textContent = '✓ ' + (r.data.name || 'anexado');
+        var card = _acFindCard(cardId);
+        if (card) { card.anexos_json = JSON.stringify(r.data.anexos); _acRenderAnexos(card); }
+        _acReloadHistory(cardId);
+      })
+      .withFailureHandler(function (err) {
+        inputEl.value = '';
+        if (status) status.textContent = '';
+        showAlert('Falha: ' + ((err && err.message) || '?'), 'error');
+      })
+      .Api_acAttach(cardId, { base64: base64, mime: file.type, name: file.name });
+  };
+  reader.readAsDataURL(file);
 }
 </script>

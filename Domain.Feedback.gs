@@ -78,7 +78,8 @@ function fbSvcCriar(data) {
             a.mime || 'image/png',
             a.name || ('feedback-' + new Date().getTime() + '-' + ai + '.png'));
           var file = base.createFile(blob);
-          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          // T6 (revisão geral): sem link público — o anexo herda a permissão
+          // da pasta Feedback do Drive (quem tem acesso à pasta vê).
           anexos.push({ url: file.getUrl(), name: a.name || file.getName() });
         }
       }
@@ -221,37 +222,39 @@ function _fbGerarTarefaAgente(id, nota) {
   var modo = (camada === 'VERDE' || camada === 'AMARELO') ? 'IMPLEMENTAR' : 'PROPOR';
   var emoji = { ERRO: '🐛', SUGESTAO: '💡', MELHORIA: '⬆️' };
 
-  var out = '# TAREFA — ' + rec.id + ' (' + (modo === 'IMPLEMENTAR' ? '🟢🟡 IMPLEMENTAR' : '🔴 PROPOR') + ')\\n\\n';
-  out += '> Aprovada pelo João na guia de Melhorias em ' + nowISO() + '.\\n';
-  out += '> Leia `docs/POLITICA_AUTONOMIA_AGENTES.md` e `PROMPT_TRIAGEM.md` antes.\\n\\n';
-  out += '## Decisão do João\\n';
-  out += '- **Camada:** ' + (camada || 'não classificada → tratar como VERMELHO') + '\\n';
-  out += '- **Modo:** ' + modo + '\\n';
-  if (nota) out += '- **Nota do João:** ' + nota + '\\n';
-  out += '\\n## O que fazer\\n';
+  // T1 (revisão geral): '\n' de verdade — antes saía '\\n' literal e o
+  // markdown da TAREFA virava uma linha só ilegível.
+  var out = '# TAREFA — ' + rec.id + ' (' + (modo === 'IMPLEMENTAR' ? '🟢🟡 IMPLEMENTAR' : '🔴 PROPOR') + ')\n\n';
+  out += '> Aprovada pelo João na guia de Melhorias em ' + nowISO() + '.\n';
+  out += '> Leia `docs/POLITICA_AUTONOMIA_AGENTES.md` e `PROMPT_TRIAGEM.md` antes.\n\n';
+  out += '## Decisão do João\n';
+  out += '- **Camada:** ' + (camada || 'não classificada → tratar como VERMELHO') + '\n';
+  out += '- **Modo:** ' + modo + '\n';
+  if (nota) out += '- **Nota do João:** ' + nota + '\n';
+  out += '\n## O que fazer\n';
   if (modo === 'IMPLEMENTAR') {
-    out += '1. Implemente a correção/melhoria na `/dev`.\\n';
-    out += '2. Registre o estado anterior (reversível) e rode as validações.\\n';
-    out += '3. NÃO publique para `/exec` — o João revisa e publica.\\n';
-    out += '4. Atualize o status do ' + rec.id + ' na aba FEEDBACKS e cite o ' + rec.id + '.\\n';
+    out += '1. Implemente a correção/melhoria na `/dev`.\n';
+    out += '2. Registre o estado anterior (reversível) e rode as validações.\n';
+    out += '3. NÃO publique para `/exec` — o João revisa e publica.\n';
+    out += '4. Atualize o status do ' + rec.id + ' na aba FEEDBACKS e cite o ' + rec.id + '.\n';
   } else {
-    out += '1. NÃO implemente. Escreva a proposta (causa, impacto pela Interligação\\n';
-    out += '   Total, esforço, risco, esboço da solução) em `PLANO-' + rec.id + '.md`.\\n';
-    out += '2. Aguarde novo OK explícito do João antes de tocar em código.\\n';
+    out += '1. NÃO implemente. Escreva a proposta (causa, impacto pela Interligação\n';
+    out += '   Total, esforço, risco, esboço da solução) em `PLANO-' + rec.id + '.md`.\n';
+    out += '2. Aguarde novo OK explícito do João antes de tocar em código.\n';
   }
-  out += '\\n## Relato original\\n\\n';
-  out += '### ' + (emoji[rec.tipo] || '') + ' ' + (rec.titulo || '') + '\\n\\n';
-  out += '- **Tipo:** ' + rec.tipo + ' · **Tela:** ' + (rec.tela || '?') + ' · **Por:** ' + (rec.criado_por_nome || rec.criado_por) + '\\n\\n';
-  out += '> ' + String(rec.descricao || '').replace(/\\n/g, '\\n> ') + '\\n';
-  if (rec.anexo_url) out += '\\n📎 [anexo](' + rec.anexo_url + ')\\n';
+  out += '\n## Relato original\n\n';
+  out += '### ' + (emoji[rec.tipo] || '') + ' ' + (rec.titulo || '') + '\n\n';
+  out += '- **Tipo:** ' + rec.tipo + ' · **Tela:** ' + (rec.tela || '?') + ' · **Por:** ' + (rec.criado_por_nome || rec.criado_por) + '\n\n';
+  out += '> ' + String(rec.descricao || '').replace(/\n/g, '\n> ') + '\n';
+  if (rec.anexo_url) out += '\n📎 [anexo](' + rec.anexo_url + ')\n';
 
   // Classificação do Sonnet vai JUNTO (TAREFA auto-contida: original + classificação).
   if (analiseSonnet && analiseSonnet.trim()) {
-    out += '\\n## 🧠 Classificação do Sonnet\\n\\n' + analiseSonnet.trim() + '\\n';
+    out += '\n## 🧠 Classificação do Sonnet\n\n' + analiseSonnet.trim() + '\n';
   }
-  out += '\\n> ⚠️ Se a classificação acima divergir da MENSAGEM ORIGINAL do usuário\\n';
-  out += '> (seção "Relato original" acima), a mensagem original PREVALECE. Releia o\\n';
-  out += '> relato verbatim antes de codar — detalhes do usuário não devem se perder no resumo.\\n';
+  out += '\n> ⚠️ Se a classificação acima divergir da MENSAGEM ORIGINAL do usuário\n';
+  out += '> (seção "Relato original" acima), a mensagem original PREVALECE. Releia o\n';
+  out += '> relato verbatim antes de codar — detalhes do usuário não devem se perder no resumo.\n';
 
   var pasta = drvGetFolder('SISTEMA_TAREFAS');
   if (!pasta) return null;
